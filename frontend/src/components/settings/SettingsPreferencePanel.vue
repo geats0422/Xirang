@@ -339,7 +339,7 @@ onBeforeUnmount(() => {
   padding: 6px 0;
   position: absolute;
   top: calc(100% + 6px);
-  z-index: 100;
+  z-index: 9999;
 }
 
 .dropdown-item {

@@ -257,7 +257,7 @@ onBeforeUnmount(() => {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  z-index: 100;
+  z-index: 9999;
 }
 
 .model-dropdown .model-card {

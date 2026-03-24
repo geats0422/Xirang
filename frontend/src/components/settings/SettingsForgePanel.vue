@@ -235,7 +235,8 @@ onBeforeUnmount(() => {
 .model-select__name {
   color: #263640;
   font-family: var(--font-serif);
-  font-size: 24px;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1;
 }
 

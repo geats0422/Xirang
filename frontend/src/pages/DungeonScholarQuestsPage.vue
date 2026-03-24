@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { listDocuments } from "../api/documents";
-import { getShopBalance } from "../api/shop";
 import AppSidebar from "../components/layout/AppSidebar.vue";
+import NotificationPopover from "../components/NotificationPopover.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+import { useScholarData } from "../composables/useScholarData";
 
 type DailyQuest = {
   id: string;
@@ -28,20 +29,29 @@ type MissionCard = {
   disabled: boolean;
 };
 
-onMounted(() => {
-  document.title = "Xi Rang Quests";
-});
-
-const coinAmount = ref<string>("350");
-
-const hydrateCoinBalance = async () => {
-  try {
-    const balance = await getShopBalance();
-    coinAmount.value = Number(balance.balance).toLocaleString();
-  } catch {
-    coinAmount.value = "--";
-  }
+type NotificationItem = {
+  id: string;
+  title: string;
+  time: string;
 };
+
+const { streak, coins, hydrate } = useScholarData();
+const notificationVisible = ref(false);
+const notifications = ref<NotificationItem[]>([]);
+
+const toggleNotifications = () => {
+  notificationVisible.value = !notificationVisible.value;
+};
+
+const closeNotifications = () => {
+  notificationVisible.value = false;
+};
+
+onMounted(async () => {
+  document.title = "Xi Rang Quests";
+  await hydrate();
+  await hydrateDailyQuests();
+});
 
 const quests = ref<DailyQuest[]>([
   {
@@ -100,11 +110,7 @@ const hydrateDailyQuests = async () => {
   }
 };
 
-onMounted(async () => {
-  await Promise.all([hydrateCoinBalance(), hydrateDailyQuests()]);
-});
-
-const coinLabel = computed(() => `${coinAmount.value} Coins`);
+const coinLabel = computed(() => `${coins.value} Coins`);
 
 const shopRoute = ROUTES.shop;
 
@@ -169,13 +175,15 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
     <main class="quests-main">
       <section class="quests-shell">
         <header class="quests-statusbar" aria-label="Quest status">
-          <div class="status-pill status-pill--streak">🔥 12 Day Streak</div>
+          <div class="status-pill status-pill--streak">🔥 {{ streak }} Day Streak</div>
           <button class="status-pill status-pill--coins" type="button" @click="navigateTo(shopRoute)">🪙 {{ coinLabel }}</button>
-          <button class="notify-btn" type="button" aria-label="Notifications">
+          <button class="notify-btn" type="button" aria-label="Notifications" @click="toggleNotifications">
             🔔
             <span class="notify-btn__dot" aria-hidden="true" />
           </button>
         </header>
+
+        <NotificationPopover :items="notifications" :visible="notificationVisible" @close="closeNotifications" />
 
         <section class="monthly-banner" aria-label="Monthly challenge banner">
           <p class="monthly-banner__eyebrow">MONTHLY CHALLENGE</p>

@@ -61,7 +61,7 @@ const emit = defineEmits<{
 
 .notice-empty {
   color: var(--color-text-secondary);
-  font-size: 28px;
+  font-size: 13px;
   padding: 12px 8px 6px;
   text-align: center;
 }

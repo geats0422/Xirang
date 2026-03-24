@@ -4,7 +4,14 @@ import { getLeaderboard, type LeaderboardEntry } from "../api/leaderboard";
 import LeaderboardStandingsTable from "../components/leaderboard/LeaderboardStandingsTable.vue";
 import LeaderboardSummaryPanel from "../components/leaderboard/LeaderboardSummaryPanel.vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
+import NotificationPopover from "../components/NotificationPopover.vue";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+
+type NotificationItem = {
+  id: string;
+  title: string;
+  time: string;
+};
 
 type StandingRow = {
   rank: string;
@@ -67,6 +74,17 @@ onMounted(async () => {
 
 const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
+const notificationVisible = ref(false);
+const notifications = ref<NotificationItem[]>([]);
+
+const toggleNotifications = () => {
+  notificationVisible.value = !notificationVisible.value;
+};
+
+const closeNotifications = () => {
+  notificationVisible.value = false;
+};
+
 const progress = computed(() => Math.round((15420 / 18000) * 100));
 
 const statusClass = (row: StandingRow) => {
@@ -101,8 +119,10 @@ const statusClass = (row: StandingRow) => {
             placeholder="Search for scrolls, scholars, or guilds..."
           />
         </label>
-        <button class="notify-btn" type="button" aria-label="Notifications">🔔</button>
+        <button class="notify-btn" type="button" aria-label="Notifications" @click="toggleNotifications">🔔</button>
       </header>
+
+      <NotificationPopover :items="notifications" :visible="notificationVisible" @close="closeNotifications" />
 
       <section class="content-grid" :aria-busy="isLoading">
         <LeaderboardSummaryPanel :progress="progress" />

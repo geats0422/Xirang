@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { getLeaderboard, type LeaderboardEntry } from "../api/leaderboard";
 import LeaderboardStandingsTable from "../components/leaderboard/LeaderboardStandingsTable.vue";
 import LeaderboardSummaryPanel from "../components/leaderboard/LeaderboardSummaryPanel.vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
@@ -16,93 +17,53 @@ type StandingRow = {
   isCurrent?: boolean;
 };
 
-onMounted(() => {
-  document.title = "Xi Rang Leaderboard";
-});
+const leaderboardData = ref<LeaderboardEntry[]>([]);
+const isLoading = ref(false);
 
-const standings: StandingRow[] = [
-  {
-    rank: "1",
-    scholar: "Master Jin",
-    guild: "Golden Dragon Sect",
-    xp: "12,500",
-    status: "Top Sage",
-    tone: "gold",
-  },
-  {
-    rank: "2",
-    scholar: "Adept Mei",
-    guild: "Silver Lotus Guild",
-    xp: "11,200",
-    status: "Rising",
-    tone: "silver",
-  },
-  {
-    rank: "3",
-    scholar: "Scholar Kenji",
-    guild: "Bronze Tiger Clan",
-    xp: "10,800",
-    status: "Steady",
-    tone: "bronze",
-  },
-  {
-    rank: "4",
-    scholar: "Disciple Sarah",
+const toStandingRow = (entry: LeaderboardEntry): StandingRow => {
+  let tone: StandingRow["tone"] = "normal";
+  let status: StandingRow["status"];
+
+  if (entry.rank === 1) {
+    tone = "gold";
+    status = "Top Sage";
+  } else if (entry.rank === 2) {
+    tone = "silver";
+  } else if (entry.rank === 3) {
+    tone = "bronze";
+  } else if (entry.rank >= 41) {
+    tone = "danger";
+    status = "Danger";
+  }
+
+  return {
+    rank: String(entry.rank),
+    scholar: entry.display_name ?? `Scholar ${entry.user_id.slice(0, 6)}`,
     guild: "",
-    xp: "9,500",
-    tone: "normal",
-    trend: "flat",
-  },
-  {
-    rank: "5",
-    scholar: "Scholar Li (You)",
-    guild: "",
-    xp: "9,200",
-    tone: "current",
-    trend: "up",
-    isCurrent: true,
-  },
-  {
-    rank: "6",
-    scholar: "Novice Tom",
-    guild: "",
-    xp: "8,900",
-    tone: "normal",
-    trend: "down",
-  },
-  {
-    rank: "40",
-    scholar: "Wanderer X",
-    guild: "",
-    xp: "4,100",
-    tone: "normal",
-    trend: "flat",
-  },
-  {
-    rank: "41",
-    scholar: "Junior Sam",
-    guild: "",
-    xp: "3,900",
-    status: "Danger",
-    tone: "danger",
-  },
-  {
-    rank: "45",
-    scholar: "Sleepy Sage",
-    guild: "",
-    xp: "3,500",
-    status: "Danger",
-    tone: "danger",
-  },
-  {
-    rank: "50",
-    scholar: "Unknown",
-    guild: "",
-    xp: "3,100",
-    status: "Danger",
-    tone: "danger",
-  },
-];
+    xp: new Intl.NumberFormat("en-US").format(entry.total_xp),
+    status,
+    tone,
+  };
+};
+
+const standings = computed<StandingRow[]>(() => leaderboardData.value.map(toStandingRow));
+
+const fetchLeaderboard = async () => {
+  isLoading.value = true;
+  try {
+    leaderboardData.value = await getLeaderboard();
+  } catch (error) {
+    console.error("Failed to fetch leaderboard:", error);
+    leaderboardData.value = [];
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+onMounted(async () => {
+  document.title = "Xi Rang Leaderboard";
+  await fetchLeaderboard();
+});
 
 const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
@@ -143,7 +104,7 @@ const statusClass = (row: StandingRow) => {
         <button class="notify-btn" type="button" aria-label="Notifications">🔔</button>
       </header>
 
-      <section class="content-grid">
+      <section class="content-grid" :aria-busy="isLoading">
         <LeaderboardSummaryPanel :progress="progress" />
         <LeaderboardStandingsTable :standings="standings" :status-class="statusClass" />
       </section>

@@ -1,3 +1,13 @@
+<script setup lang="ts">
+import { useRouter } from "vue-router";
+
+const router = useRouter();
+
+const navigateTo = (path: string) => {
+  router.push(path);
+};
+</script>
+
 <template>
   <section class="panel">
     <div class="panel__header">
@@ -17,9 +27,15 @@
     </div>
 
     <div class="legal-links">
-      <button type="button">User Agreement</button>
-      <button type="button">Privacy Policy</button>
-      <button type="button">Help Center</button>
+      <button type="button" @click="navigateTo('/settings/user-agreement')">
+        {{ $t("settings.support.userAgreement") }}
+      </button>
+      <button type="button" @click="navigateTo('/settings/privacy-policy')">
+        {{ $t("settings.support.privacyPolicy") }}
+      </button>
+      <button type="button" @click="navigateTo('/settings/help-center')">
+        {{ $t("settings.support.helpCenter") }}
+      </button>
     </div>
   </section>
 </template>

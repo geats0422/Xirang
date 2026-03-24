@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { useTheme, type Theme } from "../../composables/useTheme";
+import { SUPPORTED_LOCALES, type SupportedLocale } from "../../i18n";
+
 type PreferenceRow = {
   icon: string;
   title: string;
@@ -11,6 +16,126 @@ type PreferenceRow = {
 defineProps<{
   rows: PreferenceRow[];
 }>();
+
+type ToggleKey = "sound" | "haptic" | "reminder";
+
+const TOGGLE_STORAGE_KEY = "xirang-toggle-states";
+const themeOptions: Theme[] = ["light", "dark", "system"];
+const defaultToggleStates: Record<ToggleKey, boolean> = {
+  sound: true,
+  haptic: true,
+  reminder: false,
+};
+
+const { t, locale } = useI18n();
+const { theme, setTheme } = useTheme();
+
+const showLangDropdown = ref(false);
+const languageSelectRef = ref<HTMLElement | null>(null);
+const toggleStates = ref<Record<ToggleKey, boolean>>({ ...defaultToggleStates });
+
+const currentLangLabel = computed(() => {
+  const key = `settings.localeNames.${locale.value}`;
+  const translated = t(key);
+  return translated === key ? locale.value : translated;
+});
+
+const resolveToggleKey = (row: PreferenceRow): ToggleKey => {
+  const normalized = row.title.toLowerCase();
+  if (normalized.includes("sound")) {
+    return "sound";
+  }
+  if (normalized.includes("haptic")) {
+    return "haptic";
+  }
+  return "reminder";
+};
+
+const getToggleEnabled = (row: PreferenceRow) => {
+  return toggleStates.value[resolveToggleKey(row)] ?? Boolean(row.enabled);
+};
+
+const loadToggleStates = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const saved = window.localStorage.getItem(TOGGLE_STORAGE_KEY);
+  if (!saved) {
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(saved) as Partial<Record<ToggleKey, boolean>>;
+    toggleStates.value = {
+      ...defaultToggleStates,
+      ...parsed,
+    };
+  } catch {
+    toggleStates.value = { ...defaultToggleStates };
+  }
+};
+
+const saveToggleStates = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(TOGGLE_STORAGE_KEY, JSON.stringify(toggleStates.value));
+};
+
+const handleToggle = (row: PreferenceRow) => {
+  const key = resolveToggleKey(row);
+  toggleStates.value[key] = !toggleStates.value[key];
+  saveToggleStates();
+};
+
+const handleThemeClick = (nextTheme: Theme) => {
+  setTheme(nextTheme);
+};
+
+const localeLabel = (value: SupportedLocale) => {
+  const key = `settings.localeNames.${value}`;
+  const translated = t(key);
+  return translated === key ? value : translated;
+};
+
+const toggleLangDropdown = () => {
+  showLangDropdown.value = !showLangDropdown.value;
+};
+
+const selectLanguage = (lang: SupportedLocale) => {
+  locale.value = lang;
+  showLangDropdown.value = false;
+};
+
+const handleDocumentClick = (event: MouseEvent) => {
+  const target = event.target;
+  if (!(target instanceof Node)) {
+    return;
+  }
+
+  if (!languageSelectRef.value?.contains(target)) {
+    showLangDropdown.value = false;
+  }
+};
+
+const handleDocumentKeydown = (event: KeyboardEvent) => {
+  if (event.key === "Escape") {
+    showLangDropdown.value = false;
+  }
+};
+
+onMounted(() => {
+  loadToggleStates();
+  document.addEventListener("click", handleDocumentClick);
+  document.addEventListener("keydown", handleDocumentKeydown);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", handleDocumentClick);
+  document.removeEventListener("keydown", handleDocumentKeydown);
+});
 </script>
 
 <template>
@@ -31,17 +156,47 @@ defineProps<{
         </div>
 
         <div v-if="row.kind === 'theme'" class="segmented" role="group" aria-label="Theme">
-          <button class="segmented__btn segmented__btn--active" type="button">Light</button>
-          <button class="segmented__btn" type="button">Dark</button>
-          <button class="segmented__btn" type="button">System</button>
+          <button
+            v-for="themeOption in themeOptions"
+            :key="themeOption"
+            class="segmented__btn"
+            :class="{ 'segmented__btn--active': theme === themeOption }"
+            type="button"
+            @click="handleThemeClick(themeOption)"
+          >
+            {{ t(`settings.preferences.${themeOption}`) }}
+          </button>
         </div>
 
-        <button v-else-if="row.kind === 'select'" class="select-btn" type="button">
-          <span>{{ row.value }}</span>
-          <span>▾</span>
-        </button>
+        <div v-else-if="row.kind === 'select'" ref="languageSelectRef" class="lang-select">
+          <button class="select-btn" type="button" :aria-expanded="showLangDropdown" @click="toggleLangDropdown">
+            <span>{{ currentLangLabel }}</span>
+            <span>▾</span>
+          </button>
 
-        <button v-else class="toggle" :class="{ 'toggle--on': row.enabled }" type="button">
+          <div v-if="showLangDropdown" class="dropdown-menu" role="menu" aria-label="Language">
+            <button
+              v-for="lang in SUPPORTED_LOCALES"
+              :key="lang"
+              class="dropdown-item"
+              :class="{ 'dropdown-item--active': locale === lang }"
+              type="button"
+              role="menuitemradio"
+              :aria-checked="locale === lang"
+              @click="selectLanguage(lang)"
+            >
+              {{ localeLabel(lang) }}
+            </button>
+          </div>
+        </div>
+
+        <button
+          v-else
+          class="toggle"
+          :class="{ 'toggle--on': getToggleEnabled(row) }"
+          type="button"
+          @click="handleToggle(row)"
+        >
           <span />
         </button>
       </div>
@@ -168,6 +323,46 @@ defineProps<{
   justify-content: space-between;
   min-width: 160px;
   padding: 0 12px;
+}
+
+.lang-select {
+  position: relative;
+}
+
+.dropdown-menu {
+  background: #ffffff;
+  border: 1px solid #dbe3de;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  left: 0;
+  min-width: 180px;
+  padding: 6px 0;
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 100;
+}
+
+.dropdown-item {
+  background: none;
+  border: 0;
+  color: #3b4c57;
+  cursor: pointer;
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 14px;
+  text-align: left;
+  width: 100%;
+}
+
+.dropdown-item:hover {
+  background: #f4f8f6;
+}
+
+.dropdown-item--active {
+  background: #ebf6f4;
+  color: #2a6872;
+  font-weight: 600;
 }
 
 .toggle {

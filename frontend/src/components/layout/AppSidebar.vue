@@ -10,7 +10,7 @@ const props = withDefaults(
   }>(),
   {
     profileLevel: "Level 12 Scholar",
-    profileName: "Jade Disciple",
+    profileName: "Default User",
   },
 );
 

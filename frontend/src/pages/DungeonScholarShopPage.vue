@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { getShopBalance as getBalance } from "../api/shop";
 
 type ShopItem = {
   name: string;
@@ -11,15 +12,32 @@ type ShopItem = {
   accent: "teal" | "violet" | "rose" | "amber";
 };
 
-onMounted(() => {
-  document.title = "Xi Rang Scholar Shop";
-});
-
 const router = useRouter();
 
-const walletBalance = ref(3450);
+const walletBalance = ref(0);
+const isLoading = ref(true);
 const showInsufficientModal = ref(false);
 const selectedItem = ref<ShopItem | null>(null);
+
+const fetchBalance = async () => {
+  isLoading.value = true;
+  try {
+    const balance = await getBalance();
+    const normalizedBalance = balance as { coins?: number; balance?: number };
+    walletBalance.value =
+      (typeof normalizedBalance.coins === "number" ? normalizedBalance.coins : normalizedBalance.balance) || 0;
+  } catch (error) {
+    console.error("Failed to fetch balance:", error);
+    walletBalance.value = 0;
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+onMounted(async () => {
+  document.title = "Xi Rang Scholar Shop";
+  await fetchBalance();
+});
 
 const shopItems: ShopItem[] = [
   {
@@ -296,9 +314,8 @@ defineExpose({
 
 .shop-brand__icon {
   align-items: center;
-  background: linear-gradient(180deg, #25a5af, #177d8f);
+  background: transparent;
   border-radius: 14px;
-  box-shadow: 0 8px 14px rgba(18, 138, 150, 0.16);
   display: inline-flex;
   height: 36px;
   justify-content: center;

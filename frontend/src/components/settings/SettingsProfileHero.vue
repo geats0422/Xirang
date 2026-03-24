@@ -13,7 +13,7 @@ defineEmits<{
 
     <div class="profile-hero__body">
       <div class="profile-hero__name-row">
-        <h2>Scholar Li</h2>
+        <h2>Default User</h2>
         <span class="verified">✓</span>
       </div>
       <span class="tier-pill">Beta Tier</span>

@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { listDocuments } from "../api/documents";
+import { getShopBalance } from "../api/shop";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 
+type DailyQuest = {
+  id: string;
+  title: string;
+  type: "upload" | "streak" | "abyss";
+  completed: boolean;
+  locked?: boolean;
+};
+
 type MissionCard = {
+  id: string;
   title: string;
   icon: string;
   iconTone: "violet" | "green" | "blue";
@@ -14,49 +25,139 @@ type MissionCard = {
   rewardIcon: string;
   action: string;
   actionTone: "ghost" | "solid";
+  disabled: boolean;
 };
 
 onMounted(() => {
   document.title = "Xi Rang Quests";
 });
 
+const coinAmount = ref<string>("350");
+
+const hydrateCoinBalance = async () => {
+  try {
+    const balance = await getShopBalance();
+    coinAmount.value = Number(balance.balance).toLocaleString();
+  } catch {
+    coinAmount.value = "--";
+  }
+};
+
+const quests = ref<DailyQuest[]>([
+  {
+    id: "quest-upload",
+    title: "Upload and parse 1 new document in the Scroll Archive",
+    type: "upload",
+    completed: false,
+  },
+  {
+    id: "quest-streak",
+    title: "Maintain your learning streak",
+    type: "streak",
+    completed: false,
+  },
+  {
+    id: "quest-abyss",
+    title: "Complete 2 challenges in 'Endless Abyss' mode",
+    type: "abyss",
+    completed: false,
+    locked: true,
+  },
+]);
+
+const hydrateDailyQuests = async () => {
+  try {
+    const documents = await listDocuments();
+    const hasUploadedDocuments = Array.isArray(documents) && documents.length > 0;
+
+    quests.value = quests.value.map((quest) => {
+      if (quest.type === "upload") {
+        return {
+          ...quest,
+          completed: hasUploadedDocuments,
+        };
+      }
+
+      if (quest.type === "abyss") {
+        return {
+          ...quest,
+          locked: !hasUploadedDocuments,
+        };
+      }
+
+      return quest;
+    });
+  } catch {
+    quests.value = quests.value.map((quest) => {
+      if (quest.type === "abyss") {
+        return {
+          ...quest,
+          locked: true,
+        };
+      }
+      return quest;
+    });
+  }
+};
+
+onMounted(async () => {
+  await Promise.all([hydrateCoinBalance(), hydrateDailyQuests()]);
+});
+
+const coinLabel = computed(() => `${coinAmount.value} Coins`);
+
 const shopRoute = ROUTES.shop;
 
-const missionCards: MissionCard[] = [
-  {
-    title: "Complete 2 challenges in 'Endless Abyss' mode",
-    icon: "⚔",
-    iconTone: "violet",
-    progress: 50,
-    progressLabel: "1/2",
-    reward: "Experience Double Card",
-    rewardIcon: "🎁",
-    action: "Continue",
-    actionTone: "ghost",
-  },
-  {
-    title: "Accuracy over 90% in 'Speed Frenzy'",
-    icon: "✓",
-    iconTone: "green",
-    progress: 100,
-    progressLabel: "Completed",
-    reward: "+50",
-    rewardIcon: "🪙",
-    action: "Claim Reward",
-    actionTone: "solid",
-  },
-  {
-    title: "Upload and parse 1 new document in the Scroll Archive",
-    icon: "⤴",
-    iconTone: "blue",
-    progress: 0,
-    progressLabel: "0/1",
-    reward: "Gold Chest",
-    rewardIcon: "🧰",
-    action: "Upload",
-    actionTone: "solid",
-  },
-];
+const missionCards = computed<MissionCard[]>(() =>
+  quests.value.map((quest) => {
+    if (quest.type === "abyss") {
+      const isLocked = quest.locked === true;
+      return {
+        id: quest.id,
+        title: quest.title,
+        icon: "⚔",
+        iconTone: "violet",
+        progress: isLocked ? 0 : 50,
+        progressLabel: isLocked ? "Locked" : "1/2",
+        reward: "Experience Double Card",
+        rewardIcon: "🎁",
+        action: isLocked ? "Locked" : "Continue",
+        actionTone: "ghost",
+        disabled: isLocked,
+      };
+    }
+
+    if (quest.type === "streak") {
+      return {
+        id: quest.id,
+        title: quest.title,
+        icon: "✓",
+        iconTone: "green",
+        progress: quest.completed ? 100 : 0,
+        progressLabel: quest.completed ? "Completed" : "In progress",
+        reward: "+50",
+        rewardIcon: "🪙",
+        action: quest.completed ? "Claim Reward" : "Continue",
+        actionTone: quest.completed ? "solid" : "ghost",
+        disabled: false,
+      };
+    }
+
+    return {
+      id: quest.id,
+      title: quest.title,
+      icon: "⤴",
+      iconTone: "blue",
+      progress: quest.completed ? 100 : 0,
+      progressLabel: quest.completed ? "Completed" : "0/1",
+      reward: "Gold Chest",
+      rewardIcon: "🧰",
+      action: quest.completed ? "Claim Reward" : "Upload",
+      actionTone: "solid",
+      disabled: false,
+    };
+  }),
+);
 
 const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 </script>
@@ -69,7 +170,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
       <section class="quests-shell">
         <header class="quests-statusbar" aria-label="Quest status">
           <div class="status-pill status-pill--streak">🔥 12 Day Streak</div>
-          <button class="status-pill status-pill--coins" type="button" @click="navigateTo(shopRoute)">🪙 350 Coins</button>
+          <button class="status-pill status-pill--coins" type="button" @click="navigateTo(shopRoute)">🪙 {{ coinLabel }}</button>
           <button class="notify-btn" type="button" aria-label="Notifications">
             🔔
             <span class="notify-btn__dot" aria-hidden="true" />
@@ -101,7 +202,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
           </div>
 
           <div class="mission-list">
-            <article v-for="mission in missionCards" :key="mission.title" class="mission-card">
+            <article v-for="mission in missionCards" :key="mission.id" class="mission-card">
               <div class="mission-card__left">
                 <div class="mission-card__icon" :class="`mission-card__icon--${mission.iconTone}`">{{ mission.icon }}</div>
 
@@ -123,8 +224,12 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
                 <p class="mission-card__reward"><span>{{ mission.rewardIcon }}</span>{{ mission.reward }}</p>
                 <button
                   class="mission-card__action"
-                  :class="{ 'mission-card__action--solid': mission.actionTone === 'solid' }"
+                  :class="{
+                    'mission-card__action--solid': mission.actionTone === 'solid',
+                    'mission-card__action--disabled': mission.disabled,
+                  }"
                   type="button"
+                  :disabled="mission.disabled"
                 >
                   {{ mission.action }}
                 </button>
@@ -446,6 +551,11 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 .mission-card__action--solid {
   background: #0f8a95;
   color: #ffffff;
+}
+
+.mission-card__action--disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
 }
 
 @media (max-width: 1080px) {

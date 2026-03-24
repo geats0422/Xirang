@@ -1,13 +1,74 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { listDocuments as getDocuments } from "../api/documents";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 
 type UploadState = "idle" | "loading" | "success" | "failure";
 
-onMounted(() => {
+type HomeDocumentCard = {
+  id: string;
+  title: string;
+  lastVisited: string;
+  progress: number;
+  icon: string;
+};
+
+type ApiDocument = {
+  id: string;
+  title?: string;
+  filename?: string;
+  updated_at?: string;
+  progress?: number;
+  type?: string;
+};
+
+const formatLastVisited = (dateStr: string | undefined): string => {
+  if (!dateStr) return "Unknown";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  if (diffHours < 1) return "Just now";
+  if (diffHours < 24) return `${diffHours} hours ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  return date.toLocaleDateString();
+};
+
+const getDocIcon = (type: string | undefined): string => {
+  if (type?.includes("pdf")) return "📜";
+  if (type?.includes("markdown") || type?.includes("md")) return "📝";
+  if (type?.includes("text") || type?.includes("txt")) return "📘";
+  return "📄";
+};
+
+const fetchDocuments = async () => {
+  isLoading.value = true;
+  try {
+    const docs = (await getDocuments()) as ApiDocument[];
+    documents.value = docs.map((doc) => ({
+      id: doc.id,
+      title: doc.title || doc.filename || "Untitled",
+      lastVisited: formatLastVisited(doc.updated_at),
+      progress: doc.progress || 0,
+      icon: getDocIcon(doc.type),
+    }));
+  } catch (error) {
+    console.error("Failed to fetch documents:", error);
+    documents.value = [];
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+onMounted(async () => {
   document.title = "Xi Rang Home";
+  await fetchDocuments();
 });
 
 const shopRoute = ROUTES.shop;
@@ -15,27 +76,8 @@ const shopRoute = ROUTES.shop;
 const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 const uploadState = ref<UploadState>("idle");
-
-const dungeonCards = [
-  {
-    title: "Ancient History.pdf",
-    lastVisited: "2 hours ago",
-    progress: 75,
-    icon: "📜",
-  },
-  {
-    title: "Spell Casting Basics.md",
-    lastVisited: "1 day ago",
-    progress: 30,
-    icon: "✨",
-  },
-  {
-    title: "Alchemy 101.txt",
-    lastVisited: "3 days ago",
-    progress: 10,
-    icon: "📘",
-  },
-];
+const documents = ref<HomeDocumentCard[]>([]);
+const isLoading = ref(false);
 
 const handleUpload = () => {
   uploadState.value = "loading";
@@ -54,6 +96,8 @@ const setUploadFailure = () => {
 
 defineExpose({
   uploadState,
+  documents,
+  isLoading,
   setUploadFailure,
 });
 </script>
@@ -63,10 +107,12 @@ defineExpose({
     <AppSidebar :current-path="currentPath" :routing-target="routingTarget" @navigate="navigateTo" />
 
     <main class="main-content">
-      <header class="status-bar" aria-label="Status bar">
-        <div class="status-pill status-pill--streak">🔥 12 Day Streak</div>
-        <button class="status-pill status-pill--coin" type="button" @click="navigateTo(shopRoute)">🪙 350 Coins</button>
-        <button class="status-notify" type="button" aria-label="Notifications">🔔</button>
+      <header class="status-bar" :aria-label="$t('home.statusBarAria')">
+        <div class="status-pill status-pill--streak">🔥 {{ $t("home.streakLabel", { days: 12 }) }}</div>
+        <button class="status-pill status-pill--coin" type="button" @click="navigateTo(shopRoute)">
+          🪙 {{ $t("home.coinLabel", { amount: 350 }) }}
+        </button>
+        <button class="status-notify" type="button" :aria-label="$t('home.notifications')">🔔</button>
       </header>
 
       <section
@@ -77,7 +123,7 @@ defineExpose({
           'hero-upload--success': uploadState === 'success',
           'hero-upload--failure': uploadState === 'failure',
         }"
-        aria-label="Upload files"
+        :aria-label="$t('home.uploadAria')"
       >
         <div class="hero-upload__mascot" aria-hidden="true">
           <img src="/taotie-main.svg" alt="" />
@@ -85,55 +131,53 @@ defineExpose({
 
         <p class="hero-upload__disclaimer">
           <span class="hero-upload__beta-tag">BETA</span>
-          Free tier: Upload up to 10 scrolls during the beta period.
+          {{ $t("home.uploadDisclaimer") }}
         </p>
 
         <template v-if="uploadState === 'idle'">
-          <h1>Feed the Taotie</h1>
-          <p>
-            Drop your PDF, TXT, or Markdown files here to feed me knowledge and start your quest.
-          </p>
-          <button class="browse-btn" type="button" @click="handleUpload">☁ Browse Scrolls</button>
-          <span class="support-text">Supports PDF, MD, TXT up to 50MB</span>
+          <h1>{{ $t("home.idleTitle") }}</h1>
+          <p>{{ $t("home.idleDesc") }}</p>
+          <button class="browse-btn" type="button" @click="handleUpload">☁ {{ $t("home.browseScrolls") }}</button>
+          <span class="support-text">{{ $t("home.supportText") }}</span>
         </template>
 
         <template v-else-if="uploadState === 'loading'">
-          <h1>Digesting...</h1>
-          <p>Your scroll is being processed. This may take a moment.</p>
-          <div class="hero-upload__spinner" aria-label="Loading" />
+          <h1>{{ $t("home.loadingTitle") }}</h1>
+          <p>{{ $t("home.loadingDesc") }}</p>
+          <div class="hero-upload__spinner" :aria-label="$t('home.loadingAria')" />
         </template>
 
         <template v-else-if="uploadState === 'success'">
-          <h1>Scroll Ingested!</h1>
-          <p>Your knowledge has been absorbed. Ready to begin your quest.</p>
+          <h1>{{ $t("home.successTitle") }}</h1>
+          <p>{{ $t("home.successDesc") }}</p>
           <button class="browse-btn browse-btn--success" type="button" @click="uploadState = 'idle'">
-            ✓ Start Learning
+            ✓ {{ $t("home.successAction") }}
           </button>
         </template>
 
         <template v-else-if="uploadState === 'failure'">
-          <h1>Digestion Failed</h1>
-          <p>Something went wrong. Please try again or use a different file.</p>
+          <h1>{{ $t("home.failureTitle") }}</h1>
+          <p>{{ $t("home.failureDesc") }}</p>
           <button class="browse-btn hero-upload__retry" type="button" @click="handleRetry">
-            ↻ Retry Upload
+            ↻ {{ $t("home.retryUpload") }}
           </button>
         </template>
       </section>
 
-      <section class="recent-section" aria-label="Recent dungeons">
+      <section class="recent-section" :aria-label="$t('home.recentAria')">
         <div class="recent-section__head">
-          <h2>Recent Dungeons</h2>
-          <a href="#">View All</a>
+          <h2>{{ $t("home.recentTitle") }}</h2>
+          <a href="#">{{ $t("home.viewAll") }}</a>
         </div>
 
         <div class="dungeon-grid">
-          <article v-for="card in dungeonCards" :key="card.title" class="dungeon-card">
+          <article v-for="card in documents" :key="card.id" class="dungeon-card">
             <div class="dungeon-card__head">
               <span class="dungeon-card__icon">{{ card.icon }}</span>
-              <button class="dungeon-card__menu" type="button" aria-label="More options">⋯</button>
+              <button class="dungeon-card__menu" type="button" :aria-label="$t('home.moreOptions')">⋯</button>
             </div>
             <h3>{{ card.title }}</h3>
-            <p>Last visited {{ card.lastVisited }}</p>
+            <p>{{ $t("home.lastVisitedPrefix") }} {{ card.lastVisited }}</p>
             <div class="dungeon-card__progress">
               <div class="progress-track" role="presentation">
                 <span class="progress-fill" :style="{ width: `${card.progress}%` }" />

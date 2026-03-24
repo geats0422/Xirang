@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import BaseButton from "../components/ui/BaseButton.vue";
 import FeatureCard from "../components/ui/FeatureCard.vue";
+import { ROUTES } from "../constants/routes";
 
 onMounted(() => {
   document.title = "Xi Rang Landing";
@@ -10,8 +12,9 @@ onMounted(() => {
 
 const isMenuOpen = ref(false);
 const router = useRouter();
+const { t } = useI18n();
 const isRouting = ref(false);
-const activeAction = ref<"login" | "get-started" | null>(null);
+const activeAction = ref<"login" | "sign-up" | "get-started" | null>(null);
 
 const navItems = ["Features", "Pricing", "Community"];
 
@@ -41,7 +44,7 @@ const featureCards = [
 
 const footerLinks = ["Privacy Policy", "Terms of Service", "Contact Us", "Twitter", "Discord"];
 
-const routeByAuthState = async (action: "login" | "get-started") => {
+const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => {
   if (isRouting.value) {
     return;
   }
@@ -53,7 +56,8 @@ const routeByAuthState = async (action: "login" | "get-started") => {
     window.setTimeout(() => resolve(), 220);
   });
 
-  const targetPath = action === "get-started" ? "/home" : "/login";
+  const targetPath =
+    action === "get-started" ? ROUTES.home : action === "sign-up" ? ROUTES.signUp : ROUTES.login;
   await router.push(targetPath);
 
   isRouting.value = false;
@@ -94,7 +98,17 @@ const routeByAuthState = async (action: "login" | "get-started") => {
           :disabled="isRouting"
           @click="routeByAuthState('login')"
         >
-          Login
+          {{ t("landing.login") }}
+        </BaseButton>
+        <BaseButton
+          variant="ghost"
+          size="sm"
+          class="cta-route-btn"
+          :class="{ 'cta-route-btn--active': activeAction === 'sign-up' }"
+          :disabled="isRouting"
+          @click="routeByAuthState('sign-up')"
+        >
+          {{ t("landing.signUp") }}
         </BaseButton>
       </div>
 

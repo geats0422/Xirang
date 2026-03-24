@@ -13,6 +13,7 @@ const DungeonScholarQuestsPage = () => import("../pages/DungeonScholarQuestsPage
 const DungeonScholarShopPage = () => import("../pages/DungeonScholarShopPage.vue");
 const DungeonScholarLeaderboardPage = () => import("../pages/DungeonScholarLeaderboardPage.vue");
 const DungeonScholarSettingsPage = () => import("../pages/DungeonScholarSettingsPage.vue");
+const DungeonScholarSettingsDocPage = () => import("../pages/DungeonScholarSettingsDocPage.vue");
 const DungeonScholarProfilePage = () => import("../pages/DungeonScholarProfilePage.vue");
 
 const router = createRouter({
@@ -26,6 +27,11 @@ const router = createRouter({
     {
       path: ROUTES.login,
       name: "login",
+      component: DungeonScholarLoginPage,
+    },
+    {
+      path: ROUTES.signUp,
+      name: "sign-up",
       component: DungeonScholarLoginPage,
     },
     {
@@ -77,6 +83,21 @@ const router = createRouter({
       path: ROUTES.settings,
       name: "settings",
       component: DungeonScholarSettingsPage,
+    },
+    {
+      path: "/settings/privacy-policy",
+      name: "settings-privacy-policy",
+      component: DungeonScholarSettingsDocPage,
+    },
+    {
+      path: "/settings/user-agreement",
+      name: "settings-user-agreement",
+      component: DungeonScholarSettingsDocPage,
+    },
+    {
+      path: "/settings/help-center",
+      name: "settings-help-center",
+      component: DungeonScholarSettingsDocPage,
     },
     {
       path: ROUTES.profile,

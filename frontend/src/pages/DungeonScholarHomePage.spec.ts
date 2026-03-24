@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { describe, expect, it } from "vitest";
 import { ROUTES } from "../constants/routes";
+import { i18n } from "../i18n";
 import DungeonScholarHomePage from "./DungeonScholarHomePage.vue";
 
 function createTestRouter() {
@@ -23,7 +24,7 @@ describe("DungeonScholarHomePage", () => {
 
     const wrapper = mount(DungeonScholarHomePage, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
       },
     });
 
@@ -39,7 +40,7 @@ describe("DungeonScholarHomePage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarHomePage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     expect(wrapper.find(".hero-upload__disclaimer").exists()).toBe(true);
@@ -52,7 +53,7 @@ describe("DungeonScholarHomePage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarHomePage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     expect(wrapper.find(".hero-upload--idle").exists()).toBe(true);
@@ -65,7 +66,7 @@ describe("DungeonScholarHomePage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarHomePage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     await wrapper.find(".browse-btn").trigger("click");
@@ -81,7 +82,7 @@ describe("DungeonScholarHomePage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarHomePage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     await wrapper.find(".browse-btn").trigger("click");
@@ -99,7 +100,7 @@ describe("DungeonScholarHomePage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarHomePage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     const vm = wrapper.vm as unknown as { setUploadFailure: () => void };

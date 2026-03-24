@@ -1,258 +1,396 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { computed, ref, watchEffect } from "vue";
+import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
 import BaseButton from "../components/ui/BaseButton.vue";
+import { useScholarData } from "../composables/useScholarData";
+import { ROUTES } from "../constants/routes";
+import { SUPPORTED_LOCALES, type SupportedLocale } from "../i18n";
 
-onMounted(() => {
-  document.title = "Xi Rang Login";
-});
+const route = useRoute();
+const router = useRouter();
+const { t, locale } = useI18n();
+const { applyLanguage } = useScholarData();
 
-const socialProviders = [
+const isSignUpRoute = computed(() => route.path === ROUTES.signUp);
+const isLanguageMenuOpen = ref(false);
+
+const socialProviders = computed(() => [
   {
     key: "google",
-    label: "Continue with Google",
+    label: t("login.social.google"),
     icon: "/login-assets/icon-google.svg",
-    isSvg: false,
   },
   {
     key: "microsoft",
-    label: "Continue with Microsoft",
+    label: t("login.social.microsoft"),
     icon: "/login-assets/icon-microsoft.svg",
-    isSvg: false,
   },
   {
     key: "github",
-    label: "Continue with GitHub",
+    label: t("login.social.github"),
     icon: "/login-assets/icon-github.svg",
-    isSvg: true,
   },
-] as const;
+]);
+
+const languageOptions = SUPPORTED_LOCALES.filter((item) => item === "en" || item === "zh-CN" || item === "zh-TW");
 
 const bgImage = "/login-assets/bg-pattern.svg";
-const mascotImage = "/taotie-main.svg";
+const heroImage = "/taotie-hero.svg";
 const mailIcon = "/login-assets/icon-mail.svg";
 const eyeIcon = "/login-assets/icon-eye.svg";
+
+const formTitle = computed(() => (isSignUpRoute.value ? t("login.signUpTitle") : t("login.title")));
+const formSubtitle = computed(() =>
+  isSignUpRoute.value ? t("login.signUpSubtitle") : t("login.subtitle"),
+);
+const primaryActionLabel = computed(() =>
+  isSignUpRoute.value ? t("login.signUpAction") : t("login.enterDungeon"),
+);
+const panelEyebrow = computed(() =>
+  isSignUpRoute.value ? t("login.panelSignUpEyebrow") : t("login.panelLoginEyebrow"),
+);
+const panelTitle = computed(() => (isSignUpRoute.value ? t("login.panelSignUpTitle") : t("login.panelLoginTitle")));
+const panelBody = computed(() => (isSignUpRoute.value ? t("login.panelSignUpBody") : t("login.panelLoginBody")));
+
+const localeName = (value: SupportedLocale) => t(`settings.localeNames.${value}`);
+
+const switchLanguage = (value: SupportedLocale) => {
+  applyLanguage(value);
+  isLanguageMenuOpen.value = false;
+};
+
+const toggleLanguageMenu = () => {
+  isLanguageMenuOpen.value = !isLanguageMenuOpen.value;
+};
+
+const goToLogin = async () => {
+  if (!isSignUpRoute.value) {
+    return;
+  }
+  await router.push(ROUTES.login);
+};
+
+const goToSignUp = async () => {
+  if (isSignUpRoute.value) {
+    return;
+  }
+  await router.push(ROUTES.signUp);
+};
+
+watchEffect(() => {
+  document.title = isSignUpRoute.value ? t("login.signUpMetaTitle") : t("login.metaTitle");
+});
 </script>
 
 <template>
-  <div class="login-page" data-node-id="4:714">
-    <div class="login-page__bg" aria-hidden="true" data-node-id="4:716">
+  <div class="auth-page" data-node-id="4:714">
+    <div class="auth-page__bg" aria-hidden="true">
       <img :src="bgImage" alt="" />
     </div>
 
-    <div class="login-page__stripe login-page__stripe--left" aria-hidden="true" />
-    <div class="login-page__stripe login-page__stripe--center" aria-hidden="true" />
-    <div class="login-page__stripe login-page__stripe--right" aria-hidden="true" />
-    <div class="login-page__blob login-page__blob--left" aria-hidden="true" data-node-id="4:777" />
-    <div class="login-page__blob login-page__blob--right" aria-hidden="true" data-node-id="4:778" />
+    <div class="language-dock">
+      <button
+        class="language-dock__trigger"
+        type="button"
+        :aria-expanded="isLanguageMenuOpen"
+        :aria-label="$t('landing.languageLabel')"
+        @click="toggleLanguageMenu"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3ZM5.7 10.5H9.2C9.3 8.6 9.8 6.8 10.5 5.6C8.2 6.2 6.4 8.1 5.7 10.5ZM5.7 13.5C6.4 15.9 8.2 17.8 10.5 18.4C9.8 17.2 9.3 15.4 9.2 13.5H5.7ZM12 5.1C11.3 6.1 10.8 8.1 10.7 10.5H13.3C13.2 8.1 12.7 6.1 12 5.1ZM12 18.9C12.7 17.9 13.2 15.9 13.3 13.5H10.7C10.8 15.9 11.3 17.9 12 18.9ZM13.5 18.4C15.8 17.8 17.6 15.9 18.3 13.5H14.8C14.7 15.4 14.2 17.2 13.5 18.4ZM14.8 10.5H18.3C17.6 8.1 15.8 6.2 13.5 5.6C14.2 6.8 14.7 8.6 14.8 10.5Z"
+          />
+        </svg>
+      </button>
 
-    <main class="login-main" data-node-id="4:717">
-      <section class="login-card" data-node-id="4:718" aria-label="Dungeon Scholar login">
-        <div class="login-card__halo" aria-hidden="true" data-node-id="4:719" />
+      <div v-if="isLanguageMenuOpen" class="language-dock__menu" role="menu">
+        <button
+          v-for="value in languageOptions"
+          :key="value"
+          type="button"
+          class="language-dock__option"
+          :class="{ 'language-dock__option--active': locale === value }"
+          role="menuitemradio"
+          :aria-checked="locale === value"
+          @click="switchLanguage(value)"
+        >
+          {{ localeName(value) }}
+        </button>
+      </div>
+    </div>
 
-        <div class="login-card__mascot" aria-hidden="true" data-node-id="4:775">
-          <img :src="mascotImage" alt="" data-node-id="7:29961" />
+    <main class="auth-main">
+      <section class="auth-panel" aria-hidden="true">
+        <div class="auth-panel__badge">
+          <img src="/taotie-logo.svg" :alt="$t('landing.logoAlt')" />
+          <span>{{ $t("landing.brand") }}</span>
         </div>
+        <p class="auth-panel__eyebrow">{{ panelEyebrow }}</p>
+        <h1>{{ panelTitle }}</h1>
+        <p>{{ panelBody }}</p>
+        <img class="auth-panel__hero" :src="heroImage" :alt="$t('landing.heroMascotAlt')" />
+      </section>
 
-        <header class="login-card__header" data-node-id="4:722">
-          <h1 data-node-id="4:724">Xi Rang Scholar</h1>
-          <p data-node-id="4:726">Log in to continue your magical journey</p>
+      <section class="auth-card" :aria-label="$t('login.cardAria')">
+        <header class="auth-card__header">
+          <h2>{{ formTitle }}</h2>
+          <p>{{ formSubtitle }}</p>
         </header>
 
-        <div class="social-buttons" data-node-id="4:727">
+        <div class="social-buttons">
           <button v-for="provider in socialProviders" :key="provider.key" type="button" class="social-buttons__item">
-            <span class="social-buttons__icon" :class="{ 'social-buttons__icon--svg': provider.isSvg }" aria-hidden="true">
+            <span class="social-buttons__icon" aria-hidden="true">
               <img :src="provider.icon" alt="" />
             </span>
             <span>{{ provider.label }}</span>
           </button>
         </div>
 
-        <div class="divider" data-node-id="4:738">
-          <span data-node-id="4:743">Or continue with email</span>
+        <div class="divider">
+          <span>{{ $t("login.emailDivider") }}</span>
         </div>
 
-        <form class="email-form" data-node-id="4:745" @submit.prevent>
-          <label class="email-form__field">
-            <span>Email Address</span>
+        <form class="email-form" @submit.prevent>
+          <label v-if="isSignUpRoute" class="email-form__field">
+            <span>{{ $t("login.nameLabel") }}</span>
             <span class="email-form__input-wrap">
-              <input type="email" placeholder="scholar@dungeon.com" />
+              <input type="text" :placeholder="$t('login.namePlaceholder')" />
+            </span>
+          </label>
+
+          <label class="email-form__field">
+            <span>{{ $t("login.emailLabel") }}</span>
+            <span class="email-form__input-wrap">
+              <input type="email" :placeholder="$t('login.emailPlaceholder')" />
               <img class="email-form__field-icon email-form__field-icon--mail" :src="mailIcon" alt="" aria-hidden="true" />
             </span>
           </label>
 
           <label class="email-form__field">
-            <span>Password</span>
+            <span>{{ $t("login.passwordLabel") }}</span>
             <span class="email-form__input-wrap">
-              <input type="password" placeholder="••••••••" />
+              <input type="password" :placeholder="$t('login.passwordPlaceholder')" />
               <img class="email-form__field-icon email-form__field-icon--eye" :src="eyeIcon" alt="" aria-hidden="true" />
             </span>
           </label>
 
-          <BaseButton class="email-form__submit" full-width>Enter the Dungeon</BaseButton>
+          <label v-if="isSignUpRoute" class="email-form__field">
+            <span>{{ $t("login.confirmPasswordLabel") }}</span>
+            <span class="email-form__input-wrap">
+              <input type="password" :placeholder="$t('login.confirmPasswordPlaceholder')" />
+              <img class="email-form__field-icon email-form__field-icon--eye" :src="eyeIcon" alt="" aria-hidden="true" />
+            </span>
+          </label>
+
+          <BaseButton class="email-form__submit" full-width>{{ primaryActionLabel }}</BaseButton>
         </form>
 
-        <footer class="card-footer" data-node-id="4:770">
-          <a href="#" data-node-id="4:772">Forgot Password?</a>
-          <p data-node-id="4:774">New here? <a href="#">Forge your account</a></p>
+        <footer class="card-footer">
+          <a href="#">{{ $t("login.forgotPassword") }}</a>
+          <p v-if="isSignUpRoute">
+            {{ $t("login.haveAccount") }}
+            <button type="button" class="card-footer__switch" @click="goToLogin">{{ $t("login.backToLogin") }}</button>
+          </p>
+          <p v-else>
+            {{ $t("login.newHere") }}
+            <button type="button" class="card-footer__switch" @click="goToSignUp">{{ $t("login.forgeAccount") }}</button>
+          </p>
         </footer>
       </section>
     </main>
 
-    <footer class="page-footer" data-node-id="4:779">
-      <p data-node-id="4:781">© 2023 Dungeon Scholar. All rights reserved.</p>
+    <footer class="page-footer">
+      <p>{{ $t("login.copyright") }}</p>
     </footer>
   </div>
 </template>
 
 <style scoped>
-.login-page {
-  --color-primary-500: #108b96;
-  --color-primary-600: #0f7e87;
-  --color-primary-700: #0d6e76;
-  background: #f8fafc;
+.auth-page {
+  align-items: stretch;
+  background: linear-gradient(120deg, rgba(15, 102, 102, 0.08), rgba(255, 255, 255, 0.96));
+  display: flex;
+  flex-direction: column;
   isolation: isolate;
   min-height: 100vh;
   overflow: hidden;
   position: relative;
 }
 
-.login-page__bg {
+.auth-page__bg {
   inset: 0;
-  opacity: 0.1;
-  overflow: hidden;
+  opacity: 0.08;
+  pointer-events: none;
   position: absolute;
 }
 
-.login-page__bg img {
-  height: 125%;
-  left: 0;
+.auth-page__bg img {
+  height: 100%;
   object-fit: cover;
-  position: absolute;
-  top: -12.5%;
   width: 100%;
 }
 
-.login-page__stripe {
-  background: rgba(255, 255, 255, 0.44);
-  bottom: 0;
-  pointer-events: none;
-  position: absolute;
-  top: 0;
-  width: clamp(160px, 18vw, 230px);
-  z-index: 0;
+.language-dock {
+  left: 20px;
+  position: fixed;
+  top: 20px;
+  z-index: 5;
 }
 
-.login-page__stripe--left {
-  left: 0;
-}
-
-.login-page__stripe--center {
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.login-page__stripe--right {
-  right: 0;
-}
-
-.login-page__blob {
-  backdrop-filter: blur(42px);
+.language-dock__trigger {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-white) 90%, transparent);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
-  pointer-events: none;
-  position: absolute;
-  z-index: 0;
-}
-
-.login-page__blob--left {
-  background: rgba(113, 202, 211, 0.22);
-  height: 95px;
-  left: 40px;
-  top: 238px;
-  width: 96px;
-}
-
-.login-page__blob--right {
-  background: rgba(126, 152, 255, 0.2);
-  height: 127px;
-  right: 40px;
-  top: 588px;
-  width: 128px;
-}
-
-.login-main {
-  display: flex;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  height: 40px;
   justify-content: center;
-  min-height: calc(100vh - 64px);
-  padding: 144px var(--space-4) 72px;
+  width: 40px;
+}
+
+.language-dock__trigger svg {
+  display: block;
+  fill: currentcolor;
+  height: 20px;
+  width: 20px;
+}
+
+.language-dock__menu {
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--color-white) 94%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  min-width: 140px;
+  padding: 8px;
+}
+
+.language-dock__option {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.language-dock__option--active {
+  background: rgba(16, 139, 150, 0.12);
+  color: var(--color-primary-700);
+  font-weight: 600;
+}
+
+.auth-main {
+  align-items: center;
+  display: grid;
+  flex: 1;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 72px 24px 32px;
   position: relative;
+  width: 100%;
   z-index: 1;
 }
 
-.login-card {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: 14px;
-  box-shadow: 0 22px 32px rgba(15, 23, 42, 0.13);
+.auth-panel {
+  align-self: stretch;
+  background: linear-gradient(160deg, rgba(16, 139, 150, 0.12), rgba(8, 145, 178, 0.06));
+  border: 1px solid color-mix(in srgb, var(--color-primary-200) 60%, transparent);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
-  max-width: 448px;
-  padding: 80px 32px 40px;
-  position: relative;
+  justify-content: center;
+  min-height: 560px;
+  padding: 34px 36px;
+}
+
+.auth-panel__badge {
+  align-items: center;
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.auth-panel__badge img {
+  height: 28px;
+  width: 28px;
+}
+
+.auth-panel__eyebrow {
+  color: var(--color-primary-700);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 18px 0 0;
+  text-transform: uppercase;
+}
+
+.auth-panel h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(34px, 4.8vw, 52px);
+  line-height: 1.1;
+  margin: 10px 0 0;
+}
+
+.auth-panel p {
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  line-height: 1.8;
+  margin: 14px 0 0;
+  max-width: 440px;
+}
+
+.auth-panel__hero {
+  align-self: center;
+  display: block;
+  margin-top: 16px;
+  max-width: min(90%, 440px);
   width: 100%;
 }
 
-.login-card__halo {
-  border-radius: 14px;
-  box-shadow: 0 30px 40px rgba(15, 23, 42, 0.1);
-  inset: 0;
-  pointer-events: none;
-  position: absolute;
-}
-
-.login-card__mascot {
-  align-items: center;
+.auth-card {
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 18px;
+  box-shadow: 0 20px 34px rgba(15, 23, 42, 0.12);
   display: flex;
-  height: 160px;
-  justify-content: center;
-  left: 50%;
-  position: absolute;
-  top: -95px;
-  transform: translateX(-50%);
-  width: 160px;
+  flex-direction: column;
+  min-height: 560px;
+  padding: 28px;
 }
 
-.login-card__mascot img {
-  display: block;
-  height: 160px;
-  width: 160px;
-}
-
-.login-card__header {
-  text-align: center;
-}
-
-.login-card__header h1 {
-  color: #1e293b;
+.auth-card__header h2 {
   font-family: var(--font-serif);
-  font-size: 48px;
-  font-weight: 700;
-  letter-spacing: -0.75px;
+  font-size: clamp(34px, 4.5vw, 44px);
   line-height: 1.1;
   margin: 0;
 }
 
-.login-card__header p {
-  color: #64748b;
+.auth-card__header p {
+  color: var(--color-text-muted);
   font-size: 14px;
-  line-height: 20px;
-  margin: var(--space-2) 0 0;
+  line-height: 1.6;
+  margin: 10px 0 0;
 }
 
 .social-buttons {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin-top: 32px;
+  margin-top: 22px;
 }
 
 .social-buttons__item {
@@ -283,20 +421,16 @@ const eyeIcon = "/login-assets/icon-eye.svg";
 .social-buttons__icon {
   align-items: center;
   display: inline-flex;
-  height: 20px;
+  height: 18px;
   justify-content: center;
-  width: 20px;
+  width: 18px;
 }
 
 .social-buttons__icon img {
   display: block;
-  height: 20px;
-  width: 20px;
-}
-
-.social-buttons__icon--svg img {
-  height: 10px;
-  width: 16.67px;
+  height: 18px;
+  object-fit: contain;
+  width: 18px;
 }
 
 .divider {
@@ -307,7 +441,7 @@ const eyeIcon = "/login-assets/icon-eye.svg";
   font-weight: 500;
   justify-content: center;
   letter-spacing: 0.02em;
-  margin-top: var(--space-6);
+  margin-top: 20px;
   position: relative;
   text-transform: uppercase;
 }
@@ -328,8 +462,8 @@ const eyeIcon = "/login-assets/icon-eye.svg";
 .email-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  margin-top: var(--space-6);
+  gap: var(--space-3);
+  margin-top: 16px;
 }
 
 .email-form__field {
@@ -391,7 +525,7 @@ const eyeIcon = "/login-assets/icon-eye.svg";
 }
 
 .email-form__submit {
-  margin-top: 2px;
+  margin-top: 8px;
 }
 
 .card-footer {
@@ -401,7 +535,8 @@ const eyeIcon = "/login-assets/icon-eye.svg";
   flex-direction: column;
   font-size: var(--text-sm);
   gap: var(--space-3);
-  margin-top: var(--space-8);
+  margin-top: auto;
+  padding-top: 20px;
   text-align: center;
 }
 
@@ -414,18 +549,23 @@ const eyeIcon = "/login-assets/icon-eye.svg";
   margin: 0;
 }
 
-.card-footer p a {
-  color: var(--color-primary-500);
+.card-footer__switch {
+  background: transparent;
+  border: 0;
+  color: var(--color-primary-600);
+  cursor: pointer;
+  font-size: inherit;
   font-weight: 600;
+  padding: 0;
 }
 
 .card-footer a:hover,
-.card-footer p a:hover {
+.card-footer__switch:hover {
   text-decoration: underline;
 }
 
 .page-footer {
-  padding: 0 0 24px;
+  padding: 0 24px 18px;
   position: relative;
   text-align: center;
   z-index: 1;
@@ -438,33 +578,38 @@ const eyeIcon = "/login-assets/icon-eye.svg";
   margin: 0;
 }
 
+@media (max-width: 1024px) {
+  .auth-main {
+    grid-template-columns: 1fr;
+    max-width: 720px;
+    padding-top: 84px;
+  }
+
+  .auth-panel {
+    min-height: 400px;
+  }
+}
+
 @media (max-width: 768px) {
-  .login-main {
-    padding-top: 108px;
+  .auth-main {
+    gap: 18px;
+    padding: 76px 14px 24px;
   }
 
-  .login-card {
+  .language-dock {
+    left: 14px;
+    top: 14px;
+  }
+
+  .auth-panel,
+  .auth-card {
     border-radius: var(--radius-lg);
-    padding: 76px 20px 28px;
+    min-height: auto;
+    padding: 20px;
   }
 
-  .login-card__header h1 {
-    font-size: clamp(36px, 12vw, 44px);
-  }
-
-  .login-card__mascot {
-    height: 132px;
-    top: -78px;
-    width: 132px;
-  }
-
-  .login-card__mascot img {
-    height: 132px;
-    width: 132px;
-  }
-
-  .login-page__blob {
-    display: none;
+  .auth-panel__hero {
+    max-width: min(86%, 300px);
   }
 }
 </style>

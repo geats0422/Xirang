@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { listDocuments as getDocuments } from "../api/documents";
 import AppSidebar from "../components/layout/AppSidebar.vue";
+import NotificationPopover from "../components/NotificationPopover.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+import { useScholarData } from "../composables/useScholarData";
 
 type UploadState = "idle" | "loading" | "success" | "failure";
 
@@ -15,48 +16,28 @@ type HomeDocumentCard = {
   icon: string;
 };
 
-type ApiDocument = {
+type NotificationItem = {
   id: string;
-  title?: string;
-  filename?: string;
-  updated_at?: string;
-  progress?: number;
-  type?: string;
+  title: string;
+  time: string;
 };
 
-const formatLastVisited = (dateStr: string | undefined): string => {
-  if (!dateStr) return "Unknown";
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+const getDocIcon = (): string => "📖";
 
-  if (diffHours < 1) return "Just now";
-  if (diffHours < 24) return `${diffHours} hours ago`;
+const { streak, coins, documents: scholarDocs, uploadAndRefresh, hydrate } = useScholarData();
 
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays} days ago`;
-
-  return date.toLocaleDateString();
-};
-
-const getDocIcon = (type: string | undefined): string => {
-  if (type?.includes("pdf")) return "📜";
-  if (type?.includes("markdown") || type?.includes("md")) return "📝";
-  if (type?.includes("text") || type?.includes("txt")) return "📘";
-  return "📄";
-};
+const documents = ref<HomeDocumentCard[]>([]);
+const isLoading = ref(false);
 
 const fetchDocuments = async () => {
   isLoading.value = true;
   try {
-    const docs = (await getDocuments()) as ApiDocument[];
-    documents.value = docs.map((doc) => ({
+    documents.value = scholarDocs.value.map((doc) => ({
       id: doc.id,
-      title: doc.title || doc.filename || "Untitled",
-      lastVisited: formatLastVisited(doc.updated_at),
-      progress: doc.progress || 0,
-      icon: getDocIcon(doc.type),
+      title: doc.title,
+      lastVisited: "Just now",
+      progress: 0,
+      icon: getDocIcon(),
     }));
   } catch (error) {
     console.error("Failed to fetch documents:", error);
@@ -68,6 +49,7 @@ const fetchDocuments = async () => {
 
 onMounted(async () => {
   document.title = "Xi Rang Home";
+  await hydrate();
   await fetchDocuments();
 });
 
@@ -76,14 +58,54 @@ const shopRoute = ROUTES.shop;
 const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 const uploadState = ref<UploadState>("idle");
-const documents = ref<HomeDocumentCard[]>([]);
-const isLoading = ref(false);
+const isDragging = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
+const notificationVisible = ref(false);
+const notifications = ref<NotificationItem[]>([]);
 
-const handleUpload = () => {
+const handleBrowseClick = () => {
+  fileInput.value?.click();
+};
+
+const handleFileSelect = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const files = target.files;
+  if (!files || files.length === 0) return;
+
   uploadState.value = "loading";
-  window.setTimeout(() => {
+  try {
+    await uploadAndRefresh(files);
     uploadState.value = "success";
-  }, 1500);
+    await fetchDocuments();
+  } catch {
+    uploadState.value = "failure";
+  }
+  target.value = "";
+};
+
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault();
+  isDragging.value = true;
+};
+
+const handleDragLeave = () => {
+  isDragging.value = false;
+};
+
+const handleDrop = async (event: DragEvent) => {
+  event.preventDefault();
+  isDragging.value = false;
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+
+  uploadState.value = "loading";
+  try {
+    await uploadAndRefresh(files);
+    uploadState.value = "success";
+    await fetchDocuments();
+  } catch {
+    uploadState.value = "failure";
+  }
 };
 
 const handleRetry = () => {
@@ -92,6 +114,14 @@ const handleRetry = () => {
 
 const setUploadFailure = () => {
   uploadState.value = "failure";
+};
+
+const toggleNotifications = () => {
+  notificationVisible.value = !notificationVisible.value;
+};
+
+const closeNotifications = () => {
+  notificationVisible.value = false;
 };
 
 defineExpose({
@@ -108,12 +138,14 @@ defineExpose({
 
     <main class="main-content">
       <header class="status-bar" :aria-label="$t('home.statusBarAria')">
-        <div class="status-pill status-pill--streak">🔥 {{ $t("home.streakLabel", { days: 12 }) }}</div>
+        <div class="status-pill status-pill--streak">🔥 {{ $t("home.streakLabel", { days: streak }) }}</div>
         <button class="status-pill status-pill--coin" type="button" @click="navigateTo(shopRoute)">
-          🪙 {{ $t("home.coinLabel", { amount: 350 }) }}
+          🪙 {{ $t("home.coinLabel", { amount: coins }) }}
         </button>
-        <button class="status-notify" type="button" :aria-label="$t('home.notifications')">🔔</button>
+        <button class="status-notify" type="button" :aria-label="$t('home.notifications')" @click="toggleNotifications">🔔</button>
       </header>
+
+      <NotificationPopover :items="notifications" :visible="notificationVisible" @close="closeNotifications" />
 
       <section
         class="hero-upload"
@@ -122,8 +154,13 @@ defineExpose({
           'hero-upload--loading': uploadState === 'loading',
           'hero-upload--success': uploadState === 'success',
           'hero-upload--failure': uploadState === 'failure',
+          'hero-upload--dragging': isDragging,
         }"
         :aria-label="$t('home.uploadAria')"
+        @dragover="handleDragOver"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop"
+        @click="uploadState === 'idle' && handleBrowseClick()"
       >
         <div class="hero-upload__mascot" aria-hidden="true">
           <img src="/taotie-main.svg" alt="" />
@@ -137,7 +174,17 @@ defineExpose({
         <template v-if="uploadState === 'idle'">
           <h1>{{ $t("home.idleTitle") }}</h1>
           <p>{{ $t("home.idleDesc") }}</p>
-          <button class="browse-btn" type="button" @click="handleUpload">☁ {{ $t("home.browseScrolls") }}</button>
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".pdf,.txt,.md,.markdown"
+            multiple
+            class="hero-upload__file-input"
+            @change="handleFileSelect"
+          />
+          <button class="browse-btn" type="button" @click.stop="handleBrowseClick">
+            ☁ {{ $t("home.browseScrolls") }}
+          </button>
           <span class="support-text">{{ $t("home.supportText") }}</span>
         </template>
 
@@ -150,7 +197,7 @@ defineExpose({
         <template v-else-if="uploadState === 'success'">
           <h1>{{ $t("home.successTitle") }}</h1>
           <p>{{ $t("home.successDesc") }}</p>
-          <button class="browse-btn browse-btn--success" type="button" @click="uploadState = 'idle'">
+          <button class="browse-btn browse-btn--success" type="button" @click.stop="uploadState = 'idle'">
             ✓ {{ $t("home.successAction") }}
           </button>
         </template>
@@ -158,7 +205,7 @@ defineExpose({
         <template v-else-if="uploadState === 'failure'">
           <h1>{{ $t("home.failureTitle") }}</h1>
           <p>{{ $t("home.failureDesc") }}</p>
-          <button class="browse-btn hero-upload__retry" type="button" @click="handleRetry">
+          <button class="browse-btn hero-upload__retry" type="button" @click.stop="handleRetry">
             ↻ {{ $t("home.retryUpload") }}
           </button>
         </template>
@@ -339,6 +386,16 @@ defineExpose({
 .hero-upload--failure {
   border-color: #e8a0a0;
   border-style: solid;
+}
+
+.hero-upload--dragging {
+  border-color: #1f9aa4;
+  border-style: solid;
+  background: #f0fafa;
+}
+
+.hero-upload__file-input {
+  display: none;
 }
 
 .hero-upload__spinner {

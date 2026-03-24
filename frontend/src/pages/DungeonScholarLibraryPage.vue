@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+import { useScholarData } from "../composables/useScholarData";
 import { listDocuments, type DocumentListItem } from "../api/documents";
 
 type ScrollCard = {
@@ -21,8 +22,17 @@ type ScrollCard = {
   mastered?: boolean;
 };
 
+type UploadState = "idle" | "loading" | "success" | "failure";
+
 const documents = ref<DocumentListItem[]>([]);
 const isLoading = ref(true);
+
+const { uploadAndRefresh } = useScholarData();
+
+const uploadModalVisible = ref(false);
+const uploadState = ref<UploadState>("idle");
+const isDragging = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
 
 onMounted(async () => {
   document.title = "Xi Rang Library";
@@ -65,7 +75,6 @@ const gameModesRoute = ROUTES.gameModes;
 const { currentPath, navigateTo, router, routingTarget } = useRouteNavigation();
 
 const openingCard = ref<string | null>(null);
-const isUploading = ref(false);
 
 const openModeSelection = async (card: ScrollCard) => {
   if (card.action === "continue") {
@@ -91,15 +100,67 @@ const openModeSelection = async (card: ScrollCard) => {
   }, 220);
 };
 
-const triggerUpload = () => {
-  isUploading.value = true;
-  window.setTimeout(() => {
-    isUploading.value = false;
-  }, 2000);
+const openUploadModal = () => {
+  uploadModalVisible.value = true;
+  uploadState.value = "idle";
+};
+
+const closeUploadModal = () => {
+  uploadModalVisible.value = false;
+  uploadState.value = "idle";
+};
+
+const handleBrowseClick = () => {
+  fileInput.value?.click();
+};
+
+const handleFileSelect = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const files = target.files;
+  if (!files || files.length === 0) return;
+
+  uploadState.value = "loading";
+  try {
+    await uploadAndRefresh(files);
+    uploadState.value = "success";
+    await loadDocuments();
+  } catch {
+    uploadState.value = "failure";
+  }
+  target.value = "";
+};
+
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault();
+  isDragging.value = true;
+};
+
+const handleDragLeave = () => {
+  isDragging.value = false;
+};
+
+const handleDrop = async (event: DragEvent) => {
+  event.preventDefault();
+  isDragging.value = false;
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+
+  uploadState.value = "loading";
+  try {
+    await uploadAndRefresh(files);
+    uploadState.value = "success";
+    await loadDocuments();
+  } catch {
+    uploadState.value = "failure";
+  }
+};
+
+const handleRetry = () => {
+  uploadState.value = "idle";
 };
 
 defineExpose({
-  triggerUpload,
+  openUploadModal,
 });
 </script>
 
@@ -191,25 +252,86 @@ defineExpose({
 
         <article
           class="scroll-card scroll-card--add"
-          :class="{ 'scroll-card--add--loading': isUploading }"
+          type="button"
+          @click="openUploadModal"
         >
-          <template v-if="!isUploading">
-            <p class="scroll-card__add-icon">＋</p>
-            <h2>Add New Scroll</h2>
-            <p class="scroll-card__add-text">Upload PDF, TXT, or EPUB to begin a new digestion.</p>
-            <p class="scroll-card__add-disclaimer">
-              <span class="scroll-card__beta-tag">BETA</span>
-              Free uploads during beta period.
-            </p>
-          </template>
-          <template v-else>
-            <div class="scroll-card__spinner" aria-label="Uploading" />
-            <h2>Uploading...</h2>
-            <p class="scroll-card__add-text">Processing your scroll.</p>
-          </template>
+          <p class="scroll-card__add-icon">＋</p>
+          <h2>Add New Scroll</h2>
+          <p class="scroll-card__add-text">Upload PDF, TXT, or EPUB to begin a new digestion.</p>
+          <p class="scroll-card__add-disclaimer">
+            <span class="scroll-card__beta-tag">BETA</span>
+            Free uploads during beta period.
+          </p>
         </article>
       </section>
     </main>
+
+    <!-- Upload Modal -->
+    <div v-if="uploadModalVisible" class="upload-modal-overlay" @click.self="closeUploadModal">
+      <section
+        class="upload-modal hero-upload"
+        :class="{
+          'hero-upload--idle': uploadState === 'idle',
+          'hero-upload--loading': uploadState === 'loading',
+          'hero-upload--success': uploadState === 'success',
+          'hero-upload--failure': uploadState === 'failure',
+          'hero-upload--dragging': isDragging,
+        }"
+        @dragover="handleDragOver"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop"
+      >
+        <button class="upload-modal__close" type="button" aria-label="Close" @click="closeUploadModal">✕</button>
+
+        <div class="hero-upload__mascot" aria-hidden="true">
+          <img src="/taotie-main.svg" alt="" />
+        </div>
+
+        <p class="hero-upload__disclaimer">
+          <span class="hero-upload__beta-tag">BETA</span>
+          {{ $t("home.uploadDisclaimer") }}
+        </p>
+
+        <template v-if="uploadState === 'idle'">
+          <h1>{{ $t("home.idleTitle") }}</h1>
+          <p>{{ $t("home.idleDesc") }}</p>
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".pdf,.txt,.md,.markdown"
+            multiple
+            class="hero-upload__file-input"
+            @change="handleFileSelect"
+          />
+          <button class="browse-btn" type="button" @click.stop="handleBrowseClick">
+            ☁ {{ $t("home.browseScrolls") }}
+          </button>
+          <span class="support-text">{{ $t("home.supportText") }}</span>
+        </template>
+
+        <template v-else-if="uploadState === 'loading'">
+          <h1>{{ $t("home.loadingTitle") }}</h1>
+          <p>{{ $t("home.loadingDesc") }}</p>
+          <div class="hero-upload__spinner" :aria-label="$t('home.loadingAria')" />
+        </template>
+
+        <template v-else-if="uploadState === 'success'">
+          <h1>{{ $t("home.successTitle") }}</h1>
+          <p>{{ $t("home.successDesc") }}</p>
+          <button class="browse-btn browse-btn--success" type="button" @click.stop="closeUploadModal">
+            ✓ {{ $t("home.successAction") }}
+          </button>
+        </template>
+
+        <template v-else-if="uploadState === 'failure'">
+          <h1>{{ $t("home.failureTitle") }}</h1>
+          <p>{{ $t("home.failureDesc") }}</p>
+          <button class="browse-btn hero-upload__retry" type="button" @click.stop="handleRetry">
+            ↻ {{ $t("home.retryUpload") }}
+          </button>
+        </template>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -592,6 +714,144 @@ defineExpose({
   width: 32px;
 }
 
+/* Hero Upload Styles */
+.hero-upload {
+  align-items: center;
+  background: #ffffff;
+  border: 2px dashed #b9d8dc;
+  border-radius: 22px;
+  display: flex;
+  flex-direction: column;
+  min-height: 340px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.hero-upload__mascot {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.hero-upload__mascot img {
+  display: block;
+  height: auto;
+  max-width: min(240px, 28vw);
+  width: clamp(150px, 18vw, 220px);
+}
+
+.hero-upload h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(38px, 5vw, 52px);
+  line-height: 1.05;
+  margin: 12px 0 0;
+}
+
+.hero-upload p {
+  color: var(--color-text-secondary, #5a6573);
+  font-size: 16px;
+  line-height: 1.7;
+  margin: 14px 0 0;
+  max-width: 720px;
+}
+
+.browse-btn {
+  align-items: center;
+  background: #f4fbfb;
+  border: 1px solid #b9d8dc;
+  border-radius: 999px;
+  color: #1f9aa4;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 700;
+  gap: 8px;
+  margin-top: 20px;
+  min-height: 44px;
+  padding: 0 20px;
+}
+
+.support-text {
+  color: var(--color-text-muted, #9aa2ab);
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+.hero-upload__disclaimer {
+  background: #fef9e7;
+  border: 1px solid #f5e6a3;
+  border-radius: 8px;
+  color: #8a6d1b;
+  font-size: 12px;
+  margin: 0 0 12px;
+  padding: 8px 14px;
+}
+
+.hero-upload__beta-tag {
+  background: #f0ad4e;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-right: 6px;
+  padding: 2px 6px;
+}
+
+.hero-upload--loading {
+  border-color: #a0d2db;
+}
+
+.hero-upload--success {
+  border-color: #6ecf9c;
+  border-style: solid;
+}
+
+.hero-upload--failure {
+  border-color: #e8a0a0;
+  border-style: solid;
+}
+
+.hero-upload--dragging {
+  border-color: #1f9aa4;
+  border-style: solid;
+  background: #f0fafa;
+}
+
+.hero-upload__file-input {
+  display: none;
+}
+
+.hero-upload__spinner {
+  animation: spin 1s linear infinite;
+  border: 3px solid #e0f0f0;
+  border-top-color: #1f9aa4;
+  border-radius: 50%;
+  height: 40px;
+  margin-top: 20px;
+  width: 40px;
+}
+
+.browse-btn--success {
+  background: #e8f8f0;
+  border-color: #6ecf9c;
+  color: #22863a;
+}
+
+.hero-upload__retry {
+  background: #fff5f5;
+  border-color: #e8a0a0;
+  color: #c53030;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1080px) {
   .library-page {
     grid-template-columns: 1fr;
@@ -600,6 +860,49 @@ defineExpose({
   .card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Upload Modal */
+.upload-modal-overlay {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.upload-modal {
+  align-items: center;
+  background: var(--color-surface, #ffffff);
+  border: 2px dashed #b9d8dc;
+  border-radius: 22px;
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
+  min-height: 380px;
+  padding: 32px 24px;
+  position: relative;
+  text-align: center;
+  width: 100%;
+}
+
+.upload-modal__close {
+  background: transparent;
+  border: 0;
+  color: #9aa2ab;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 8px;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+}
+
+.upload-modal__close:hover {
+  color: #5a6573;
 }
 
 @media (max-width: 768px) {

@@ -1,0 +1,340 @@
+/* Theme CSS variables — imported by tokens.css and main.ts */
+
+/* =============================================
+   LIGHT THEME (default)
+   ============================================= */
+:root,
+:root[data-theme="light"] {
+  /* Surfaces */
+  --color-page-bg: #f4f6ef;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f5f2eb;
+  --color-border: #e5e7eb;
+  --color-border-soft: #f3f4f6;
+
+  /* Text */
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #6b7280;
+  --color-text-tertiary: #374151;
+  --color-text-strong: #1f2937;
+
+  /* Primary (teal) */
+  --color-primary-500: #207f4c;
+  --color-primary-600: #19663d;
+  --color-primary-700: #11472b;
+  --color-primary-100: #d9ecdf;
+  --color-primary-50: #edf6f0;
+
+  /* Brand extras */
+  --color-cyan-50: #ecfeff;
+  --color-cyan-100: #cffafe;
+  --color-deep-teal: #1b5b36;
+  --color-warm-beige: #f5f3f0;
+  --color-soft-brown: #8b7355;
+  --color-muted-gold: #d4af37;
+  --color-sage-green: #87a96b;
+
+  /* Component-specific */
+  --color-upload-border: #b9d8dc;
+  --color-progress-track: #edf2f7;
+  --color-search-bg: #f4f5f1;
+  --color-search-border: #e2e5df;
+  --color-streak-bg: #ffedd5;
+  --color-streak-text: #9a3412;
+
+  /* Decorative accents */
+  --color-decor-teal: #5eead4;
+  --color-decor-amber: #fed7aa;
+
+  /* Glass / modal surfaces */
+  --color-glass-bg: rgba(255, 255, 255, 0.72);
+  --color-glass-border: rgba(255, 255, 255, 0.5);
+  --color-glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
+  --color-overlay-glass: rgba(255, 255, 255, 0.3);
+  --color-overlay-fallback: rgba(115, 129, 125, 0.72);
+  --color-modal-fallback: rgba(246, 248, 246, 0.94);
+  --color-identity-white-bg: rgba(255, 255, 255, 0.82);
+
+  /* Avatar */
+  --color-avatar-gradient-start: #706b72;
+  --color-avatar-gradient-end: #b2a9af;
+  --color-avatar-border: #ffffff;
+  --color-avatar-text: #f3f5f9;
+
+  /* Identity / linked accounts */
+  --color-icon-bg: #ffffff;
+  --color-icon-border: #f1f5f9;
+  --color-icon-text: #334155;
+  --color-connected-icon-bg: #0f172a;
+  --color-connected-border: #ccfbf1;
+  --color-connected-text: #0d9488;
+  --color-action-bg: #ffffff;
+  --color-action-border: #e2e8f0;
+  --color-action-text: #334155;
+
+  /* Text palette (slate scale) */
+  --color-text-dark: #1e293b;
+  --color-text-slate: #334155;
+  --color-text-muted-slate: #64748b;
+  --color-text-light-slate: #94a3b8;
+
+  /* Danger */
+  --color-danger-text: rgba(239, 68, 68, 0.8);
+
+  /* Mission / quest icons (brand accent colors) */
+  --color-icon-violet: #8b5cf6;
+  --color-icon-green: #22c55e;
+  --color-icon-blue: #3b82f6;
+  --color-icon-amber: #e58b1a;
+  --color-icon-red: #ef4444;
+
+  /* Status text */
+  --color-status-done: #16a34a;
+  --color-status-amber: #c48a0b;
+  --color-status-coins-bg: #fff8d6;
+
+  /* Mission card */
+  --color-mission-text: #22313c;
+  --color-mission-progress-text: #8a98a0;
+  --color-action-secondary-bg: #f2f5f7;
+  --color-action-secondary-text: #4d5a64;
+
+  /* Page background */
+  --color-page-gradient-start: #f4f6ef;
+  --color-page-gradient-end: #ecefe3;
+
+  --color-settings-page-bg: linear-gradient(180deg, #f4f6ef 0%, #ecefe3 100%);
+  --color-settings-totem-soft: rgba(32, 127, 76, 0.09);
+  --color-settings-totem-line: rgba(32, 127, 76, 0.035);
+
+  --color-sidebar-bg: linear-gradient(180deg, #f2f0e6 0%, #ece8da 100%);
+  --color-sidebar-border: #cfd8c7;
+  --color-sidebar-text: #2d332f;
+  --color-sidebar-brand-icon-bg: rgba(32, 127, 76, 0.18);
+  --color-sidebar-nav-text: #3f4d45;
+  --color-sidebar-nav-hover-bg: rgba(32, 127, 76, 0.12);
+  --color-sidebar-nav-active-bg: rgba(32, 127, 76, 0.2);
+  --color-sidebar-nav-active-text: #1f5e38;
+  --color-sidebar-card-bg: rgba(255, 255, 255, 0.6);
+  --color-sidebar-card-border: #c8d3c7;
+  --color-sidebar-card-text: #5d6b62;
+  --color-sidebar-card-hover-bg: rgba(255, 255, 255, 0.78);
+  --color-sidebar-card-hover-border: #b5c6b2;
+  --color-sidebar-card-active-bg: rgba(32, 127, 76, 0.2);
+  --color-sidebar-card-active-border: #9fb89f;
+  --color-sidebar-card-active-text: #1e5b35;
+  --color-sidebar-profile-bg: rgba(255, 255, 255, 0.82);
+  --color-sidebar-profile-hover-border: #b9c6b5;
+  --color-sidebar-profile-active-border: #9eb19b;
+  --shadow-sidebar-profile: 0 8px 20px -12px rgba(53, 71, 54, 0.38);
+  --color-sidebar-avatar-bg: #e0c79c;
+
+  --color-forge-bg: linear-gradient(135deg, #243326 0%, #2d3f2f 46%, #314c33 100%);
+  --color-forge-border: #3e5a45;
+  --color-forge-divider: rgba(223, 237, 222, 0.2);
+  --color-forge-accent: #80d49f;
+  --color-forge-title: #eef6ec;
+  --color-forge-label: #c6d8c4;
+  --color-forge-input-bg: rgba(18, 27, 20, 0.32);
+  --color-forge-input-border: rgba(191, 221, 192, 0.3);
+  --color-forge-active-bg: rgba(128, 212, 159, 0.2);
+  --color-forge-note-bg: rgba(14, 22, 16, 0.3);
+
+  --color-danger-surface: #fdf1ee;
+  --color-danger-border: #e9c8c0;
+  --color-danger-divider: #efdbd6;
+  --color-danger-title: #8f3a32;
+  --color-danger-solid-bg: #b95144;
+
+  /* Select / dropdown active item */
+  --color-select-active-bg: #f0fdf4;
+  --color-select-active-text: #059669;
+
+  /* League / leaderboard specific */
+  --color-league-green: #3a7d63;
+  --color-league-cyan: #22d3ee;
+  --color-league-gradient-start: #6cb79f;
+  --color-league-gradient-mid: #4dd696;
+  --color-league-gradient-end: #47b594;
+  --color-stat-green: #3a7d63;
+  --color-level-green: #2f7663;
+  --color-focus-amber-bg: #fdf3c7;
+  --color-focus-amber-text: #92400e;
+  --color-focus-text: #1e293b;
+  --color-badge-blue-bg: #dbeafe;
+  --color-badge-blue-text: #2563eb;
+  --color-badge-dark-blue-text: #1d4ed8;
+  --color-badge-blue-link: rgba(37, 99, 235, 0.85);
+  --color-chip-gold-bg: #fef9c3;
+  --color-chip-gold-text: #854d0e;
+  --color-chip-danger-bg: rgba(248, 113, 113, 0.16);
+  --color-chip-danger-text: #dc2626;
+  --color-trend-up: #15803d;
+  --color-trend-down: #ef4444;
+  --color-demotion-bg: rgba(248, 113, 113, 0.1);
+  --color-demotion-text: #dc2626;
+  --color-rank-gold: #d4af37;
+  --color-rank-silver: #c0c0c0;
+  --color-rank-bronze: #cd7f32;
+  --color-rank-gold-bg: rgba(212, 175, 55, 0.2);
+  --color-rank-gold-border: rgba(212, 175, 55, 0.4);
+  --color-rank-gold-text: #a16207;
+  --color-rank-silver-bg: rgba(226, 232, 240, 0.55);
+  --color-rank-silver-border: #cbd5e1;
+  --color-rank-bronze-bg: rgba(255, 237, 213, 0.5);
+  --color-rank-bronze-border: #fed7aa;
+  --color-rank-bronze-text: #9a3412;
+  --color-gold-badge-text: #78350f;
+  --color-avatar-light-bg: linear-gradient(180deg, #fff 0%, #ebf3f2 100%);
+  --color-avatar-light-border: rgba(17, 116, 111, 0.6);
+
+  /* Settlement modal */
+  --color-settlement-header: #183f3f;
+  --color-settlement-text: #798590;
+  --color-settlement-value: #1f2a3d;
+  --color-gain-pill-bg: #dff8f0;
+  --color-gain-pill-text: #26b88f;
+  --color-coin-value: #e0a126;
+  --color-combo-bolt: #3a9cd6;
+  --color-goal-title: #287f88;
+  --color-goal-text: #95a09e;
+  --color-goal-track: #d7ece8;
+  --color-league-card-bg: #f5f8ff;
+  --color-league-card-text: #7a8ba1;
+  --color-league-card-strong: #2a5f9b;
+  --color-league-card-span: #9fb0bf;
+  --color-stat-border: #eef2ef;
+
+  /* Shop page */
+  --color-shop-bg: #f4f4f1;
+  --color-shop-header-text: #2c3848;
+  --color-shop-brand-teal: #1696a2;
+  --color-wallet-text: #46556a;
+  --color-wallet-subtext: #9aa4b2;
+  --color-chip-teal-bg: #dcfce7;
+  --color-chip-teal-text: #0f766e;
+  --color-chip-violet-bg: #ede9fe;
+  --color-chip-violet-text: #7c3aed;
+  --color-chip-rose-bg: #fff1f2;
+  --color-chip-rose-text: #e11d48;
+  --color-chip-amber-bg: #fef3c7;
+  --color-chip-amber-text: #d97706;
+  --color-error-bg: #fff3f2;
+  --color-error-border: #ffc9c5;
+  --color-error-text: #c2410c;
+  --color-price-text: #475569;
+  --color-price-sub: #9ca3af;
+  --color-quota-border: #e4e4e1;
+
+  /* Login page */
+  --color-login-bg: #f8fafc;
+  --color-login-stripe: rgba(255, 255, 255, 0.44);
+  --color-login-blob-left: rgba(113, 202, 211, 0.22);
+  --color-login-blob-right: rgba(126, 152, 255, 0.2);
+  --color-login-card-bg: rgba(255, 255, 255, 0.78);
+  --color-login-card-border: rgba(255, 255, 255, 0.6);
+  --color-login-input-bg: rgba(255, 255, 255, 0.92);
+  --color-login-divider: #e2e8f0;
+  --color-login-btn-bg: rgba(255, 255, 255, 0.9);
+
+  /* Typography */
+  --font-serif: "Noto Serif", "Noto Serif SC", serif;
+  --font-sans: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* Layout */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-card: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
+  --shadow-button: 0 10px 15px -3px rgba(16, 185, 129, 0.25),
+    0 4px 6px -4px rgba(16, 185, 129, 0.25);
+  --shadow-elevated: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Type scale */
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
+  --text-4xl: 48px;
+
+  /* Breakpoints */
+  --bp-md: 768px;
+  --bp-lg: 1120px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --color-page-bg: #fcfbf7;
+    --color-surface: #ffffff;
+    --color-surface-alt: #f5f2eb;
+    --color-border: #e5e7eb;
+    --color-border-soft: #f3f4f6;
+    --color-text-primary: #1a1a1a;
+    --color-text-secondary: #4b5563;
+    --color-text-muted: #6b7280;
+    --color-text-tertiary: #374151;
+    --color-text-strong: #1f2937;
+    --color-upload-border: #b9d8dc;
+    --color-progress-track: #edf2f7;
+    --color-search-bg: #f4f5f1;
+    --color-search-border: #e2e5df;
+    --color-streak-bg: #ffedd5;
+    --color-streak-text: #9a3412;
+    --color-settings-page-bg: linear-gradient(180deg, #f4f6ef 0%, #ecefe3 100%);
+    --color-settings-totem-soft: rgba(32, 127, 76, 0.09);
+    --color-settings-totem-line: rgba(32, 127, 76, 0.035);
+    --color-sidebar-bg: linear-gradient(180deg, #f2f0e6 0%, #ece8da 100%);
+    --color-sidebar-border: #cfd8c7;
+    --color-sidebar-text: #2d332f;
+    --color-sidebar-brand-icon-bg: rgba(32, 127, 76, 0.18);
+    --color-sidebar-nav-text: #3f4d45;
+    --color-sidebar-nav-hover-bg: rgba(32, 127, 76, 0.12);
+    --color-sidebar-nav-active-bg: rgba(32, 127, 76, 0.2);
+    --color-sidebar-nav-active-text: #1f5e38;
+    --color-sidebar-card-bg: rgba(255, 255, 255, 0.6);
+    --color-sidebar-card-border: #c8d3c7;
+    --color-sidebar-card-text: #5d6b62;
+    --color-sidebar-card-hover-bg: rgba(255, 255, 255, 0.78);
+    --color-sidebar-card-hover-border: #b5c6b2;
+    --color-sidebar-card-active-bg: rgba(32, 127, 76, 0.2);
+    --color-sidebar-card-active-border: #9fb89f;
+    --color-sidebar-card-active-text: #1e5b35;
+    --color-sidebar-profile-bg: rgba(255, 255, 255, 0.82);
+    --color-sidebar-profile-hover-border: #b9c6b5;
+    --color-sidebar-profile-active-border: #9eb19b;
+    --shadow-sidebar-profile: 0 8px 20px -12px rgba(53, 71, 54, 0.38);
+    --color-sidebar-avatar-bg: #e0c79c;
+    --color-forge-bg: linear-gradient(135deg, #243326 0%, #2d3f2f 46%, #314c33 100%);
+    --color-forge-border: #3e5a45;
+    --color-forge-divider: rgba(223, 237, 222, 0.2);
+    --color-forge-accent: #80d49f;
+    --color-forge-title: #eef6ec;
+    --color-forge-label: #c6d8c4;
+    --color-forge-input-bg: rgba(18, 27, 20, 0.32);
+    --color-forge-input-border: rgba(191, 221, 192, 0.3);
+    --color-forge-active-bg: rgba(128, 212, 159, 0.2);
+    --color-forge-note-bg: rgba(14, 22, 16, 0.3);
+    --color-danger-surface: #fdf1ee;
+    --color-danger-border: #e9c8c0;
+    --color-danger-divider: #efdbd6;
+    --color-danger-title: #8f3a32;
+    --color-danger-solid-bg: #b95144;
+  }
+}

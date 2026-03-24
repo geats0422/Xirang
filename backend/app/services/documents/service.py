@@ -1,0 +1,233 @@
+from __future__ import annotations
+
+import hashlib
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, Protocol, cast
+from uuid import UUID, uuid4
+
+from app.db.models.documents import DocumentStatus, JobStatus
+
+
+class DocumentServiceError(Exception):
+    status_code = 400
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class DocumentNotFoundError(DocumentServiceError):
+    status_code = 404
+
+
+class StorageError(DocumentServiceError):
+    status_code = 500
+
+
+@dataclass(slots=True)
+class UploadResult:
+    document: Any
+    job: Any
+
+
+@dataclass(slots=True)
+class RetryResult:
+    document: Any
+    job: Any
+    ingest_version: int
+
+
+@dataclass(slots=True)
+class JobStatusResult:
+    id: UUID
+    status: JobStatus
+
+
+class DocumentRepositoryProtocol(Protocol):
+    async def create_document(
+        self,
+        *,
+        owner_user_id: UUID,
+        title: str,
+        file_name: str,
+        storage_path: str,
+        format: Any,
+        file_size_bytes: int,
+        mime_type: str | None,
+        checksum_sha256: str | None,
+    ) -> Any: ...
+
+    async def get_document_by_id(self, document_id: UUID) -> Any | None: ...
+
+    async def list_documents_by_owner(
+        self,
+        owner_user_id: UUID,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[Any]: ...
+
+    async def create_job(
+        self,
+        *,
+        job_type: str,
+        queue_name: str,
+        payload: dict[str, object],
+    ) -> Any: ...
+
+    async def create_ingestion_job(
+        self,
+        *,
+        job_id: UUID,
+        document_id: UUID,
+        ingest_version: int,
+    ) -> Any: ...
+
+    async def update_document_status(
+        self,
+        *,
+        document_id: UUID,
+        ingest_status: DocumentStatus,
+    ) -> None: ...
+
+    async def get_job_by_id(self, job_id: UUID) -> Any | None: ...
+
+    async def commit(self) -> None: ...
+
+
+class StorageProtocol(Protocol):
+    def save_bytes(
+        self,
+        *,
+        owner_id: str,
+        file_name: str,
+        content: bytes,
+        media_type: str,
+    ) -> Any: ...
+
+    def delete(self, storage_key: str) -> Any: ...
+
+
+@dataclass(slots=True)
+class DocumentService:
+    repository: DocumentRepositoryProtocol
+    storage: StorageProtocol
+
+    async def upload(
+        self,
+        *,
+        owner_user_id: UUID,
+        title: str,
+        file_name: str,
+        file_content: bytes,
+        format: Any,
+        mime_type: str,
+    ) -> UploadResult:
+        checksum = hashlib.sha256(file_content).hexdigest()
+
+        storage_key = f"{owner_user_id}/{uuid4()}/{file_name}"
+        try:
+            stored = self.storage.save_bytes(
+                owner_id=str(owner_user_id),
+                file_name=file_name,
+                content=file_content,
+                media_type=mime_type,
+            )
+            storage_key = str(stored.storage_key)
+        except Exception as e:
+            raise StorageError(f"Failed to store file: {e}") from e
+
+        document = await self.repository.create_document(
+            owner_user_id=owner_user_id,
+            title=title,
+            file_name=file_name,
+            storage_path=storage_key,
+            format=format,
+            file_size_bytes=len(file_content),
+            mime_type=mime_type,
+            checksum_sha256=checksum,
+        )
+
+        job = await self.repository.create_job(
+            job_type="document_ingestion",
+            queue_name="default",
+            payload={"document_id": str(document.id)},
+        )
+
+        await self.repository.create_ingestion_job(
+            job_id=job.id,
+            document_id=document.id,
+            ingest_version=1,
+        )
+
+        await self.repository.commit()
+        return UploadResult(document=document, job=job)
+
+    async def get_document(self, document_id: UUID, owner_user_id: UUID) -> Any:
+        document = await self.repository.get_document_by_id(document_id)
+        if document is None or document.owner_user_id != owner_user_id:
+            raise DocumentNotFoundError(f"Document not found: {document_id}")
+        return document
+
+    async def list_documents(
+        self,
+        owner_user_id: UUID,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Any]:
+        return await self.repository.list_documents_by_owner(
+            owner_user_id,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def retry(self, document_id: UUID, owner_user_id: UUID) -> RetryResult:
+        document = await self.repository.get_document_by_id(document_id)
+        if document is None or document.owner_user_id != owner_user_id:
+            raise DocumentNotFoundError(f"Document not found: {document_id}")
+
+        if document.ingest_status != DocumentStatus.FAILED:
+            raise StorageError("Document is not in failed state")
+
+        await self.repository.update_document_status(
+            document_id=document_id,
+            ingest_status=DocumentStatus.PROCESSING,
+        )
+
+        next_ingest_version = 2
+        get_latest_ingestion_version = getattr(
+            self.repository, "get_latest_ingestion_version", None
+        )
+        if callable(get_latest_ingestion_version):
+            latest_version_fetcher = cast(
+                "Callable[[UUID], Awaitable[int]]",
+                get_latest_ingestion_version,
+            )
+            latest_ingest_version = await latest_version_fetcher(document.id)
+            next_ingest_version = max(1, int(latest_ingest_version) + 1)
+
+        job = await self.repository.create_job(
+            job_type="document_ingestion",
+            queue_name="default",
+            payload={"document_id": str(document.id)},
+        )
+
+        await self.repository.create_ingestion_job(
+            job_id=job.id,
+            document_id=document.id,
+            ingest_version=next_ingest_version,
+        )
+
+        await self.repository.commit()
+        updated_document = await self.repository.get_document_by_id(document_id)
+        if updated_document is None:
+            raise DocumentNotFoundError(f"Document not found: {document_id}")
+
+        return RetryResult(document=updated_document, job=job, ingest_version=next_ingest_version)
+
+    async def get_job_status(self, job_id: UUID) -> JobStatusResult:
+        job = await self.repository.get_job_by_id(job_id)
+        if job is None:
+            raise DocumentNotFoundError(f"Job not found: {job_id}")
+        return JobStatusResult(id=job.id, status=job.status)

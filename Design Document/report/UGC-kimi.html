@@ -1,0 +1,1826 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>UGC驱动的游戏化知识引擎市场与客户研究报告</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'serif': ['Noto Serif SC', 'serif'],
+                        'sans': ['Inter', 'sans-serif']
+                    },
+                    colors: {
+                        'warm-beige': '#F5F3F0',
+                        'soft-brown': '#8B7355',
+                        'deep-teal': '#2C5F5D',
+                        'muted-gold': '#D4AF37',
+                        'sage-green': '#87A96B'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .hero-gradient {
+            background: linear-gradient(135deg, #F5F3F0 0%, #E8E5E1 100%);
+        }
+        .text-shadow {
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .toc-sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 300px;
+            height: 100vh;
+            background: rgba(245, 243, 240, 0.95);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(139, 115, 85, 0.2);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 2rem 1.5rem;
+        }
+        .toc-toggle {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            width: 44px;
+            height: 44px;
+            border: none;
+            border-radius: 9999px;
+            background: #2C5F5D;
+            color: #ffffff;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+        .toc-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.35);
+            z-index: 900;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        .toc-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .main-content {
+            margin-left: 300px;
+            min-height: 100vh;
+        }
+        .citation-link {
+            color: #2C5F5D;
+            text-decoration: underline;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .citation-link:hover {
+            color: #87A96B;
+        }
+        .bento-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 1.5rem;
+            height: 60vh;
+        }
+        .bento-main {
+            grid-row: 1 / 3;
+            position: relative;
+            overflow: hidden;
+        }
+        .bento-side {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .chart-container {
+            width: 100%;
+            min-height: 400px;
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin: 2rem 0;
+        }
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(90deg, #2C5F5D, #87A96B, #2C5F5D);
+            margin: 4rem 0;
+            border-radius: 1px;
+        }
+        .pull-quote {
+            background: linear-gradient(135deg, #F5F3F0, #E8E5E1);
+            border-left: 4px solid #2C5F5D;
+            padding: 2rem;
+            margin: 2rem 0;
+            font-style: italic;
+            font-size: 1.1rem;
+            border-radius: 0 8px 8px 0;
+        }
+        /* Mermaid chart styling */
+        .mermaid-container {
+            display: flex;
+            justify-content: center;
+            min-height: 300px;
+            max-height: 800px;
+            background: #ffffff;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mermaid-container .mermaid {
+            width: 100%;
+            max-width: 100%;
+            height: 100%;
+            cursor: grab;
+            transition: transform 0.3s ease;
+            transform-origin: center center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        .mermaid-container .mermaid svg {
+            max-width: 100%;
+            height: 100%;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .mermaid-container .mermaid:active {
+            cursor: grabbing;
+        }
+
+        .mermaid-container.zoomed .mermaid {
+            height: 100%;
+            width: 100%;
+            cursor: grab;
+        }
+
+        .mermaid-controls {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            gap: 10px;
+            z-index: 20;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .mermaid-control-btn {
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: #374151;
+            font-size: 14px;
+            min-width: 36px;
+            height: 36px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mermaid-control-btn:hover {
+            background: #f8fafc;
+            border-color: #3b82f6;
+            color: #3b82f6;
+            transform: translateY(-1px);
+        }
+
+    .mermaid-control-btn:active {
+        transform: scale(0.95);
+    }
+
+    /* Responsive adjustments for mermaid controls */
+    @media (max-width: 1024px) {
+        .mermaid-control-btn:not(.reset-zoom) {
+            display: none;
+        }
+        .mermaid-controls {
+            top: auto;
+            bottom: 15px;
+            right: 15px;
+        }
+    }
+
+    /* Adjustments for small screens */
+    @media (max-width: 768px) {
+        .toc-toggle {
+            display: inline-flex;
+        }
+        .toc-sidebar {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+        .toc-sidebar.open {
+            transform: translateX(0);
+        }
+        .main-content {
+            margin-left: 0;
+        }
+        .bento-grid {
+            grid-template-columns: 1fr;
+            height: auto;
+        }
+        .bento-main {
+            grid-row: auto;
+            height: auto;
+            min-height: 40vh;
+        }
+    }
+
+    /* Prevent text overflow in hero section */
+    @media (max-width: 640px) {
+        .hero-gradient h1 {
+            font-size: 2.25rem;
+        }
+        .hero-gradient p {
+            font-size: 1rem;
+        }
+        .hero-gradient .relative.z-10 {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+    }
+
+    /* Adjustments for very small screens */
+    @media (max-width: 390px) {
+        .hero-gradient h1 {
+            font-size: 1.75rem;
+        }
+    }
+</style>
+  <base target="_blank">
+</head>
+
+  <body class="bg-warm-beige text-gray-800 font-sans leading-relaxed">
+    <button id="toc-toggle" class="toc-toggle" type="button" aria-label="切换目录" aria-expanded="false" aria-controls="toc-sidebar">
+      <i class="fas fa-bars"></i>
+    </button>
+    <div id="toc-overlay" class="toc-overlay" aria-hidden="true"></div>
+    <!-- Table of Contents Sidebar -->
+    <nav id="toc-sidebar" class="toc-sidebar">
+      <div class="mb-8">
+        <h3 class="font-serif font-bold text-lg text-deep-teal mb-4">目录导航</h3>
+        <ul class="space-y-2 text-sm">
+          <li>
+            <a href="#executive-summary" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">执行摘要</a>
+          </li>
+          <li>
+            <a href="#market-strategy" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">市场情况分析</a>
+          </li>
+          <li class="ml-3">
+            <a href="#market-definition" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">市场定义与规模</a>
+          </li>
+          <li class="ml-3">
+            <a href="#market-gap" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">核心市场缝隙</a>
+          </li>
+          <li class="ml-3">
+            <a href="#competitive-analysis" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">竞品资源分析</a>
+          </li>
+          <li class="ml-3">
+            <a href="#swot-analysis" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">SWOT战略分析</a>
+          </li>
+          <li>
+            <a href="#token-economy" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">代币经济模型审视</a>
+          </li>
+          <li>
+            <a href="#customer-analysis" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">客户分析</a>
+          </li>
+          <li class="ml-3">
+            <a href="#user-personas" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">动态用户画像</a>
+          </li>
+          <li class="ml-3">
+            <a href="#acquisition-channels" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">获客渠道策略</a>
+          </li>
+          <li class="ml-3">
+            <a href="#core-hook" class="block py-1 px-2 rounded hover:bg-soft-brown/10 transition-colors">核心抓手评估</a>
+          </li>
+        </ul>
+      </div>
+      <div class="mt-8 pt-6 border-t border-soft-brown/20">
+        <p class="text-xs text-gray-600 leading-relaxed">
+          本报告基于深度市场研究与用户行为分析，为UGC游戏化知识引擎提供战略指导。
+        </p>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Hero Section -->
+      <section class="hero-gradient min-h-screen flex items-center relative overflow-hidden">
+        <div class="container mx-auto px-8">
+          <div class="bento-grid">
+            <!-- Main Hero Content -->
+            <div class="bento-main bg-white/80 backdrop-blur-sm rounded-2xl p-8 flex flex-col justify-center relative">
+              <div class="absolute inset-0 opacity-10">
+                <img src="https://kimi-web-img.moonshot.cn/img/i-blog.csdnimg.cn/61e603858254910ef7259b48524adf41e9cc44eb.png" alt="抽象神经网络概念图" class="w-full h-full object-cover rounded-2xl" size="wallpaper" aspect="wide" color="blue" query="抽象神经网络背景" referrerpolicy="no-referrer" data-modified="1" data-score="0.00"/>
+              </div>
+              <div class="relative z-10">
+                <h1 class="font-serif font-black text-5xl md:text-6xl text-deep-teal leading-tight mb-6 text-shadow">
+                  <span class="italic">UGC驱动的</span>
+                  <br/>
+                  <span class="text-soft-brown">游戏化知识引擎</span>
+                  <br/>
+                  <span class="text-muted-gold text-4xl">市场与客户研究报告</span>
+                </h1>
+                <p class="text-xl text-gray-700 max-w-2xl leading-relaxed">
+                  探索个人知识管理、创作者经济与游戏化自我提升的三重交汇地带，
+                  解锁<span class="font-semibold text-deep-teal">&#34;想学自己资料但受不了Anki枯燥&#34;</span>的蓝海市场
+                </p>
+              </div>
+            </div>
+
+            <!-- Side Elements -->
+            <div class="bento-side">
+              <div class="bg-deep-teal/10 backdrop-blur-sm rounded-xl p-6 flex-1">
+                <h3 class="font-serif font-bold text-lg text-deep-teal mb-3">核心洞察</h3>
+                <ul class="space-y-2 text-sm text-gray-700">
+                  <li class="flex items-start"><i class="fas fa-star text-muted-gold mr-2 mt-1"></i>游戏化机制激活沉睡内容</li>
+                  <li class="flex items-start"><i class="fas fa-star text-muted-gold mr-2 mt-1"></i>代币经济创造真实闭环</li>
+                  <li class="flex items-start"><i class="fas fa-star text-muted-gold mr-2 mt-1"></i>独立开发者的速度壁垒</li>
+                </ul>
+              </div>
+              <div class="bg-soft-brown/10 backdrop-blur-sm rounded-xl p-6 flex-1">
+                <h3 class="font-serif font-bold text-lg text-soft-brown mb-3">关键数据</h3>
+                <div class="space-y-3">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">TAM市场规模</span>
+                    <span class="font-bold text-deep-teal">$200-400亿</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">目标用户</span>
+                    <span class="font-bold text-deep-teal">1.5-2亿人</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-700">最长连胜记录</span>
+                    <span class="font-bold text-deep-teal">4761天</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Executive Summary -->
+      <section id="executive-summary" class="py-16 px-8 bg-white">
+        <div class="container mx-auto max-w-4xl">
+          <h2 class="font-serif font-bold text-3xl text-deep-teal mb-8 text-center">执行摘要</h2>
+          <div class="pull-quote">
+            <p class="text-lg leading-relaxed">
+              本报告揭示了一个被严重低估的蓝海市场——<strong>&#34;想学自己资料但受不了Anki枯燥&#34;</strong>的知识工作者群体。
+              核心机会在于：用Duolingo验证的游戏化机制（连胜、代币、排行榜）激活NotebookLM/Notion用户&#34;沉睡&#34;的私有内容，
+              同时用&#34;代币换AI额度&#34;创造真实经济闭环。
+            </p>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-8 mt-12">
+            <div class="bg-gradient-to-br from-deep-teal/5 to-sage-green/5 rounded-xl p-6">
+              <i class="fas fa-bullseye text-3xl text-deep-teal mb-4"></i>
+              <h3 class="font-serif font-bold text-xl text-deep-teal mb-3">市场定位</h3>
+              <p class="text-gray-700 leading-relaxed">
+                三重交汇地带：PKM工具（Notion）+ 游戏化学习（Duolingo）+ AI分析（NotebookLM）的结构性市场缝隙
+              </p>
+            </div>
+            <div class="bg-gradient-to-br from-muted-gold/5 to-soft-brown/5 rounded-xl p-6">
+              <i class="fas fa-coins text-3xl text-muted-gold mb-4"></i>
+              <h3 class="font-serif font-bold text-xl text-soft-brown mb-3">经济模型</h3>
+              <p class="text-gray-700 leading-relaxed">
+                &#34;学习即挖矿&#34;代币经济，通过Streak Freeze机制和AI额度兑换创造真实价值闭环
+              </p>
+            </div>
+            <div class="bg-gradient-to-br from-sage-green/5 to-deep-teal/5 rounded-xl p-6">
+              <i class="fas fa-shield-alt text-3xl text-sage-green mb-4"></i>
+              <h3 class="font-serif font-bold text-xl text-sage-green mb-3">风险控制</h3>
+              <p class="text-gray-700 leading-relaxed">
+                三重风控机制严防代币经济死亡螺旋，动态定价与行为验证确保模式健康
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <!-- Market Situation Analysis -->
+      <section id="market-strategy" class="py-16 px-8">
+        <div class="container mx-auto max-w-6xl">
+          <h2 class="font-serif font-bold text-4xl text-deep-teal mb-12 text-center">市场情况分析</h2>
+
+          <!-- Market Definition -->
+          <div id="market-definition" class="mb-16">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">市场定义与规模机会</h3>
+
+            <div class="grid lg:grid-cols-2 gap-12 mb-12">
+              <div>
+                <h4 class="font-serif font-semibold text-xl text-deep-teal mb-4">三重交汇的市场定位</h4>
+                <p class="text-gray-700 leading-relaxed mb-6">
+                  本产品所处的市场并非传统教育科技的简单延伸，而是一个新兴的三重交汇地带：
+                  <strong>个人知识管理（PKM）</strong>、<strong>创作者经济</strong>与<strong>游戏化自我提升</strong>的融合区域。
+                  <a href="#" class="citation-link">[418]</a>
+                  <a href="#" class="citation-link">[425]</a>
+                </p>
+
+                <div class="bg-white rounded-lg p-6 shadow-sm border border-gray-100">
+                  <h5 class="font-semibold text-deep-teal mb-3">目标用户群体</h5>
+                  <div class="space-y-3 text-sm">
+                    <div class="flex items-center justify-between">
+                      <span>效率极客（PKM深度用户）</span>
+                      <span class="text-deep-teal font-medium">15-20%</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <span>目标驱动型学习者</span>
+                      <span class="text-deep-teal font-medium">30-35%</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <span>生产力游戏化爱好者</span>
+                      <span class="text-deep-teal font-medium">25-30%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <img src="https://kimi-web-img.moonshot.cn/img/cn.wicinternet.org/ecad786d1a5748c5e3a2aaa28c29775811826df9.jpg" alt="知识工作者使用笔记本电脑" class="w-full h-64 object-cover rounded-xl shadow-lg" size="medium" aspect="wide" style="photo" query="知识工作者使用笔记本电脑" referrerpolicy="no-referrer" data-modified="1" data-score="0.00"/>
+              </div>
+            </div>
+
+            <!-- Market Size Chart -->
+            <div class="bg-white rounded-xl p-8 shadow-lg mb-8">
+              <h4 class="font-serif font-semibold text-xl text-deep-teal mb-6">市场规模估算</h4>
+              <div class="grid md:grid-cols-3 gap-6">
+                <div class="text-center p-6 bg-gradient-to-br from-deep-teal/5 to-transparent rounded-lg">
+                  <div class="text-3xl font-bold text-deep-teal mb-2">TAM</div>
+                  <div class="text-2xl font-semibold text-gray-800 mb-1">$200-400亿</div>
+                  <div class="text-sm text-gray-600">2亿用户 × $100-200 ARPU</div>
+                </div>
+                <div class="text-center p-6 bg-gradient-to-br from-sage-green/5 to-transparent rounded-lg">
+                  <div class="text-3xl font-bold text-sage-green mb-2">SAM</div>
+                  <div class="text-2xl font-semibold text-gray-800 mb-1">$30-50亿</div>
+                  <div class="text-sm text-gray-600">3000-5000万核心用户</div>
+                </div>
+                <div class="text-center p-6 bg-gradient-to-br from-muted-gold/5 to-transparent rounded-lg">
+                  <div class="text-3xl font-bold text-muted-gold mb-2">SOM</div>
+                  <div class="text-lg font-semibold text-gray-800 mb-1">$1500-7500万</div>
+                  <div class="text-sm text-gray-600">15万-50万付费用户</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Market Gap Analysis -->
+          <div id="market-gap" class="mb-16">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">核心市场缝隙识别</h3>
+
+            <div class="grid lg:grid-cols-2 gap-8 mb-8">
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-deep-teal mb-4">Anki用户的流失痛点</h4>
+                <div class="space-y-4">
+                  <div class="border-l-4 border-red-400 pl-4">
+                    <h5 class="font-medium text-gray-800">安装门槛</h5>
+                    <p class="text-sm text-gray-600">界面陈旧，学习曲线陡峭</p>
+                  </div>
+                  <div class="border-l-4 border-orange-400 pl-4">
+                    <h5 class="font-medium text-gray-800">内容创建负担</h5>
+                    <p class="text-sm text-gray-600">手动制卡耗时费力 <a href="#" class="citation-link">[241]</a>
+                    </p>
+                  </div>
+                  <div class="border-l-4 border-yellow-400 pl-4">
+                    <h5 class="font-medium text-gray-800">学习体验单调</h5>
+                    <p class="text-sm text-gray-600">缺乏反馈和进度感</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-deep-teal mb-4">NotebookLM的&#34;惊艳后吃灰&#34;</h4>
+                <div class="space-y-4">
+                  <div class="border-l-4 border-blue-400 pl-4">
+                    <h5 class="font-medium text-gray-800">交互模式错位</h5>
+                    <p class="text-sm text-gray-600">一次性分析工具 vs 持续学习伴侣 <a href="#" class="citation-link">[226]</a>
+                    </p>
+                  </div>
+                  <div class="border-l-4 border-purple-400 pl-4">
+                    <h5 class="font-medium text-gray-800">反馈机制缺失</h5>
+                    <p class="text-sm text-gray-600">信息获取即结束，无进度追踪</p>
+                  </div>
+                  <div class="border-l-4 border-green-400 pl-4">
+                    <h5 class="font-medium text-gray-800">情感连接缺失</h5>
+                    <p class="text-sm text-gray-600">完全工具理性，无多巴胺回路 <a href="#" class="citation-link">[245]</a>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Differentiation Strategy -->
+            <div class="bg-gradient-to-r from-deep-teal/5 to-sage-green/5 rounded-xl p-8">
+              <h4 class="font-serif font-semibold text-xl text-deep-teal mb-6">产品差异化填补策略：&#34;三借三破&#34;</h4>
+              <div class="grid md:grid-cols-3 gap-6">
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-deep-teal/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-brain text-2xl text-deep-teal"></i>
+                  </div>
+                  <h5 class="font-semibold text-deep-teal mb-2">借鉴Anki</h5>
+                  <p class="text-sm text-gray-700">间隔重复的科学性</p>
+                  <p class="text-xs text-gray-600 mt-1">突破：游戏化交互体验</p>
+                </div>
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-sage-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-robot text-2xl text-sage-green"></i>
+                  </div>
+                  <h5 class="font-semibold text-sage-green mb-2">借鉴NotebookLM</h5>
+                  <p class="text-sm text-gray-700">AI长文本分析能力</p>
+                  <p class="text-xs text-gray-600 mt-1">突破：习惯养成与持续参与</p>
+                </div>
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-muted-gold/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-gamepad text-2xl text-muted-gold"></i>
+                  </div>
+                  <h5 class="font-semibold text-muted-gold mb-2">借鉴Duolingo</h5>
+                  <p class="text-sm text-gray-700">连胜、代币、排行榜机制</p>
+                  <p class="text-xs text-gray-600 mt-1">突破：UGC内容适配与灵活性</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Competitive Analysis -->
+          <div id="competitive-analysis" class="mb-16">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">竞品资源与战略分析</h3>
+
+            <!-- Competitive Matrix -->
+            <div class="bg-white rounded-xl p-8 shadow-lg mb-8">
+              <h4 class="font-serif font-semibold text-xl text-deep-teal mb-6">竞品能力矩阵分析</h4>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b-2 border-deep-teal/20">
+                      <th class="text-left py-3 px-4 font-semibold text-deep-teal">维度</th>
+                      <th class="text-center py-3 px-4 font-semibold text-deep-teal">NotebookLM</th>
+                      <th class="text-center py-3 px-4 font-semibold text-deep-teal">Duolingo</th>
+                      <th class="text-center py-3 px-4 font-semibold text-deep-teal">Anki</th>
+                      <th class="text-center py-3 px-4 font-semibold text-deep-teal">本产品</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    <tr>
+                      <td class="py-3 px-4 font-medium">AI分析能力</td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-yellow-500"></i><i class="fas fa-star text-yellow-500"></i><i class="fas fa-star text-yellow-500"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-gray-400"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="far fa-star text-gray-300"></i></td>
+                    </tr>
+                    <tr>
+                      <td class="py-3 px-4 font-medium">游戏化机制</td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-gray-400"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-yellow-500"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i></td>
+                    </tr>
+                    <tr>
+                      <td class="py-3 px-4 font-medium">UGC适配性</td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="far fa-star text-gray-300"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-gray-400"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-yellow-500"></i><i class="fas fa-star text-yellow-500"></i><i class="fas fa-star text-yellow-500"></i><i class="far fa-star text-gray-300"></i><i class="far fa-star text-gray-300"></i></td>
+                      <td class="py-3 px-4 text-center"><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i><i class="fas fa-star text-green-500"></i></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Duolingo Streak Analysis -->
+            <div class="grid lg:grid-cols-2 gap-8">
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-deep-teal mb-4">Duolingo的Streak Freeze机制</h4>
+                <div class="space-y-4">
+                  <div class="bg-gradient-to-r from-muted-gold/10 to-transparent p-4 rounded-lg">
+                    <h5 class="font-medium text-muted-gold mb-2">商业化逻辑</h5>
+                    <p class="text-sm text-gray-700">预先购买冻结道具，利用损失厌恶心理 <a href="#" class="citation-link">[275]</a>
+                      <a href="#" class="citation-link">[276]</a>
+                    </p>
+                  </div>
+                  <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <span class="text-sm font-medium">用户返回概率提升</span>
+                    <span class="text-lg font-bold text-deep-teal">+4%</span>
+                  </div>
+                  <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <span class="text-sm font-medium">失去连胜概率降低</span>
+                    <span class="text-lg font-bold text-deep-teal">-5%</span>
+                  </div>
+                  <p class="text-xs text-gray-600">基于600+次实验优化 <a href="#" class="citation-link">[422]</a>
+                  </p>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-deep-teal mb-4">UGC语境下的机制移植</h4>
+                <div class="space-y-3">
+                  <div class="border-l-4 border-deep-teal pl-3">
+                    <h5 class="font-medium text-sm">学习目标自主性</h5>
+                    <p class="text-xs text-gray-600">用户声明机制 + 智能关卡生成</p>
+                  </div>
+                  <div class="border-l-4 border-sage-green pl-3">
+                    <h5 class="font-medium text-sm">内容质量可变性</h5>
+                    <p class="text-xs text-gray-600">AI预处理层 + 社区反馈机制</p>
+                  </div>
+                  <div class="border-l-4 border-muted-gold pl-3">
+                    <h5 class="font-medium text-sm">连胜意义强化</h5>
+                    <p class="text-xs text-gray-600">主题认同 + 分层连胜系统</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SWOT Analysis -->
+          <div id="swot-analysis" class="mb-16">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">SWOT战略分析</h3>
+
+            <div class="grid lg:grid-cols-2 gap-8">
+              <!-- Strengths &amp; Opportunities -->
+              <div class="space-y-6">
+                <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+                  <h4 class="font-serif font-semibold text-lg text-green-700 mb-4 flex items-center">
+                    <i class="fas fa-thumbs-up mr-2"></i>优势 (Strengths)
+                  </h4>
+                  <div class="space-y-3">
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">UGC+游戏机制+AI代币经济</h5>
+                      <p class="text-sm text-gray-600">自我强化的增长飞轮，网络效应显著</p>
+                    </div>
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">跨领域定位灵活性</h5>
+                      <p class="text-sm text-gray-600">避开红海，开辟&#34;游戏化生产力&#34;新品类</p>
+                    </div>
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">独立开发者敏捷性</h5>
+                      <p class="text-sm text-gray-600">快速迭代，深度用户亲密</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6 border border-blue-200">
+                  <h4 class="font-serif font-semibold text-lg text-blue-700 mb-4 flex items-center">
+                    <i class="fas fa-lightbulb mr-2"></i>机会 (Opportunities)
+                  </h4>
+                  <div class="space-y-3">
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">&#34;寓乐于学&#34;需求增长</h5>
+                      <p class="text-sm text-gray-600">Z世代偏好，注意力经济驱动 <a href="#" class="citation-link">[440]</a>
+                      </p>
+                    </div>
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">AI成本下降窗口期</h5>
+                      <p class="text-sm text-gray-600">API成本下降90%+，创新可行性确立</p>
+                    </div>
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">终身学习常态化</h5>
+                      <p class="text-sm text-gray-600">技能半衰期缩短，持续学习成必选项</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Weaknesses &amp; Threats -->
+              <div class="space-y-6">
+                <div class="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-6 border border-orange-200">
+                  <h4 class="font-serif font-semibold text-lg text-orange-700 mb-4 flex items-center">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>劣势 (Weaknesses)
+                  </h4>
+                  <div class="space-y-3">
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">资源与品牌认知度短板</h5>
+                      <p class="text-sm text-gray-600">资金限制，品牌信任建立周期长</p>
+                    </div>
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">技术基础设施依赖</h5>
+                      <p class="text-sm text-gray-600">大模型API、云服务商锁定风险</p>
+                    </div>
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">人才获取难度</h5>
+                      <p class="text-sm text-gray-600">难以竞争顶级AI研究人才</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-6 border border-red-200">
+                  <h4 class="font-serif font-semibold text-lg text-red-700 mb-4 flex items-center">
+                    <i class="fas fa-shield-alt mr-2"></i>威胁 (Threats)
+                  </h4>
+                  <div class="space-y-3">
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">巨头入局风险</h5>
+                      <p class="text-sm text-gray-600">OpenAI/Google/Notion功能延伸，6-18个月窗口期</p>
+                    </div>
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">API成本失控</h5>
+                      <p class="text-sm text-gray-600">10万用户月成本$45K，刷关行为×10风险</p>
+                    </div>
+                    <div class="bg-white/70 rounded-lg p-4">
+                      <h5 class="font-medium text-gray-800 mb-2">内容质量治理</h5>
+                      <p class="text-sm text-gray-600">垃圾内容、版权侵权、激励扭曲挑战</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <!-- Token Economy Analysis -->
+      <section id="token-economy" class="py-16 px-8 bg-gradient-to-br from-warm-beige to-white">
+        <div class="container mx-auto max-w-5xl">
+          <h2 class="font-serif font-bold text-4xl text-deep-teal mb-12 text-center">代币经济模型的批判性审视</h2>
+
+          <!-- Ideal Loop -->
+          <div class="mb-12">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">设计初衷与理想闭环</h3>
+
+            <div class="bg-white rounded-xl p-8 shadow-lg mb-8">
+              <h4 class="font-serif font-semibold text-xl text-deep-teal mb-6">&#34;学习即挖矿&#34;的行为激励逻辑</h4>
+
+              <div class="mermaid-container">
+                <div class="mermaid-controls">
+                  <button class="mermaid-control-btn zoom-in" title="放大">
+                    <i class="fas fa-search-plus"></i>
+                  </button>
+                  <button class="mermaid-control-btn zoom-out" title="缩小">
+                    <i class="fas fa-search-minus"></i>
+                  </button>
+                  <button class="mermaid-control-btn reset-zoom" title="重置">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                  </button>
+                  <button class="mermaid-control-btn fullscreen" title="全屏查看">
+                    <i class="fas fa-expand"></i>
+                  </button>
+                </div>
+                <div class="mermaid">
+                  graph TD
+                  A[&#34;学习行为&#34;] --&gt; B[&#34;代币产出&#34;]
+                  B --&gt; C[&#34;代币消费&#34;]
+                  C --&gt; D[&#34;AI服务/道具&#34;]
+                  D --&gt; E[&#34;学习效率提升&#34;]
+                  E --&gt; A
+                  B --&gt; F[&#34;价值累积&#34;]
+                  F --&gt; G[&#34;用户粘性&#34;]
+                  G --&gt; A
+
+                  style A fill:#2C5F5D,color:#fff,stroke:#1a3d3b,stroke-width:2px
+                  style B fill:#87A96B,color:#fff,stroke:#5c7a4a,stroke-width:2px
+                  style C fill:#D4AF37,color:#fff,stroke:#b8941f,stroke-width:2px
+                  style D fill:#8B7355,color:#fff,stroke:#6b5a42,stroke-width:2px
+                  style E fill:#2C5F5D,color:#fff,stroke:#1a3d3b,stroke-width:2px
+                  style F fill:#87A96B,color:#fff,stroke:#5c7a4a,stroke-width:2px
+                  style G fill:#D4AF37,color:#fff,stroke:#b8941f,stroke-width:2px
+                </div>
+              </div>
+
+              <div class="grid md:grid-cols-3 gap-6">
+                <div class="text-center p-4 bg-deep-teal/5 rounded-lg">
+                  <h5 class="font-semibold text-deep-teal mb-2">行为产出层</h5>
+                  <p class="text-sm text-gray-700">完成关卡、维持连胜、内容贡献</p>
+                </div>
+                <div class="text-center p-4 bg-sage-green/5 rounded-lg">
+                  <h5 class="font-semibold text-sage-green mb-2">代币消费层</h5>
+                  <p class="text-sm text-gray-700">Streak Freeze、AI额度、高级功能</p>
+                </div>
+                <div class="text-center p-4 bg-muted-gold/5 rounded-lg">
+                  <h5 class="font-semibold text-muted-gold mb-2">价值锚定层</h5>
+                  <p class="text-sm text-gray-700">AI API成本挂钩，动态调节</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Risk Analysis -->
+          <div class="mb-12">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">系统性风险识别</h3>
+
+            <div class="grid lg:grid-cols-2 gap-8 mb-8">
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-red-600 mb-4 flex items-center">
+                  <i class="fas fa-exclamation-triangle mr-2"></i>激励套利风险
+                </h4>
+                <div class="space-y-3">
+                  <div class="border-l-4 border-red-400 pl-3">
+                    <h5 class="font-medium text-sm">垃圾内容上传</h5>
+                    <p class="text-xs text-gray-600">批量低价值文档，存储+处理成本</p>
+                  </div>
+                  <div class="border-l-4 border-orange-400 pl-3">
+                    <h5 class="font-medium text-sm">盲目通关</h5>
+                    <p class="text-xs text-gray-600">自动化脚本、随机点击，学习效果为零</p>
+                  </div>
+                  <div class="border-l-4 border-yellow-400 pl-3">
+                    <h5 class="font-medium text-sm">AI额度套利</h5>
+                    <p class="text-xs text-gray-600">时间价值套利、批量账户，API成本失控</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-orange-600 mb-4 flex items-center">
+                  <i class="fas fa-chart-line-down mr-2"></i>代币通胀风险
+                </h4>
+                <div class="space-y-2 mb-4">
+                  <div class="flex items-center justify-between p-2 bg-red-50 rounded">
+                    <span class="text-sm">早期：代币获取容易</span>
+                    <i class="fas fa-arrow-up text-red-500"></i>
+                  </div>
+                  <div class="flex items-center justify-between p-2 bg-orange-50 rounded">
+                    <span class="text-sm">中期：囤积观望</span>
+                    <i class="fas fa-arrow-down text-orange-500"></i>
+                  </div>
+                  <div class="flex items-center justify-between p-2 bg-yellow-50 rounded">
+                    <span class="text-sm">后期：感知贬值</span>
+                    <i class="fas fa-arrow-down text-yellow-500"></i>
+                  </div>
+                  <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <span class="text-sm">崩溃：信任崩塌</span>
+                    <i class="fas fa-times text-gray-500"></i>
+                  </div>
+                </div>
+                <p class="text-xs text-gray-600">历史教训：P2E游戏日抛售量超流通量300%，价格24小时归零 <a href="#" class="citation-link">[25]</a>
+                </p>
+              </div>
+            </div>
+
+            <!-- Cost Analysis -->
+            <div class="bg-white rounded-xl p-8 shadow-lg">
+              <h4 class="font-serif font-semibold text-xl text-deep-teal mb-6">API成本敞口量化分析</h4>
+              <div class="grid md:grid-cols-2 gap-8">
+                <div>
+                  <h5 class="font-semibold text-gray-800 mb-4">正常运营成本</h5>
+                  <div class="space-y-3">
+                    <div class="flex justify-between items-center p-3 bg-blue-50 rounded">
+                      <span class="text-sm">用户日均关卡</span>
+                      <span class="font-bold text-blue-600">5关 × 10代币</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-green-50 rounded">
+                      <span class="text-sm">每日代币产出</span>
+                      <span class="font-bold text-green-600">50代币</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-yellow-50 rounded">
+                      <span class="text-sm">等效GPT-4调用</span>
+                      <span class="font-bold text-yellow-600">0.5次 × $0.03</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-gray-100 rounded">
+                      <span class="text-sm font-medium">月成本/用户</span>
+                      <span class="font-bold text-gray-800">$0.45</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h5 class="font-semibold text-gray-800 mb-4">刷关攻击成本（×10倍）</h5>
+                  <div class="space-y-3">
+                    <div class="flex justify-between items-center p-3 bg-red-50 rounded">
+                      <span class="text-sm">日成本/用户</span>
+                      <span class="font-bold text-red-600">$0.15 → $1.50</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-red-100 rounded">
+                      <span class="text-sm">月成本/用户</span>
+                      <span class="font-bold text-red-700">$4.50 → $45.00</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-red-200 rounded">
+                      <span class="text-sm font-medium">10万用户月成本</span>
+                      <span class="font-bold text-red-800">$4.5万 → $45万</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p class="text-sm text-red-800">
+                  <i class="fas fa-exclamation-triangle mr-2"></i>
+                  <strong>风险警示：</strong>刷关行为可使月度成本增加10倍，可能导致财务模型崩溃，必须通过多重风控机制防范。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Risk Control Mechanisms -->
+          <div class="mb-12">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">风控机制设计建议</h3>
+
+            <div class="grid lg:grid-cols-3 gap-8">
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-deep-teal mb-4 flex items-center">
+                  <i class="fas fa-filter mr-2"></i>内容质量评估
+                </h4>
+                <div class="space-y-3">
+                  <div class="flex items-center p-2 bg-gray-50 rounded">
+                    <span class="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold mr-3">L1</span>
+                    <div>
+                      <h5 class="font-medium text-sm">自动预筛</h5>
+                      <p class="text-xs text-gray-600">文件类型/大小/元数据验证</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center p-2 bg-gray-50 rounded">
+                    <span class="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center text-xs font-bold mr-3">L2</span>
+                    <div>
+                      <h5 class="font-medium text-sm">内容指纹</h5>
+                      <p class="text-xs text-gray-600">与垃圾内容库比对</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center p-2 bg-gray-50 rounded">
+                    <span class="w-8 h-8 bg-yellow-500 text-white rounded-full flex items-center justify-center text-xs font-bold mr-3">L3</span>
+                    <div>
+                      <h5 class="font-medium text-sm">语义分析</h5>
+                      <p class="text-xs text-gray-600">质量评分影响代币产出</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-sage-green mb-4 flex items-center">
+                  <i class="fas fa-eye mr-2"></i>行为模式监测
+                </h4>
+                <div class="space-y-3">
+                  <div class="p-3 bg-green-50 rounded">
+                    <h5 class="font-medium text-sm mb-1">正常模式</h5>
+                    <p class="text-xs text-gray-600">注意力波动，非规律间隔，错误模式合理</p>
+                  </div>
+                  <div class="p-3 bg-red-50 rounded">
+                    <h5 class="font-medium text-sm mb-1">异常指标</h5>
+                    <p class="text-xs text-gray-600">过于规律点击，随机分布错误，零互动通关</p>
+                  </div>
+                  <div class="p-3 bg-gray-100 rounded">
+                    <h5 class="font-medium text-sm mb-1">响应梯度</h5>
+                    <p class="text-xs text-gray-600">黄色预警 → 橙色冻结 → 红色封禁</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-muted-gold mb-4 flex items-center">
+                  <i class="fas fa-balance-scale mr-2"></i>动态调节机制
+                </h4>
+                <div class="space-y-3">
+                  <div class="p-3 bg-blue-50 rounded">
+                    <h5 class="font-medium text-sm mb-1">算法稳定</h5>
+                    <p class="text-xs text-gray-600">根据流通速度、兑换率动态调整产出</p>
+                  </div>
+                  <div class="p-3 bg-purple-50 rounded">
+                    <h5 class="font-medium text-sm mb-1">销毁机制</h5>
+                    <p class="text-xs text-gray-600">兑换AI额度时部分代币永久燃烧</p>
+                  </div>
+                  <div class="p-3 bg-indigo-50 rounded">
+                    <h5 class="font-medium text-sm mb-1">储备金制度</h5>
+                    <p class="text-xs text-gray-600">订阅收入作为代币价值储备</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <!-- Customer Analysis -->
+      <section id="customer-analysis" class="py-16 px-8">
+        <div class="container mx-auto max-w-6xl">
+          <h2 class="font-serif font-bold text-4xl text-deep-teal mb-12 text-center">客户分析</h2>
+
+          <!-- User Personas -->
+          <div id="user-personas" class="mb-16">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">动态用户画像</h3>
+
+            <div class="space-y-12">
+              <!-- Persona A -->
+              <div class="bg-white rounded-xl p-8 shadow-lg">
+                <div class="flex items-start space-x-6">
+                  <div class="w-16 h-16 bg-deep-teal/10 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-briefcase text-2xl text-deep-teal"></i>
+                  </div>
+                  <div class="flex-1">
+                    <h4 class="font-serif font-bold text-xl text-deep-teal mb-2">画像A：职场冲刺者</h4>
+                    <p class="text-gray-700 mb-4 leading-relaxed">
+                      需要快速消化行业报告/合规文档的知识工作者，痛点是阅读枯燥，爽点是通过代币换取&#34;AI总结提取&#34;功能。
+                    </p>
+
+                    <div class="grid md:grid-cols-3 gap-6">
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">核心场景</h5>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                          <li>• 财报季消化50+公司年报</li>
+                          <li>• 项目周期熟悉客户行业</li>
+                          <li>• 跟踪法规变化确保合规</li>
+                          <li>• 快速掌握新技术领域</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">付费驱动</h5>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                          <li>• 时间节省价值感知</li>
+                          <li>• 错误规避风险成本</li>
+                          <li>• 职业信号前沿性</li>
+                          <li>• 学习可追踪证明</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">代币偏好</h5>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                          <li>• AI深度总结（高优先级）</li>
+                          <li>• Streak Freeze（忙碌期）</li>
+                          <li>• 排行榜/社交展示</li>
+                          <li>• 虚拟装饰（低优先级）</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Persona B -->
+              <div class="bg-white rounded-xl p-8 shadow-lg">
+                <div class="flex items-start space-x-6">
+                  <div class="w-16 h-16 bg-sage-green/10 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-graduation-cap text-2xl text-sage-green"></i>
+                  </div>
+                  <div class="flex-1">
+                    <h4 class="font-serif font-bold text-xl text-sage-green mb-2">画像B：备考刷题党</h4>
+                    <p class="text-gray-700 mb-4 leading-relaxed">
+                      上传教纲和题库的考试准备者，极度需要&#34;打卡冻结&#34;来缓解断更焦虑，目标明确性与时间紧迫感驱动活跃度。
+                    </p>
+
+                    <div class="grid md:grid-cols-3 gap-6">
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">备考周期</h5>
+                        <div class="space-y-2 text-xs">
+                          <div class="flex justify-between">
+                            <span>信息搜集期（6-12个月）</span>
+                            <span class="text-sage-green">低频浏览</span>
+                          </div>
+                          <div class="flex justify-between">
+                            <span>基础学习期（3-6个月）</span>
+                            <span class="text-blue-500">习惯建立</span>
+                          </div>
+                          <div class="flex justify-between">
+                            <span>强化冲刺期（1-3个月）</span>
+                            <span class="text-orange-500">高强度每日</span>
+                          </div>
+                          <div class="flex justify-between">
+                            <span>临考焦虑期（2-4周）</span>
+                            <span class="text-red-500">活跃峰值</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">心理依赖</h5>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                          <li>• 连胜=进度保障+身份认同</li>
+                          <li>• 中断焦虑来源：时间冲突</li>
+                          <li>• 冻结使用场景：可预见busy期</li>
+                          <li>• 付费决策：投资/保险框架</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">关键数据</h5>
+                        <div class="space-y-2 text-sm">
+                          <div class="flex justify-between">
+                            <span>7天连胜用户完成率</span>
+                            <span class="font-bold text-green-600">3.6倍</span>
+                          </div>
+                          <div class="flex justify-between">
+                            <span>次日继续可能性</span>
+                            <span class="font-bold text-blue-600">2.4倍</span>
+                          </div>
+                          <div class="flex justify-between">
+                            <span>最长连胜记录</span>
+                            <span class="font-bold text-purple-600">4761天</span>
+                          </div>
+                        </div>
+                        <p class="text-xs text-gray-600 mt-2">数据来源 <a href="#" class="citation-link">[386]</a>
+                          <a href="#" class="citation-link">[434]</a>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Persona C -->
+              <div class="bg-white rounded-xl p-8 shadow-lg">
+                <div class="flex items-start space-x-6">
+                  <div class="w-16 h-16 bg-muted-gold/10 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-archive text-2xl text-muted-gold"></i>
+                  </div>
+                  <div class="flex-1">
+                    <h4 class="font-serif font-bold text-xl text-muted-gold mb-2">画像C：知识囤积狂</h4>
+                    <p class="text-gray-700 mb-4 leading-relaxed">
+                      喜欢在Notion囤积资料但从不消化的知识管理极客，需要游戏机制来&#34;强制&#34;消费自己收藏的内容，收藏癖与行动力存在断裂。
+                    </p>
+
+                    <div class="grid md:grid-cols-3 gap-6">
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">行为悖论</h5>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                          <li>• 收藏强迫：持续输入RSS/邮件</li>
+                          <li>• 整理满足：优化标签系统 <a href="#" class="citation-link">[4]</a>
+                          </li>
+                          <li>• 消费回避：&#34;以后再看&#34;心理</li>
+                          <li>• 工具游牧：寻找更好工具</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">神经科学解释</h5>
+                        <div class="space-y-2 text-xs">
+                          <div class="flex items-center">
+                            <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                            <span>发现内容：多巴胺预期释放</span>
+                          </div>
+                          <div class="flex items-center">
+                            <div class="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                            <span>收藏整理：预期奖励满足</span>
+                          </div>
+                          <div class="flex items-center">
+                            <div class="w-2 h-2 bg-orange-500 rounded-full mr-2"></div>
+                            <span>面对消费：认知负荷预警</span>
+                          </div>
+                          <div class="flex items-center">
+                            <div class="w-2 h-2 bg-gray-400 rounded-full mr-2"></div>
+                            <span>彻底遗忘：无反馈无惩罚</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <h5 class="font-semibold text-gray-800 mb-2">&#34;温柔强制&#34;设计</h5>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                          <li>• 收藏即&#34;债务&#34;：设消费期限 <a href="#" class="citation-link">[135]</a>
+                          </li>
+                          <li>• 知识&#34;保鲜度&#34;：时间衰减可视化</li>
+                          <li>• 收藏-消费比率追踪</li>
+                          <li>• 游戏化强制消费会话</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Acquisition Channels -->
+          <div id="acquisition-channels" class="mb-16">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">获客渠道与低成本策略</h3>
+
+            <div class="grid lg:grid-cols-2 gap-8 mb-8">
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-deep-teal mb-4">目标社区精准定位</h4>
+                <div class="space-y-4">
+                  <div class="border-l-4 border-red-400 pl-4">
+                    <h5 class="font-medium text-gray-800">Anki生态</h5>
+                    <p class="text-xs text-gray-600">百度贴吧、Reddit r/Anki、医学考研论坛</p>
+                  </div>
+                  <div class="border-l-4 border-blue-400 pl-4">
+                    <h5 class="font-medium text-gray-800">效率工具社群</h5>
+                    <p class="text-xs text-gray-600">Notion/Obsidian用户聚集地</p>
+                  </div>
+                  <div class="border-l-4 border-purple-400 pl-4">
+                    <h5 class="font-medium text-gray-800">中文创作者社区</h5>
+                    <p class="text-xs text-gray-600">少数派/即刻/知乎/B站学习区</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl p-6 shadow-lg">
+                <h4 class="font-serif font-semibold text-lg text-sage-green mb-4">&#34;特洛伊木马&#34;内容营销</h4>
+                <div class="space-y-4">
+                  <div class="p-3 bg-blue-50 rounded">
+                    <h5 class="font-medium text-sm mb-1">NotebookLM痛点拦截</h5>
+                    <p class="text-xs text-gray-600">SEO关键词布局，Reddit监测，案例内容制作</p>
+                  </div>
+                  <div class="p-3 bg-green-50 rounded">
+                    <h5 class="font-medium text-sm mb-1">知识游戏化教程</h5>
+                    <p class="text-xs text-gray-600">方法论系列，工具组合工作流，用户故事</p>
+                  </div>
+                  <div class="p-3 bg-purple-50 rounded">
+                    <h5 class="font-medium text-sm mb-1">批判EdTech叙事</h5>
+                    <p class="text-xs text-gray-600">播客/视频，创始人访谈，行业分析</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Community Strategy -->
+            <div class="bg-gradient-to-r from-deep-teal/5 to-sage-green/5 rounded-xl p-8">
+              <h4 class="font-serif font-semibold text-xl text-deep-teal mb-6">垂直领域玩家的生态位合作路径</h4>
+              <div class="grid md:grid-cols-3 gap-6">
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-deep-teal/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-handshake text-2xl text-deep-teal"></i>
+                  </div>
+                  <h5 class="font-semibold text-deep-teal mb-2">内容桥接协议</h5>
+                  <p class="text-sm text-gray-700">垂直工具内容一键导入，丰富内容生态</p>
+                </div>
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-sage-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-users text-2xl text-sage-green"></i>
+                  </div>
+                  <h5 class="font-semibold text-sage-green mb-2">联合会员体系</h5>
+                  <p class="text-sm text-gray-700">会员互惠，双向增值，共享用户基础</p>
+                </div>
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-muted-gold/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-cogs text-2xl text-muted-gold"></i>
+                  </div>
+                  <h5 class="font-semibold text-muted-gold mb-2">白标解决方案</h5>
+                  <p class="text-sm text-gray-700">游戏化引擎SDK输出，B2B收入扩展</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Core Hook Analysis -->
+          <div id="core-hook" class="mb-16">
+            <h3 class="font-serif font-bold text-2xl text-soft-brown mb-8">核心抓手深度评估</h3>
+
+            <div class="bg-white rounded-xl p-8 shadow-lg mb-8">
+              <h4 class="font-serif font-semibold text-xl text-deep-teal mb-6">&#34;代币换AI额度&#34;价值主张</h4>
+
+              <div class="grid md:grid-cols-2 gap-8">
+                <div>
+                  <h5 class="font-semibold text-gray-800 mb-4">高净值用户吸引力</h5>
+                  <div class="space-y-3">
+                    <div class="p-3 bg-blue-50 rounded">
+                      <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm font-medium">碎片时间经济回报</span>
+                        <span class="text-green-600 font-bold">$1.50-3.00/月</span>
+                      </div>
+                      <p class="text-xs text-gray-600">边际成本为零，机会成本转化</p>
+                    </div>
+                    <div class="p-3 bg-green-50 rounded">
+                      <h6 class="font-medium text-sm mb-1">复合收益模型</h6>
+                      <p class="text-xs text-gray-600">学习→能力→AI辅助→更多学习</p>
+                    </div>
+                    <div class="p-3 bg-purple-50 rounded">
+                      <h6 class="font-medium text-sm mb-1">心理账户转换</h6>
+                      <p class="text-xs text-gray-600">&#34;AI支出&#34;→&#34;学习收益&#34;，消费阻力降低</p>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h5 class="font-semibold text-gray-800 mb-4">价格敏感用户钩子</h5>
+                  <div class="space-y-3">
+                    <div class="p-3 bg-gray-50 rounded">
+                      <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm font-medium">ChatGPT Plus替代</span>
+                        <span class="text-red-600 font-bold">$20/月 vs $0</span>
+                      </div>
+                      <p class="text-xs text-gray-600">&#34;赚取&#34;而非&#34;购买&#34;，心理成本低</p>
+                    </div>
+                    <div class="p-3 bg-yellow-50 rounded">
+                      <h6 class="font-medium text-sm mb-1">渐进难度曲线</h6>
+                      <p class="text-xs text-gray-600">早期高产出建立&#34;可赚取&#34;感知</p>
+                    </div>
+                    <div class="p-3 bg-orange-50 rounded">
+                      <h6 class="font-medium text-sm mb-1">碎片时间变现</h6>
+                      <p class="text-xs text-gray-600">通勤时间等死时间转化为价值</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Long-term Stickiness -->
+            <div class="bg-gradient-to-br from-deep-teal/5 to-sage-green/5 rounded-xl p-8">
+              <h4 class="font-serif font-semibold text-xl text-deep-teal mb-6">长期用户粘性的机制保障</h4>
+              <div class="grid md:grid-cols-5 gap-4">
+                <div class="text-center p-4 bg-white/70 rounded-lg">
+                  <i class="fas fa-database text-2xl text-deep-teal mb-2"></i>
+                  <h5 class="font-semibold text-gray-800 text-sm mb-1">数据累积</h5>
+                  <p class="text-xs text-gray-600">学习档案、知识图谱、迁移成本</p>
+                </div>
+                <div class="text-center p-4 bg-white/70 rounded-lg">
+                  <i class="fas fa-users text-2xl text-sage-green mb-2"></i>
+                  <h5 class="font-semibold text-gray-800 text-sm mb-1">社交关系</h5>
+                  <p class="text-xs text-gray-600">好友连胜、学习小组、网络效应</p>
+                </div>
+                <div class="text-center p-4 bg-white/70 rounded-lg">
+                  <i class="fas fa-user-graduate text-2xl text-muted-gold mb-2"></i>
+                  <h5 class="font-semibold text-gray-800 text-sm mb-1">身份建构</h5>
+                  <p class="text-xs text-gray-600">&#34;学习者&#34;自我叙事、成就展示</p>
+                </div>
+                <div class="text-center p-4 bg-white/70 rounded-lg">
+                  <i class="fas fa-coins text-2xl text-orange-600 mb-2"></i>
+                  <h5 class="font-semibold text-gray-800 text-sm mb-1">经济投入</h5>
+                  <p class="text-xs text-gray-600">代币积累、订阅付费、沉没成本</p>
+                </div>
+                <div class="text-center p-4 bg-white/70 rounded-lg">
+                  <i class="fas fa-network-wired text-2xl text-purple-600 mb-2"></i>
+                  <h5 class="font-semibold text-gray-800 text-sm mb-1">生态依赖</h5>
+                  <p class="text-xs text-gray-600">第三方集成、创作者经济</p>
+                </div>
+              </div>
+
+              <div class="mt-6 p-4 bg-deep-teal/10 rounded-lg">
+                <p class="text-center text-deep-teal font-medium">
+                  <i class="fas fa-quote-left mr-2"></i>
+                  终极防御：用户不仅在使用工具，更在成为&#34;持续学习的自己&#34;——这一身份认同的构建，是任何功能复制难以攻破的护城河。
+                  <i class="fas fa-quote-right ml-2"></i>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Conclusion -->
+      <section class="py-16 px-8 bg-gradient-to-br from-deep-teal/10 to-sage-green/10">
+        <div class="container mx-auto max-w-4xl text-center">
+          <h2 class="font-serif font-bold text-3xl text-deep-teal mb-8">战略总结</h2>
+          <div class="pull-quote text-left">
+            <p class="text-lg leading-relaxed mb-6">
+              <strong>UGC游戏化知识引擎处于被严重低估的蓝海市场</strong>——&#34;想学自己资料但受不了Anki枯燥&#34;的知识工作者群体。
+              核心机会在于：用Duolingo验证的游戏化机制（连胜、代币、排行榜）激活NotebookLM/Notion用户&#34;沉睡&#34;的私有内容，
+              同时用&#34;代币换AI额度&#34;创造真实经济闭环。
+            </p>
+            <p class="text-lg leading-relaxed text-red-700 font-medium">
+              <i class="fas fa-exclamation-triangle mr-2"></i>
+              最大风险是<strong>代币经济的死亡螺旋</strong>（API成本失控、激励套利、通胀崩塌），
+              必须通过动态定价、行为验证、分层配额三重机制严控。
+            </p>
+            <p class="text-lg leading-relaxed mt-6">
+              <strong>独立开发者的生存策略</strong>是<strong>速度壁垒+社区护城河</strong>，在巨头反应前建立&#34;游戏化生产力&#34;的品类心智。
+            </p>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-8 mt-12">
+            <div class="bg-white rounded-xl p-6 shadow-lg">
+              <i class="fas fa-rocket text-3xl text-deep-teal mb-4"></i>
+              <h3 class="font-serif font-bold text-lg text-deep-teal mb-2">执行重点</h3>
+              <p class="text-gray-700">速度优先，快速建立品类认知与用户粘性</p>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-lg">
+              <i class="fas fa-shield-alt text-3xl text-sage-green mb-4"></i>
+              <h3 class="font-serif font-bold text-lg text-sage-green mb-2">风控核心</h3>
+              <p class="text-gray-700">代币经济健康度是产品存亡的关键</p>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-lg">
+              <i class="fas fa-users text-3xl text-muted-gold mb-4"></i>
+              <h3 class="font-serif font-bold text-lg text-muted-gold mb-2">社区驱动</h3>
+              <p class="text-gray-700">深度社区运营建立不可替代的用户关系</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="py-8 px-8 bg-gray-800 text-white">
+        <div class="container mx-auto max-w-4xl text-center">
+          <p class="text-gray-300">
+            本报告基于深度市场研究与用户行为分析，为UGC游戏化知识引擎提供战略指导。
+          </p>
+          <div class="mt-4 text-sm text-gray-400">
+            <span>报告日期：2026-02-25</span>
+            <span class="mx-4">|</span>
+            <span>数据来源：行业报告、用户调研、竞品分析</span>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <script>
+        // Initialize Mermaid with improved styling and contrast
+        if (window.mermaid && typeof mermaid.initialize === 'function') {
+            mermaid.initialize({ 
+                startOnLoad: true, 
+                theme: 'base',
+                themeVariables: {
+                    // Primary colors with good contrast
+                    primaryColor: '#2C5F5D',
+                    primaryTextColor: '#FFFFFF',
+                    primaryBorderColor: '#1a3d3b',
+                    
+                    // Secondary colors
+                    secondaryColor: '#87A96B',
+                    secondaryTextColor: '#FFFFFF',
+                    secondaryBorderColor: '#5c7a4a',
+                    
+                    // Tertiary colors
+                    tertiaryColor: '#D4AF37',
+                    tertiaryTextColor: '#FFFFFF',
+                    tertiaryBorderColor: '#b8941f',
+                    
+                    // Additional colors for variety
+                    primaryColorLight: '#3a7d7b',
+                    secondaryColorLight: '#96b87a',
+                    tertiaryColorLight: '#e0c252',
+                    
+                    // Background and lines
+                    background: '#FFFFFF',
+                    mainBkg: '#FFFFFF',
+                    lineColor: '#374151',
+                    
+                    // Text colors for better readability
+                    textColor: '#111827',
+                    nodeTextColor: '#FFFFFF',
+                    
+                    // Ensure high contrast for different node types
+                    cScale0: '#2C5F5D',
+                    cScale1: '#87A96B', 
+                    cScale2: '#D4AF37',
+                    cScale3: '#8B7355',
+                    cScale4: '#3B82F6',
+                    cScale5: '#10B981',
+                    cScale6: '#F59E0B',
+                    cScale7: '#EF4444',
+                    
+                    // Text colors for each scale (ensuring contrast)
+                    cScaleLabel0: '#FFFFFF',
+                    cScaleLabel1: '#FFFFFF',
+                    cScaleLabel2: '#FFFFFF', 
+                    cScaleLabel3: '#FFFFFF',
+                    cScaleLabel4: '#FFFFFF',
+                    cScaleLabel5: '#FFFFFF',
+                    cScaleLabel6: '#FFFFFF',
+                    cScaleLabel7: '#FFFFFF'
+                },
+                flowchart: {
+                    useMaxWidth: true,
+                    htmlLabels: true,
+                    curve: 'basis',
+                    padding: 20,
+                    nodeSpacing: 50,
+                    rankSpacing: 80,
+                    diagramPadding: 20
+                },
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 14,
+                fontWeight: 600
+            });
+        }
+
+        // Initialize Mermaid Controls for zoom and pan
+        function initializeMermaidControls() {
+            const containers = document.querySelectorAll('.mermaid-container');
+
+            containers.forEach(container => {
+            const mermaidElement = container.querySelector('.mermaid');
+            let scale = 1;
+            let isDragging = false;
+            let startX, startY, translateX = 0, translateY = 0;
+
+            // 触摸相关状态
+            let isTouch = false;
+            let touchStartTime = 0;
+            let initialDistance = 0;
+            let initialScale = 1;
+            let isPinching = false;
+
+            // Zoom controls
+            const zoomInBtn = container.querySelector('.zoom-in');
+            const zoomOutBtn = container.querySelector('.zoom-out');
+            const resetBtn = container.querySelector('.reset-zoom');
+            const fullscreenBtn = container.querySelector('.fullscreen');
+
+            function updateTransform() {
+                mermaidElement.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+
+                if (scale > 1) {
+                container.classList.add('zoomed');
+                } else {
+                container.classList.remove('zoomed');
+                }
+
+                mermaidElement.style.cursor = isDragging ? 'grabbing' : 'grab';
+            }
+
+            if (zoomInBtn) {
+                zoomInBtn.addEventListener('click', () => {
+                scale = Math.min(scale * 1.25, 4);
+                updateTransform();
+                });
+            }
+
+            if (zoomOutBtn) {
+                zoomOutBtn.addEventListener('click', () => {
+                scale = Math.max(scale / 1.25, 0.3);
+                if (scale <= 1) {
+                    translateX = 0;
+                    translateY = 0;
+                }
+                updateTransform();
+                });
+            }
+
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                scale = 1;
+                translateX = 0;
+                translateY = 0;
+                updateTransform();
+                });
+            }
+
+            if (fullscreenBtn) {
+                fullscreenBtn.addEventListener('click', () => {
+                if (container.requestFullscreen) {
+                    container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) {
+                    container.webkitRequestFullscreen();
+                } else if (container.msRequestFullscreen) {
+                    container.msRequestFullscreen();
+                }
+                });
+            }
+
+            // Mouse Events
+            mermaidElement.addEventListener('mousedown', (e) => {
+                if (isTouch) return; // 如果是触摸设备，忽略鼠标事件
+
+                isDragging = true;
+                startX = e.clientX - translateX;
+                startY = e.clientY - translateY;
+                mermaidElement.style.cursor = 'grabbing';
+                updateTransform();
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging && !isTouch) {
+                translateX = e.clientX - startX;
+                translateY = e.clientY - startY;
+                updateTransform();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging && !isTouch) {
+                isDragging = false;
+                mermaidElement.style.cursor = 'grab';
+                updateTransform();
+                }
+            });
+
+            document.addEventListener('mouseleave', () => {
+                if (isDragging && !isTouch) {
+                isDragging = false;
+                mermaidElement.style.cursor = 'grab';
+                updateTransform();
+                }
+            });
+
+            // 获取两点之间的距离
+            function getTouchDistance(touch1, touch2) {
+                return Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+                );
+            }
+
+            // Touch Events - 触摸事件处理
+            mermaidElement.addEventListener('touchstart', (e) => {
+                isTouch = true;
+                touchStartTime = Date.now();
+
+                if (e.touches.length === 1) {
+                // 单指拖动
+                isPinching = false;
+                isDragging = true;
+
+                const touch = e.touches[0];
+                startX = touch.clientX - translateX;
+                startY = touch.clientY - translateY;
+
+                } else if (e.touches.length === 2) {
+                // 双指缩放
+                isPinching = true;
+                isDragging = false;
+
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                initialDistance = getTouchDistance(touch1, touch2);
+                initialScale = scale;
+                }
+
+                e.preventDefault();
+            }, { passive: false });
+
+            mermaidElement.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 1 && isDragging && !isPinching) {
+                // 单指拖动
+                const touch = e.touches[0];
+                translateX = touch.clientX - startX;
+                translateY = touch.clientY - startY;
+                updateTransform();
+
+                } else if (e.touches.length === 2 && isPinching) {
+                // 双指缩放
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                const currentDistance = getTouchDistance(touch1, touch2);
+
+                if (initialDistance > 0) {
+                    const newScale = Math.min(Math.max(
+                    initialScale * (currentDistance / initialDistance),
+                    0.3
+                    ), 4);
+                    scale = newScale;
+                    updateTransform();
+                }
+                }
+
+                e.preventDefault();
+            }, { passive: false });
+
+            mermaidElement.addEventListener('touchend', (e) => {
+                // 重置状态
+                if (e.touches.length === 0) {
+                isDragging = false;
+                isPinching = false;
+                initialDistance = 0;
+
+                // 延迟重置isTouch，避免鼠标事件立即触发
+                setTimeout(() => {
+                    isTouch = false;
+                }, 100);
+                } else if (e.touches.length === 1 && isPinching) {
+                // 从双指变为单指，切换为拖动模式
+                isPinching = false;
+                isDragging = true;
+
+                const touch = e.touches[0];
+                startX = touch.clientX - translateX;
+                startY = touch.clientY - translateY;
+                }
+
+                updateTransform();
+            });
+
+            mermaidElement.addEventListener('touchcancel', (e) => {
+                isDragging = false;
+                isPinching = false;
+                initialDistance = 0;
+
+                setTimeout(() => {
+                isTouch = false;
+                }, 100);
+
+                updateTransform();
+            });
+
+            // Enhanced wheel zoom with better center point handling
+            container.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const rect = container.getBoundingClientRect();
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                const newScale = Math.min(Math.max(scale * delta, 0.3), 4);
+
+                // Adjust translation to zoom towards center
+                if (newScale !== scale) {
+                const scaleDiff = newScale / scale;
+                translateX = translateX * scaleDiff;
+                translateY = translateY * scaleDiff;
+                scale = newScale;
+
+                if (scale <= 1) {
+                    translateX = 0;
+                    translateY = 0;
+                }
+
+                updateTransform();
+                }
+            });
+
+            // Initialize display
+            updateTransform();
+            });
+        }
+
+        // Initialize mermaid controls after DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeMermaidControls();
+        });
+
+        const tocSidebar = document.getElementById('toc-sidebar');
+        const tocToggle = document.getElementById('toc-toggle');
+        const tocOverlay = document.getElementById('toc-overlay');
+        const tocLinks = Array.from(document.querySelectorAll('.toc-sidebar a[href^="#"]'))
+            .filter(link => {
+                const href = link.getAttribute('href');
+                return href && href !== '#';
+            });
+
+        function setTocOpen(isOpen) {
+            if (!tocSidebar || !tocToggle || !tocOverlay) return;
+            tocSidebar.classList.toggle('open', isOpen);
+            tocOverlay.classList.toggle('open', isOpen);
+            tocToggle.setAttribute('aria-expanded', String(isOpen));
+        }
+
+        if (tocToggle && tocSidebar && tocOverlay) {
+            tocToggle.addEventListener('click', () => {
+                const isOpen = tocSidebar.classList.contains('open');
+                setTocOpen(!isOpen);
+            });
+
+            tocOverlay.addEventListener('click', () => {
+                setTocOpen(false);
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    setTocOpen(false);
+                }
+            });
+        }
+
+        // Smooth scrolling for TOC anchor links
+        tocLinks.forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                const href = this.getAttribute('href');
+                if (!href || href === '#') return;
+
+                const target = document.querySelector(href);
+                if (!target) return;
+
+                e.preventDefault();
+                target.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+
+                if (window.innerWidth <= 768) {
+                    setTocOpen(false);
+                }
+            });
+        });
+
+        // Highlight active section in TOC
+        const trackedTargets = tocLinks
+            .map(link => document.querySelector(link.getAttribute('href')))
+            .filter(Boolean);
+
+        function highlightActiveSection() {
+            let current = '';
+            trackedTargets.forEach(target => {
+                const targetTop = target.offsetTop;
+                if (window.scrollY >= (targetTop - 200)) {
+                    current = target.getAttribute('id');
+                }
+            });
+
+            tocLinks.forEach(link => {
+                link.classList.remove('bg-deep-teal/20', 'text-deep-teal');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('bg-deep-teal/20', 'text-deep-teal');
+                }
+            });
+        }
+
+        window.addEventListener('scroll', highlightActiveSection);
+        window.addEventListener('resize', highlightActiveSection);
+        highlightActiveSection(); // Initial call
+
+        // Citation click handlers
+        document.querySelectorAll('.citation-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                // In a real implementation, this would show citation details
+                alert('Citation: ' + this.textContent + '\n\nIn a real implementation, this would link to the actual source or show citation details.');
+            });
+        });
+    </script>
+  
+
+</body>
+
+</html>

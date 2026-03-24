@@ -1,0 +1,47 @@
+- generic [ref=e5]:
+  - generic [ref=e40]:
+    - status [ref=e48]: Screenreader support for the board is currently disabled. To enable it via Accessibility settings, press Ctrl+K, type Accessibility Settings, and press Enter. To see available keyboard shortcuts, enter Ctrl+Shift+Question mark .
+    - region "Left sidebar" [ref=e50]:
+      - separator [ref=e54]
+    - generic [ref=e118]:
+      - button "100%, zoom and view options" [ref=e121]:
+        - generic [ref=e122]:
+          - generic [ref=e123]: 100%
+          - img [ref=e125]
+      - generic [ref=e128]:
+        - generic [ref=e129]:
+          - button "Present" [ref=e130]:
+            - generic:
+              - img
+          - button "Prototype view" [ref=e131]:
+            - generic:
+              - img
+        - button "Share" [ref=e133]:
+          - generic:
+            - generic:
+              - generic: Share
+    - img [ref=e139]
+  - status
+  - group [ref=e145]:
+    - alert [ref=e147]
+    - alert [ref=e149]
+  - region "Help/zoom toolbar" [ref=e33]:
+    - toolbar "Help/zoom toolbar" [ref=e35]:
+      - button "Help" [ref=e37]:
+        - img
+  - region "Consent Manager" [ref=e151]:
+    - generic [ref=e152]:
+      - text: This website uses cookies, pixel tags, and local storage for performance, personalization, and marketing purposes. We use our own cookies and some from third parties. Only essential cookies are turned on by default.
+      - link "Cookies settings" [ref=e153]:
+        - /url: /consent-preferences/
+    - generic [ref=e154]:
+      - button "Do not allow cookies" [ref=e155]:
+        - generic:
+          - generic:
+            - generic: Do not allow cookies
+      - button "Allow all cookies" [ref=e156]:
+        - generic:
+          - generic:
+            - generic: Allow all cookies
+    - button [ref=e158]:
+      - img [ref=e160]

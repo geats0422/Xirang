@@ -1,0 +1,850 @@
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+  --> app\api\v1\auth.py:57:9
+   |
+55 |         }
+56 |     except DuplicateIdentityError as e:
+57 |         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+  --> app\api\v1\auth.py:86:9
+   |
+84 |         }
+85 |     except InvalidCredentialsError as e:
+86 |         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+   --> app\api\v1\auth.py:107:9
+    |
+105 |         }
+106 |     except InvalidTokenError as e:
+107 |         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+   --> app\api\v1\auth.py:145:9
+    |
+143 |         }
+144 |     except InvalidTokenError as e:
+145 |         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+  --> app\api\v1\documents.py:88:9
+   |
+86 |         }
+87 |     except Exception as e:
+88 |         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+   --> app\api\v1\documents.py:115:9
+    |
+113 |         }
+114 |     except Exception as e:
+115 |         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+ --> app\services\auth\passwords.py:1:1
+  |
+1 | from passlib.context import CryptContext
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2 |
+3 | class PasswordService:
+  |
+help: Organize imports
+
+TC005 [*] Found empty type-checking block
+  --> app\services\auth\service.py:11:5
+   |
+10 | if TYPE_CHECKING:
+11 |     pass
+   |     ^^^^
+12 |
+13 | class AuthServiceError(Exception):
+   |
+help: Delete empty type-checking block
+
+F841 Local variable `session_id` is assigned to but never used
+  --> app\services\auth\service.py:68:9
+   |
+66 |         await self._repository.create_settings_for_user(user_id=user.id)
+67 |         await self._repository.create_wallet_for_user(user_id=user.id)
+68 |         session_id = uuid4()
+   |         ^^^^^^^^^^
+69 |         session_token = self._token_service.create_session_token()
+70 |         session_token_hash = self._token_service.hash_token(session_token)
+   |
+help: Remove assignment to unused variable `session_id`
+
+F841 Local variable `session_id` is assigned to but never used
+  --> app\services\auth\service.py:93:9
+   |
+91 |             raise InvalidCredentialsError("Invalid credentials")
+92 |         await self._repository.update_last_login(user_id=user.id, last_login_at=datetime.now(UTC))
+93 |         session_id = uuid4()
+   |         ^^^^^^^^^^
+94 |         session_token = self._token_service.create_session_token()
+95 |         session_token_hash = self._token_service.hash_token(session_token)
+   |
+help: Remove assignment to unused variable `session_id`
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+   --> app\services\auth\service.py:118:13
+    |
+116 |             if isinstance(e, InvalidTokenError):
+117 |                 raise
+118 |             raise InvalidTokenError(str(e))
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+119 |
+120 |     async def logout(self, access_token: str) -> None:
+    |
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+   --> app\services\auth\service.py:153:13
+    |
+151 |             if isinstance(e, InvalidTokenError):
+152 |                 raise
+153 |             raise InvalidTokenError(str(e))
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+
+F401 [*] `typing.Any` imported but unused
+ --> app\services\documents\ask_service.py:6:35
+  |
+5 | from dataclasses import dataclass
+6 | from typing import TYPE_CHECKING, Any
+  |                                   ^^^
+7 |
+8 | if TYPE_CHECKING:
+  |
+help: Remove unused import: `typing.Any`
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\ask_service.py:23:1
+   |
+21 | class AskService:
+22 |     """Service for answering questions about documents."""
+23 |     
+   | ^^^^
+24 |     def __init__(self):
+25 |         pass
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\ask_service.py:26:1
+   |
+24 |     def __init__(self):
+25 |         pass
+26 |     
+   | ^^^^
+27 |     async def ask(self, question: str, document_id: UUID, context_chunks: int = 5) -> AskResponse:
+28 |         return AskResponse(
+   |
+help: Remove whitespace from blank line
+
+F401 [*] `typing.Any` imported but unused
+ --> app\services\documents\recommendation_service.py:6:35
+  |
+5 | from dataclasses import dataclass
+6 | from typing import TYPE_CHECKING, Any
+  |                                   ^^^
+7 |
+8 | if TYPE_CHECKING:
+  |
+help: Remove unused import: `typing.Any`
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\recommendation_service.py:40:1
+   |
+38 | class RecommendationService:
+39 |     """Service for recommending document content."""
+40 |     
+   | ^^^^
+41 |     def __init__(self):
+42 |         pass
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\recommendation_service.py:43:1
+   |
+41 |     def __init__(self):
+42 |         pass
+43 |     
+   | ^^^^
+44 |     async def recommend(self, user_id: UUID, document_id: UUID) -> RecommendationResponse:
+45 |         return RecommendationResponse()
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\recommendation_service.py:46:1
+   |
+44 |     async def recommend(self, user_id: UUID, document_id: UUID) -> RecommendationResponse:
+45 |         return RecommendationResponse()
+46 |     
+   | ^^^^
+47 |     async def get_recommendation(self, user_id: UUID, document_id: UUID) -> RecommendationResponse:
+48 |         return RecommendationResponse()
+   |
+help: Remove whitespace from blank line
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> app\services\documents\service.py:3:1
+   |
+ 1 |   """Document service for managing documents."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | from dataclasses import dataclass
+ 6 | | from typing import TYPE_CHECKING, Any, Protocol, cast
+ 7 | | from uuid import UUID, uuid4
+ 8 | | from datetime import UTC, datetime
+ 9 | | import hashlib
+   | |______________^
+10 |
+11 |   if TYPE_CHECKING:
+   |
+help: Organize imports
+
+F401 [*] `datetime.UTC` imported but unused
+ --> app\services\documents\service.py:8:22
+  |
+6 | from typing import TYPE_CHECKING, Any, Protocol, cast
+7 | from uuid import UUID, uuid4
+8 | from datetime import UTC, datetime
+  |                      ^^^
+9 | import hashlib
+  |
+help: Remove unused import
+
+F401 [*] `datetime.datetime` imported but unused
+ --> app\services\documents\service.py:8:27
+  |
+6 | from typing import TYPE_CHECKING, Any, Protocol, cast
+7 | from uuid import UUID, uuid4
+8 | from datetime import UTC, datetime
+  |                           ^^^^^^^^
+9 | import hashlib
+  |
+help: Remove unused import
+
+TC005 [*] Found empty type-checking block
+  --> app\services\documents\service.py:12:5
+   |
+11 | if TYPE_CHECKING:
+12 |     pass
+   |     ^^^^
+   |
+help: Delete empty type-checking block
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\service.py:32:1
+   |
+30 | class DocumentRepositoryProtocol(Protocol):
+31 |     """Protocol for document data persistence."""
+32 |     
+   | ^^^^
+33 |     async def create_document(self, *, owner_user_id: UUID, title: str, file_name: str, storage_path: str, format: Any, file_size_byte…
+34 |     async def get_document(self, document_id: UUID): ...
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\service.py:44:1
+   |
+42 | class StorageProtocol(Protocol):
+43 |     """Protocol for file storage."""
+44 |     
+   | ^^^^
+45 |     async def save_bytes(self, *, owner_id: str, file_name: str, content: bytes, media_type: str): ...
+46 |     async def delete(self, storage_key: str): ...
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\service.py:52:1
+   |
+50 | class DocumentService:
+51 |     """Service for managing documents."""
+52 |     
+   | ^^^^
+53 |     def __init__(
+54 |         self,
+   |
+help: Remove whitespace from blank line
+
+TC006 [*] Add quotes to type expression in `typing.cast()`
+  --> app\services\documents\service.py:59:33
+   |
+57 |         storage: StorageProtocol,
+58 |     ):
+59 |         self._repository = cast(DocumentRepositoryProtocol, repository)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+60 |         self._storage = cast(StorageProtocol, storage)
+   |
+help: Add quotes
+
+TC006 [*] Add quotes to type expression in `typing.cast()`
+  --> app\services\documents\service.py:60:30
+   |
+58 |     ):
+59 |         self._repository = cast(DocumentRepositoryProtocol, repository)
+60 |         self._storage = cast(StorageProtocol, storage)
+   |                              ^^^^^^^^^^^^^^^
+61 |     
+62 |     async def upload(
+   |
+help: Add quotes
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\service.py:61:1
+   |
+59 |         self._repository = cast(DocumentRepositoryProtocol, repository)
+60 |         self._storage = cast(StorageProtocol, storage)
+61 |     
+   | ^^^^
+62 |     async def upload(
+63 |         self,
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\service.py:75:1
+   |
+73 |         # Calculate checksum
+74 |         checksum = hashlib.sha256(file_content).hexdigest()
+75 |         
+   | ^^^^^^^^
+76 |         # Store file
+77 |         storage_key = f"{owner_user_id}/{uuid4()}/{file_name}"
+   |
+help: Remove whitespace from blank line
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+  --> app\services\documents\service.py:82:13
+   |
+80 |             storage_key = stored.storage_key
+81 |         except Exception as e:
+82 |             raise StorageError(f"Failed to store file: {e}")
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+83 |         
+84 |         # Create document
+   |
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\service.py:83:1
+   |
+81 |         except Exception as e:
+82 |             raise StorageError(f"Failed to store file: {e}")
+83 |         
+   | ^^^^^^^^
+84 |         # Create document
+85 |         document = await self._repository.create_document(
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\documents\service.py:95:1
+   |
+93 |             checksum_sha256=checksum,
+94 |         )
+95 |         
+   | ^^^^^^^^
+96 |         # Create job
+97 |         job = await self._repository.create_job(
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:102:1
+    |
+100 |             payload={"document_id": str(document.id)},
+101 |         )
+102 |         
+    | ^^^^^^^^
+103 |         # Create ingestion job
+104 |         ingestion_job = await self._repository.create_ingestion_job(
+    |
+help: Remove whitespace from blank line
+
+F841 Local variable `ingestion_job` is assigned to but never used
+   --> app\services\documents\service.py:104:9
+    |
+103 |         # Create ingestion job
+104 |         ingestion_job = await self._repository.create_ingestion_job(
+    |         ^^^^^^^^^^^^^
+105 |             job_id=job.id,
+106 |             document_id=document.id,
+    |
+help: Remove assignment to unused variable `ingestion_job`
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:109:1
+    |
+107 |             ingest_version=1,
+108 |         )
+109 |         
+    | ^^^^^^^^
+110 |         await self._repository.commit()
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:111:1
+    |
+110 |         await self._repository.commit()
+111 |         
+    | ^^^^^^^^
+112 |         return type('UploadResult', (), {
+113 |             'document': document,
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:116:1
+    |
+114 |             'job': job,
+115 |         })()
+116 |     
+    | ^^^^
+117 |     async def get_document(self, document_id: UUID, owner_user_id: UUID) -> Any:
+118 |         """Get a document."""
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:120:1
+    |
+118 |         """Get a document."""
+119 |         document = await self._repository.get_document_by_id(document_id)
+120 |         
+    | ^^^^^^^^
+121 |         if not document:
+122 |             raise DocumentNotFoundError(f"Document not found: {document_id}")
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:123:1
+    |
+121 |         if not document:
+122 |             raise DocumentNotFoundError(f"Document not found: {document_id}")
+123 |         
+    | ^^^^^^^^
+124 |         if document.owner_user_id != owner_user_id:
+125 |             raise DocumentNotFoundError(f"Document not found: {document_id}")
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:126:1
+    |
+124 |         if document.owner_user_id != owner_user_id:
+125 |             raise DocumentNotFoundError(f"Document not found: {document_id}")
+126 |         
+    | ^^^^^^^^
+127 |         return document
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:128:1
+    |
+127 |         return document
+128 |     
+    | ^^^^
+129 |     async def list_documents(self, owner_user_id: UUID, limit: int = 50, offset: int = 0) -> list:
+130 |         """List user documents."""
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:132:1
+    |
+130 |         """List user documents."""
+131 |         return await self._repository.list_documents_by_owner(owner_user_id, limit=limit, offset=offset)
+132 |     
+    | ^^^^
+133 |     async def retry(self, document_id: UUID, owner_user_id: UUID) -> Any:
+134 |         """Retry a failed document."""
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:136:1
+    |
+134 |         """Retry a failed document."""
+135 |         document = await self._repository.get_document_by_id(document_id)
+136 |         
+    | ^^^^^^^^
+137 |         if not document:
+138 |             raise DocumentNotFoundError(f"Document not found: {document_id}")
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:139:1
+    |
+137 |         if not document:
+138 |             raise DocumentNotFoundError(f"Document not found: {document_id}")
+139 |         
+    | ^^^^^^^^
+140 |         if document.owner_user_id != owner_user_id:
+141 |             raise DocumentNotFoundError(f"Document not found: {document_id}")
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:142:1
+    |
+140 |         if document.owner_user_id != owner_user_id:
+141 |             raise DocumentNotFoundError(f"Document not found: {document_id}")
+142 |         
+    | ^^^^^^^^
+143 |         # Check if document is in failed state
+144 |         from app.db.models.documents import DocumentStatus
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:147:1
+    |
+145 |         if document.ingest_status != DocumentStatus.FAILED:
+146 |             raise StorageError("Document is not in failed state")
+147 |         
+    | ^^^^^^^^
+148 |         # Update document status to PROCESSING
+149 |         await self._repository.update_document_status(document_id=document_id, ingest_status=DocumentStatus.PROCESSING)
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:150:1
+    |
+148 |         # Update document status to PROCESSING
+149 |         await self._repository.update_document_status(document_id=document_id, ingest_status=DocumentStatus.PROCESSING)
+150 |         
+    | ^^^^^^^^
+151 |         # Create new job
+152 |         job = await self._repository.create_job(
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:157:1
+    |
+155 |             payload={"document_id": str(document.id)},
+156 |         )
+157 |         
+    | ^^^^^^^^
+158 |         await self._repository.commit()
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:159:1
+    |
+158 |         await self._repository.commit()
+159 |         
+    | ^^^^^^^^
+160 |         # Get updated document
+161 |         document = await self._repository.get_document_by_id(document_id)
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:162:1
+    |
+160 |         # Get updated document
+161 |         document = await self._repository.get_document_by_id(document_id)
+162 |         
+    | ^^^^^^^^
+163 |         return type('RetryResult', (), {
+164 |             'document': document,
+    |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+   --> app\services\documents\service.py:168:1
+    |
+166 |             'ingest_version': 2,
+167 |         })()
+168 |     
+    | ^^^^
+169 |     async def get_job_status(self, job_id: UUID) -> Any:
+170 |         """Get job status."""
+    |
+help: Remove whitespace from blank line
+
+F401 [*] `uuid.UUID` imported but unused
+ --> app\services\llm\provider_registry.py:8:22
+  |
+7 | if TYPE_CHECKING:
+8 |     from uuid import UUID
+  |                      ^^^^
+  |
+help: Remove unused import: `uuid.UUID`
+
+W293 [*] Blank line contains whitespace
+  --> app\services\llm\provider_registry.py:13:1
+   |
+11 | class LLMClientProtocol(Protocol):
+12 |     """Protocol for LLM client."""
+13 |     
+   | ^^^^
+14 |     async def generate(self, prompt: str, **kwargs: Any) -> str: ...
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\llm\provider_registry.py:19:1
+   |
+17 | class LLMProvider:
+18 |     """Base class for LLM providers."""
+19 |     
+   | ^^^^
+20 |     def __init__(self, name: str, client: LLMClientProtocol):
+21 |         self.name = name
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\llm\provider_registry.py:38:1
+   |
+36 | class ProviderRegistry:
+37 |     """Registry for LLM providers."""
+38 |     
+   | ^^^^
+39 |     def __init__(self):
+40 |         self._providers: dict[str, LLMProvider] = {}
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\llm\provider_registry.py:42:1
+   |
+40 |         self._providers: dict[str, LLMProvider] = {}
+41 |         self._default: str | None = None
+42 |     
+   | ^^^^
+43 |     def register(self, name: str, provider: LLMProvider) -> None:
+44 |         self._providers[name] = provider
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\llm\provider_registry.py:45:1
+   |
+43 |     def register(self, name: str, provider: LLMProvider) -> None:
+44 |         self._providers[name] = provider
+45 |     
+   | ^^^^
+46 |     def get(self, name: str) -> LLMProvider:
+47 |         if name not in self._providers:
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\llm\provider_registry.py:50:1
+   |
+48 |             raise ProviderNotFoundError(f"Provider not found: {name}")
+49 |         return self._providers[name]
+50 |     
+   | ^^^^
+51 |     def list_providers(self) -> list[str]:
+52 |         return list(self._providers.keys())
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\llm\provider_registry.py:53:1
+   |
+51 |     def list_providers(self) -> list[str]:
+52 |         return list(self._providers.keys())
+53 |     
+   | ^^^^
+54 |     def set_default(self, name: str) -> None:
+55 |         if name not in self._providers:
+   |
+help: Remove whitespace from blank line
+
+W293 [*] Blank line contains whitespace
+  --> app\services\llm\provider_registry.py:58:1
+   |
+56 |             raise ProviderNotFoundError(f"Provider not found: {name}")
+57 |         self._default = name
+58 |     
+   | ^^^^
+59 |     def get_default(self) -> LLMProvider | None:
+60 |         if self._default is None:
+   |
+help: Remove whitespace from blank line
+
+TC005 [*] Found empty type-checking block
+  --> app\services\questions\generator.py:11:5
+   |
+10 | if TYPE_CHECKING:
+11 |     pass
+   |     ^^^^
+   |
+help: Delete empty type-checking block
+
+F401 [*] `dataclasses.dataclass` imported but unused
+ --> app\services\questions\validator.py:5:25
+  |
+3 | from __future__ import annotations
+4 |
+5 | from dataclasses import dataclass
+  |                         ^^^^^^^^^
+6 | from typing import TYPE_CHECKING, Any
+  |
+help: Remove unused import: `dataclasses.dataclass`
+
+F401 [*] `uuid.UUID` imported but unused
+ --> app\services\questions\validator.py:9:22
+  |
+8 | if TYPE_CHECKING:
+9 |     from uuid import UUID
+  |                      ^^^^
+  |
+help: Remove unused import: `uuid.UUID`
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+  --> app\services\questions\validator.py:45:47
+   |
+43 |                 if o.get("is_correct"):
+44 |                     correct.append(o)
+45 |             elif hasattr(o, "is_correct") and getattr(o, "is_correct"):
+   |                                               ^^^^^^^^^^^^^^^^^^^^^^^^
+46 |                 correct.append(o)
+   |
+help: Replace `getattr` with attribute access
+
+SIM102 Use a single `if` statement instead of nested `if` statements
+  --> app\services\questions\validator.py:58:13
+   |
+56 |                   if len(correct) != 1:
+57 |                       raise ValidationError("exactly one correct option allowed")
+58 | /             elif qtype == QuestionType.TRUE_FALSE:
+59 | |                 if len(options) != 2:
+   | |_____________________________________^
+60 |                       raise ValidationError("exactly 2 options required")
+   |
+help: Combine `if` statements using `and`
+
+TC001 Move application import `app.services.review.schemas.FeedbackCreate` into a type-checking block
+  --> app\services\review\facade.py:9:5
+   |
+ 8 | from app.services.review.schemas import (
+ 9 |     FeedbackCreate,
+   |     ^^^^^^^^^^^^^^
+10 |     FeedbackRecord,
+11 |     MistakeRecord,
+   |
+help: Move into type-checking block
+
+TC001 Move application import `app.services.review.schemas.FeedbackRecord` into a type-checking block
+  --> app\services\review\facade.py:10:5
+   |
+ 8 | from app.services.review.schemas import (
+ 9 |     FeedbackCreate,
+10 |     FeedbackRecord,
+   |     ^^^^^^^^^^^^^^
+11 |     MistakeRecord,
+12 | )
+   |
+help: Move into type-checking block
+
+TC001 Move application import `app.services.review.schemas.MistakeRecord` into a type-checking block
+  --> app\services\review\facade.py:11:5
+   |
+ 9 |     FeedbackCreate,
+10 |     FeedbackRecord,
+11 |     MistakeRecord,
+   |     ^^^^^^^^^^^^^
+12 | )
+   |
+help: Move into type-checking block
+
+F401 [*] `datetime.datetime` imported but unused
+  --> app\services\review\facade.py:15:26
+   |
+14 | if TYPE_CHECKING:
+15 |     from datetime import datetime
+   |                          ^^^^^^^^
+16 |     from uuid import UUID
+   |
+help: Remove unused import: `datetime.datetime`
+
+TC006 [*] Add quotes to type expression in `typing.cast()`
+   --> app\services\review\facade.py:108:33
+    |
+106 |         feedback_learning_service: FeedbackLearningServiceProtocol,
+107 |     ) -> None:
+108 |         self._repository = cast(ReviewRepositoryProtocol, repository)
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+109 |         self._embedding_service = cast(EmbeddingServiceProtocol, embedding_service)
+110 |         self._vector_backend = cast(VectorBackendProtocol, vector_backend)
+    |
+help: Add quotes
+
+TC006 [*] Add quotes to type expression in `typing.cast()`
+   --> app\services\review\facade.py:109:40
+    |
+107 |     ) -> None:
+108 |         self._repository = cast(ReviewRepositoryProtocol, repository)
+109 |         self._embedding_service = cast(EmbeddingServiceProtocol, embedding_service)
+    |                                        ^^^^^^^^^^^^^^^^^^^^^^^^
+110 |         self._vector_backend = cast(VectorBackendProtocol, vector_backend)
+111 |         self._explainer_service = cast(ExplainerServiceProtocol, explainer_service)
+    |
+help: Add quotes
+
+TC006 [*] Add quotes to type expression in `typing.cast()`
+   --> app\services\review\facade.py:110:37
+    |
+108 |         self._repository = cast(ReviewRepositoryProtocol, repository)
+109 |         self._embedding_service = cast(EmbeddingServiceProtocol, embedding_service)
+110 |         self._vector_backend = cast(VectorBackendProtocol, vector_backend)
+    |                                     ^^^^^^^^^^^^^^^^^^^^^
+111 |         self._explainer_service = cast(ExplainerServiceProtocol, explainer_service)
+112 |         self._feedback_learning_service = cast(FeedbackLearningServiceProtocol, feedback_learning_service)
+    |
+help: Add quotes
+
+TC006 [*] Add quotes to type expression in `typing.cast()`
+   --> app\services\review\facade.py:111:40
+    |
+109 |         self._embedding_service = cast(EmbeddingServiceProtocol, embedding_service)
+110 |         self._vector_backend = cast(VectorBackendProtocol, vector_backend)
+111 |         self._explainer_service = cast(ExplainerServiceProtocol, explainer_service)
+    |                                        ^^^^^^^^^^^^^^^^^^^^^^^^
+112 |         self._feedback_learning_service = cast(FeedbackLearningServiceProtocol, feedback_learning_service)
+    |
+help: Add quotes
+
+TC006 [*] Add quotes to type expression in `typing.cast()`
+   --> app\services\review\facade.py:112:48
+    |
+110 |         self._vector_backend = cast(VectorBackendProtocol, vector_backend)
+111 |         self._explainer_service = cast(ExplainerServiceProtocol, explainer_service)
+112 |         self._feedback_learning_service = cast(FeedbackLearningServiceProtocol, feedback_learning_service)
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+113 |
+114 |     async def submit_feedback(self, *, user_id: UUID, feedback: FeedbackCreate) -> FeedbackRecord:
+    |
+help: Add quotes
+
+Found 75 errors.
+[*] 59 fixable with the `--fix` option (7 hidden fixes can be enabled with the `--unsafe-fixes` option).

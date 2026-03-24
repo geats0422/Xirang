@@ -1,0 +1,144 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - generic [ref=e9]:
+      - application [active] [ref=e17]
+      - status [ref=e18]: Screenreader support for the board is currently disabled. To enable it via Accessibility settings, press Ctrl+K, type Accessibility Settings, and press Enter. To see available keyboard shortcuts, enter Ctrl+Shift+Question mark .
+      - generic:
+        - generic:
+          - generic:
+            - region "Comments on canvas":
+              - button "Create new comment"
+      - generic:
+        - region "Left sidebar":
+          - generic [ref=e19]:
+            - button "Main menu" [ref=e20]:
+              - img [ref=e21]
+            - button "Expand UI for file named 息壤原型设计【从stitch优化】" [ref=e23]:
+              - generic:
+                - generic:
+                  - generic:
+                    - button "息壤原型设计【从stitch优化】, file name": 息壤原型设计【从stitch优化】
+                    - generic: File name
+              - generic:
+                - generic:
+                  - status
+              - generic:
+                - img
+      - generic [ref=e26]:
+        - generic [ref=e28]:
+          - button "Multiplayer tools" [ref=e30]:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+                    - generic:
+                      - generic:
+                        - img
+            - img [ref=e33]
+          - generic:
+            - generic:
+              - generic [ref=e36]:
+                - button "Follow" [ref=e37]
+                - generic [ref=e39]:
+                  - img [ref=e40]
+                  - img [ref=e45]
+              - generic [ref=e48]:
+                - button "Follow kabuto" [ref=e49]
+                - generic [ref=e51]:
+                  - img [ref=e52]
+                  - generic [ref=e56]: k
+        - button "100%, zoom and view options" [ref=e59]:
+          - generic [ref=e60]:
+            - generic [ref=e61]: 100%
+            - img [ref=e63]
+        - generic [ref=e66]:
+          - generic [ref=e67]:
+            - button "Present" [ref=e68]:
+              - generic:
+                - img
+            - button "Prototype view" [ref=e69]:
+              - generic:
+                - img
+          - button "Share" [ref=e71]:
+            - generic:
+              - generic:
+                - generic: Share
+    - generic:
+      - generic:
+        - generic:
+          - region "Application toolbar":
+            - generic [ref=e72]:
+              - toolbar "Editor" [ref=e74]:
+                - generic [ref=e76]:
+                  - generic:
+                    - generic [ref=e79]:
+                      - generic [ref=e80]:
+                        - button "Move" [ref=e81]:
+                          - img
+                        - button "Hand tool" [pressed] [ref=e82]:
+                          - img
+                        - button "Comment" [ref=e83]:
+                          - img
+                      - group "Frame" [ref=e85]:
+                        - button "Frame" [ref=e86]:
+                          - img
+                        - button "Region tools" [ref=e87]:
+                          - generic:
+                            - img
+                      - group "Rectangle" [ref=e88]:
+                        - button "Rectangle" [ref=e89]:
+                          - img
+                        - button "Shape tools" [ref=e90]:
+                          - generic:
+                            - img
+                      - group "Pen" [ref=e91]:
+                        - button "Pen" [ref=e92]:
+                          - img
+                        - button "Creation tools" [ref=e93]:
+                          - generic:
+                            - img
+                      - button "Text" [ref=e94]:
+                        - img
+                      - button "Actions" [ref=e95]:
+                        - img
+                    - text: Request sent
+                - generic [ref=e100]:
+                  - checkbox "Dev Mode" [ref=e102]
+                  - img [ref=e104]
+              - generic [ref=e106]:
+                - generic [ref=e107]: Sign up to comment, edit, inspect and more.
+                - generic [ref=e108]:
+                  - button "Sign up" [ref=e109]:
+                    - generic:
+                      - generic:
+                        - generic: Sign up
+                  - button "Continue with Google" [ref=e112]:
+                    - generic:
+                      - generic:
+                        - img
+                      - generic: Continue
+  - status
+  - group [ref=e114]:
+    - alert [ref=e116]
+    - alert [ref=e118]
+  - region "Help/zoom toolbar" [ref=e122]:
+    - toolbar "Help/zoom toolbar" [ref=e124]:
+      - button "Help" [ref=e126]:
+        - img
+  - region "Consent Manager" [ref=e127]:
+    - generic [ref=e128]:
+      - text: This website uses cookies, pixel tags, and local storage for performance, personalization, and marketing purposes. We use our own cookies and some from third parties. Only essential cookies are turned on by default.
+      - link "Cookies settings" [ref=e129]:
+        - /url: /consent-preferences/
+    - generic [ref=e130]:
+      - button "Do not allow cookies" [ref=e131]:
+        - generic:
+          - generic:
+            - generic: Do not allow cookies
+      - button "Allow all cookies" [ref=e132]:
+        - generic:
+          - generic:
+            - generic: Allow all cookies
+    - button [ref=e134]:
+      - img [ref=e136]

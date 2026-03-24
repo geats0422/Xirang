@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+from fastapi.testclient import TestClient
+
+from app.api.v1.documents import get_current_user_id, get_document_service
+from app.db.models.documents import DocumentFormat, DocumentStatus
+from app.main import create_app
+
+
+@dataclass
+class FakeDocument:
+    id: UUID
+    owner_user_id: UUID
+    title: str
+    file_name: str
+    storage_path: str
+    format: DocumentFormat
+    file_size_bytes: int
+    mime_type: str | None
+    ingest_status: DocumentStatus
+    created_at: datetime
+
+
+@dataclass
+class FakeJob:
+    id: UUID
+    job_type: str
+    status: str
+    payload: dict[str, object]
+    attempt_count: int = 0
+    max_attempts: int = 3
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass
+class UploadResult:
+    document: FakeDocument
+    job: FakeJob
+
+
+@dataclass
+class RetryResult:
+    document: FakeDocument
+    job: FakeJob
+    ingest_version: int
+
+
+class FakeApiDocumentService:
+    def __init__(self) -> None:
+        self.documents: dict[UUID, FakeDocument] = {}
+        self.jobs: dict[UUID, FakeJob] = {}
+
+    async def upload(
+        self,
+        *,
+        owner_user_id: UUID,
+        title: str,
+        file_name: str,
+        file_content: bytes,
+        format: DocumentFormat,
+        mime_type: str,
+    ) -> UploadResult:
+        doc_id = uuid4()
+        job_id = uuid4()
+        doc = FakeDocument(
+            id=doc_id,
+            owner_user_id=owner_user_id,
+            title=title,
+            file_name=file_name,
+            storage_path=f"/uploads/{owner_user_id}/{file_name}",
+            format=format,
+            file_size_bytes=len(file_content),
+            mime_type=mime_type,
+            ingest_status=DocumentStatus.PROCESSING,
+            created_at=datetime.now(UTC),
+        )
+        job = FakeJob(
+            id=job_id,
+            job_type="document_ingestion",
+            status="pending",
+            payload={"document_id": str(doc_id)},
+        )
+        self.documents[doc_id] = doc
+        self.jobs[job_id] = job
+        return UploadResult(document=doc, job=job)
+
+    async def get_document(self, *, document_id: UUID, owner_user_id: UUID) -> FakeDocument:
+        doc = self.documents.get(document_id)
+        if not doc or doc.owner_user_id != owner_user_id:
+            raise ValueError("Document not found")
+        return doc
+
+    async def list_documents(
+        self,
+        *,
+        owner_user_id: UUID,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[FakeDocument]:
+        return [d for d in self.documents.values() if d.owner_user_id == owner_user_id]
+
+    async def get_job_status(self, *, job_id: UUID) -> FakeJob:
+        job = self.jobs.get(job_id)
+        if not job:
+            raise ValueError("Job not found")
+        return job
+
+    async def retry(self, *, document_id: UUID, owner_user_id: UUID) -> RetryResult:
+        doc = self.documents.get(document_id)
+        if not doc or doc.owner_user_id != owner_user_id:
+            raise ValueError("Document not found")
+        if doc.ingest_status != DocumentStatus.FAILED:
+            raise ValueError("Can only retry failed documents")
+        doc.ingest_status = DocumentStatus.PROCESSING
+        job = FakeJob(
+            id=uuid4(),
+            job_type="document_ingestion",
+            status="pending",
+            payload={"document_id": str(document_id)},
+        )
+        self.jobs[job.id] = job
+        return RetryResult(
+            document=doc,
+            job=job,
+            ingest_version=2,
+        )
+
+
+def create_test_client() -> TestClient:
+    app = create_app()
+    fake_service = FakeApiDocumentService()
+    user_id = uuid4()
+    app.dependency_overrides[get_document_service] = lambda: fake_service
+    app.dependency_overrides[get_current_user_id] = lambda: user_id
+    return TestClient(app)
+
+
+def test_upload_endpoint_creates_document_with_processing_status() -> None:
+    client = create_test_client()
+    response = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"title": "Test Document"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["document"]["ingest_status"] == "processing"
+    assert body["job"]["status"] == "pending"
+
+
+def test_upload_endpoint_validates_file_type() -> None:
+    client = create_test_client()
+    response = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("test.exe", b"MZ", "application/octet-stream")},
+        data={"title": "Bad File"},
+    )
+    assert response.status_code == 400
+
+
+def test_upload_endpoint_requires_authorization_header() -> None:
+    app = create_app()
+    app.dependency_overrides[get_document_service] = lambda: FakeApiDocumentService()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"title": "Test Document"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_upload_endpoint_rejects_invalid_user_id_header() -> None:
+    app = create_app()
+    app.dependency_overrides[get_document_service] = lambda: FakeApiDocumentService()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/documents/upload",
+        headers={
+            "Authorization": "Bearer token-value",
+            "X-User-Id": "not-a-uuid",
+        },
+        files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"title": "Test Document"},
+    )
+
+    assert response.status_code == 401

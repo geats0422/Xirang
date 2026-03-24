@@ -1,0 +1,125 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "instructions/common/*.md",
+    "instructions/python/*.md",
+    "instructions/typescript/*.md"
+  ],
+  "plugin": [
+    "oh-my-opencode@latest",
+    "./plugins/auto-lsp",
+    "./plugins/dev-server-blocker",
+    "./plugins/tmux-reminder",
+    "./plugins/git-push-reminder",
+    "./plugins/doc-file-warning",
+    "./plugins/strategic-compact",
+    "./plugins/auto-format",
+    "./plugins/typescript-check",
+    "./plugins/console-log-warning",
+    "./plugins/session-manager"
+  ],
+  "agent": {
+    "build": {
+      "description": "主开发 Agent - 处理大多数开发任务",
+      "mode": "primary",
+      "model": "zhipuai/glm-4.7",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true,
+        "read": true
+      }
+    },
+    "explorer": {
+      "description": "代码探索专家 - 用于快速查找文件、搜索代码、回答代码库问题。只读模式。",
+      "mode": "subagent",
+      "model": "zhipuai/glm-4.7",
+      "tools": {
+        "read": true,
+        "glob": true,
+        "grep": true,
+        "bash": false,
+        "write": false,
+        "edit": false
+      }
+    }
+  },
+  "command": {
+    "setup-lsp": {
+      "description": "检测项目语言并配置 LSP",
+      "agent": "build",
+      "template": "请运行 setupLsp 工具来检测项目语言并提供 LSP 安装建议。"
+    }
+  },
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "@playwright/mcp@latest"
+      ],
+      "enabled": true
+    },
+    "chrome-devtools": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@latest"
+      ]
+    },
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "ctx7sk-2b8d9d23-17b3-4f87-9f1e-ddf5fcad842b"
+      },
+      "enabled": true
+    },
+    "pencil": {
+      "command": [
+        "C:\\Program Files\\Pencil\\resources\\app.asar.unpacked\\out\\mcp-server-windows-x64.exe",
+        "--app",
+        "desktop"
+      ],
+      "enabled": true,
+      "type": "local"
+    },
+    "figma-desktop-mcp": {
+      "type": "remote",
+      "url": "http://127.0.0.1:3845/mcp",
+      "enabled": true
+    }
+  },
+  "provider": {
+    "zhipuai": {
+      "api": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "options": {
+        "timeout": 600000,
+        "setCacheKey": true
+      }
+    }
+  },
+  "permission": {
+    "*": "ask",
+    "bash": {
+      "*": "ask",
+      "git *": "allow",
+      "npm *": "allow",
+      "pnpm *": "allow",
+      "yarn *": "allow",
+      "bun *": "allow",
+      "grep *": "allow",
+      "ls *": "allow",
+      "cat *": "allow",
+      "rm *": "ask"
+    },
+    "read": "allow",
+    "list": "allow",
+    "glob": "allow",
+    "edit": "ask",
+    "write": "ask",
+    "external_directory": {}
+  },
+  "autoupdate": true
+}

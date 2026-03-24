@@ -3,8 +3,10 @@ import { onMounted, ref } from "vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+import { listDocuments, type DocumentListItem } from "../api/documents";
 
 type ScrollCard = {
+  id: string;
   title: string;
   subtitle: string;
   icon: string;
@@ -19,89 +21,41 @@ type ScrollCard = {
   mastered?: boolean;
 };
 
-onMounted(() => {
+const documents = ref<DocumentListItem[]>([]);
+const isLoading = ref(true);
+
+onMounted(async () => {
   document.title = "Xi Rang Library";
+  await loadDocuments();
 });
 
-const gameModesRoute = ROUTES.gameModes;
+const loadDocuments = async () => {
+  try {
+    documents.value = await listDocuments();
+  } catch {
+    documents.value = [];
+  } finally {
+    isLoading.value = false;
+  }
+};
 
-const cards: ScrollCard[] = [
-  {
-    title: "Ancient Art of Memory",
-    subtitle: "Master the cognitive architecture of legendary scholars.",
+const getScrollCards = (): ScrollCard[] => {
+  return documents.value.map((doc) => ({
+    id: doc.id,
+    title: doc.title,
+    subtitle: "Document awaiting digestion.",
     icon: "📖",
     format: "PDF",
-    size: "12 Pages",
-    progressLabel: "Digestion Progress",
-    progressValue: "60% Cleared",
-    progress: 60,
-    action: "continue",
-    tone: "teal",
-  },
-  {
-    title: "Modern Biology Vol 1",
-    subtitle: "Understanding the Qi of cells and systems.",
-    icon: "📄",
-    format: "TXT",
-    size: "2.4 MB",
-    progressLabel: "Not Started",
-    progressValue: "0%",
-    progress: 0,
-    action: "begin",
-    tone: "muted",
-  },
-  {
-    title: "Chronicles of the Three Kingdoms",
-    subtitle: "Historical records of strategy and destiny.",
-    icon: "🀄",
-    format: "EPUB",
-    size: "340 Pages",
-    progressLabel: "Digestion Progress",
-    progressValue: "25% Cleared",
-    progress: 25,
-    action: "continue",
-    tone: "gold",
-    accent: "gold",
-  },
-  {
-    title: "Basic Alchemy 101",
-    subtitle: "Introduction to material transmutation.",
-    icon: "▣",
-    format: "PDF",
     size: "",
-    progressLabel: "Fully Digested",
-    progressValue: "100%",
-    progress: 100,
-    action: "review",
-    tone: "teal",
-    mastered: true,
-  },
-  {
-    title: "Strategies of the Warring States",
-    subtitle: "Diplomacy and warfare doctrine.",
-    icon: "📚",
-    format: "PDF",
-    size: "245 Pages",
-    progressLabel: "Digestion Progress",
-    progressValue: "42% Cleared",
-    progress: 42,
-    action: "continue",
-    tone: "teal",
-  },
-  {
-    title: "Meditations on Code",
-    subtitle: "Algorithms interpreted as cultivation forms.",
-    icon: "🗺",
-    format: "DOCX",
-    size: "1.1 MB",
     progressLabel: "Not Started",
     progressValue: "0%",
     progress: 0,
-    action: "begin",
-    tone: "muted",
-    accent: "selected",
-  },
-];
+    action: "begin" as const,
+    tone: "muted" as const,
+  }));
+};
+
+const gameModesRoute = ROUTES.gameModes;
 
 const { currentPath, navigateTo, router, routingTarget } = useRouteNavigation();
 
@@ -164,10 +118,17 @@ defineExpose({
         <button class="upload-icon-btn" type="button" aria-label="Upload">☁</button>
       </section>
 
-      <section class="card-grid" aria-label="Library cards">
+      <section v-if="isLoading" class="card-grid card-grid--loading" aria-label="Loading">
+        <div class="library-loading">
+          <div class="library-loading__spinner" aria-label="Loading library" />
+          <p>Loading your scrolls...</p>
+        </div>
+      </section>
+
+      <section v-else class="card-grid" aria-label="Library cards">
         <article
-          v-for="card in cards"
-          :key="card.title"
+          v-for="card in getScrollCards()"
+          :key="card.id"
           class="scroll-card"
           :class="{
             'scroll-card--gold': card.accent === 'gold',
@@ -600,6 +561,30 @@ defineExpose({
   .card-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+.card-grid--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.library-loading {
+  align-items: center;
+  color: #9aa2ab;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.library-loading__spinner {
+  animation: spin 1s linear infinite;
+  border: 3px solid #e0f0f0;
+  border-top-color: #1f9aa4;
+  border-radius: 50%;
+  height: 32px;
+  width: 32px;
 }
 
 @media (max-width: 1080px) {

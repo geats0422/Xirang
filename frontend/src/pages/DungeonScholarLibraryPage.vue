@@ -30,11 +30,16 @@ onMounted(async () => {
 });
 
 const loadDocuments = async () => {
+  const timeoutId = setTimeout(() => {
+    isLoading.value = false;
+  }, 5000);
+
   try {
     documents.value = await listDocuments();
   } catch {
     documents.value = [];
   } finally {
+    clearTimeout(timeoutId);
     isLoading.value = false;
   }
 };

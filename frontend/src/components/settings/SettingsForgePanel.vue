@@ -173,7 +173,7 @@ onBeforeUnmount(() => {
   border: 1px solid #e6ece8;
   border-radius: 8px;
   margin-top: 16px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .panel__header {

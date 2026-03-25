@@ -1,5 +1,20 @@
 <script setup lang="ts">
-import { PRIMARY_NAV_ITEMS, ROUTES, type AppRoutePath } from "../../constants/routes";
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { ROUTES, type AppRoutePath } from "../../constants/routes";
+
+const { t, locale } = useI18n();
+
+// Force reactivity on locale change
+const _ = locale.value;
+
+// Nav items with i18n keys
+const navItems = [
+  { icon: "⌂", route: ROUTES.home, i18nKey: "sidebar.home" as const },
+  { icon: "◫", route: ROUTES.library, i18nKey: "sidebar.library" as const },
+  { icon: "✦", route: ROUTES.quests, i18nKey: "sidebar.quests" as const },
+  { icon: "▤", route: ROUTES.leaderboard, i18nKey: "sidebar.leaderboard" as const },
+];
 
 const props = withDefaults(
   defineProps<{
@@ -9,7 +24,7 @@ const props = withDefaults(
     profileName?: string;
   }>(),
   {
-    profileLevel: "Level 12 Scholar",
+    profileLevel: "Level 1 Scholar",
     profileName: "Default User",
   },
 );
@@ -23,6 +38,22 @@ const isActiveRoute = (targetRoute: string) => props.currentPath === targetRoute
 const onNavigate = (targetRoute: AppRoutePath) => {
   emit("navigate", targetRoute);
 };
+
+// Computed translated labels - force dependency on locale
+const brandName = computed(() => {
+  const _ = locale.value;
+  return t("landing.brand");
+});
+
+const settingsLabel = computed(() => {
+  const _ = locale.value;
+  return t("sidebar.settings");
+});
+
+const navLabels = computed(() => {
+  const _ = locale.value;
+  return navItems.map((item) => t(item.i18nKey));
+});
 </script>
 
 <template>
@@ -31,13 +62,13 @@ const onNavigate = (targetRoute: AppRoutePath) => {
       <div class="brand-icon">
         <img class="brand-icon__image" src="/taotie-logo.svg" alt="" aria-hidden="true">
       </div>
-      <p class="brand-name">XI Rang Scholar</p>
+      <p class="brand-name">{{ brandName }}</p>
     </div>
 
     <nav class="side-nav" aria-label="Primary">
       <button
-        v-for="item in PRIMARY_NAV_ITEMS"
-        :key="item.label"
+        v-for="(item, index) in navItems"
+        :key="item.route"
         class="side-nav__item"
         :class="{
           'side-nav__item--active': isActiveRoute(item.route),
@@ -48,7 +79,7 @@ const onNavigate = (targetRoute: AppRoutePath) => {
         @click="onNavigate(item.route)"
       >
         <span class="side-nav__icon">{{ item.icon }}</span>
-        <span>{{ item.label }}</span>
+        <span>{{ navLabels[index] }}</span>
       </button>
     </nav>
 
@@ -64,7 +95,7 @@ const onNavigate = (targetRoute: AppRoutePath) => {
         @click="onNavigate(ROUTES.settings)"
       >
         <span class="settings-item__icon" aria-hidden="true">⚙</span>
-        <span>Settings</span>
+        <span>{{ settingsLabel }}</span>
       </button>
 
       <button
@@ -90,9 +121,10 @@ const onNavigate = (targetRoute: AppRoutePath) => {
 
 <style scoped>
 .sidebar {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-soft);
+  background: var(--color-sidebar-bg);
+  border: 1px solid var(--color-sidebar-border);
   border-radius: var(--radius-lg);
+  color: var(--color-sidebar-text);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -107,7 +139,7 @@ const onNavigate = (targetRoute: AppRoutePath) => {
 
 .brand-icon {
   align-items: center;
-  background: rgba(16, 139, 150, 0.12);
+  background: var(--color-sidebar-brand-icon-bg);
   border-radius: 10px;
   display: inline-flex;
   height: 38px;
@@ -141,7 +173,7 @@ const onNavigate = (targetRoute: AppRoutePath) => {
   background: transparent;
   border: 0;
   border-radius: 12px;
-  color: var(--color-text-tertiary);
+  color: var(--color-sidebar-nav-text);
   cursor: pointer;
   display: flex;
   font-size: 15px;
@@ -155,13 +187,13 @@ const onNavigate = (targetRoute: AppRoutePath) => {
 }
 
 .side-nav__item:hover {
-  background: rgba(16, 139, 150, 0.08);
+  background: var(--color-sidebar-nav-hover-bg);
   transform: translateX(2px);
 }
 
 .side-nav__item--active {
-  background: rgba(16, 139, 150, 0.14);
-  color: var(--color-deep-teal);
+  background: var(--color-sidebar-nav-active-bg);
+  color: var(--color-sidebar-nav-active-text);
 }
 
 .side-nav__item--routing {
@@ -181,10 +213,10 @@ const onNavigate = (targetRoute: AppRoutePath) => {
 
 .settings-item {
   align-items: center;
-  background: var(--color-surface);
-  border: 1px solid #e5e7eb;
+  background: var(--color-sidebar-card-bg);
+  border: 1px solid var(--color-sidebar-border);
   border-radius: 10px;
-  color: #7a8699;
+  color: var(--color-sidebar-card-text);
   cursor: pointer;
   display: inline-flex;
   font-size: 15px;
@@ -198,15 +230,15 @@ const onNavigate = (targetRoute: AppRoutePath) => {
 }
 
 .settings-item:hover {
-  background: #f8fafc;
-  border-color: #dce2ea;
+  background: var(--color-sidebar-card-hover-bg);
+  border-color: var(--color-sidebar-card-hover-border);
   transform: translateX(2px);
 }
 
 .settings-item--active {
-  background: rgba(16, 139, 150, 0.12);
-  border-color: #c8dde1;
-  color: var(--color-deep-teal);
+  background: var(--color-sidebar-card-active-bg);
+  border-color: var(--color-sidebar-card-active-border);
+  color: var(--color-sidebar-card-active-text);
 }
 
 .settings-item--routing {
@@ -221,7 +253,7 @@ const onNavigate = (targetRoute: AppRoutePath) => {
 
 .profile-card {
   align-items: center;
-  background: #f6f1e8;
+  background: var(--color-sidebar-profile-bg);
   border: 1px solid transparent;
   border-radius: 14px;
   color: inherit;
@@ -236,13 +268,13 @@ const onNavigate = (targetRoute: AppRoutePath) => {
 }
 
 .profile-card:hover {
-  border-color: #e1ddcf;
+  border-color: var(--color-sidebar-profile-hover-border);
   transform: translateX(2px);
 }
 
 .profile-card--active {
-  border-color: #d3cdbf;
-  box-shadow: 0 8px 20px -12px rgba(71, 85, 105, 0.45);
+  border-color: var(--color-sidebar-profile-active-border);
+  box-shadow: var(--shadow-sidebar-profile);
 }
 
 .profile-card--routing {
@@ -251,7 +283,7 @@ const onNavigate = (targetRoute: AppRoutePath) => {
 
 .profile-avatar {
   align-items: center;
-  background: #f8d9ad;
+  background: var(--color-sidebar-avatar-bg);
   border-radius: 10px;
   display: inline-flex;
   font-size: 22px;

@@ -14,7 +14,7 @@ type ProviderConfig = {
   models: string[];
 };
 
-const DEFAULT_DISPLAY_NAME = "Default Scholar";
+const DEFAULT_DISPLAY_NAME = "Default User";
 const DEFAULT_LEVEL_LABEL = "Level 1 Scholar";
 
 const profileName = ref(DEFAULT_DISPLAY_NAME);
@@ -34,7 +34,31 @@ const dailyReminderEnabled = ref(false);
 
 const modelOptions = ref<string[]>([]);
 const activeModel = ref(import.meta.env.VITE_DEFAULT_MODEL || "gpt-4o-mini");
+const LANGUAGE_STORAGE_KEY = "xirang:language";
 const ACTIVE_MODEL_KEY = "xirang:activeModel";
+
+const applyLanguage = (value: SupportedLocale) => {
+  language.value = value;
+  i18n.global.locale.value = value as typeof i18n.global.locale.value;
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = value;
+  }
+  // Persist language preference to localStorage
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, value);
+  }
+};
+
+// Restore language preference from localStorage on app initialization
+const restoreLanguage = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  if (stored && (SUPPORTED_LOCALES as readonly string[]).includes(stored)) {
+    applyLanguage(stored as SupportedLocale);
+  }
+};
 
 const isBootstrapped = ref(false);
 let pendingSettingsWrite: Promise<unknown> | null = null;
@@ -155,14 +179,6 @@ const calculateStreak = (timestamps: string[]): number => {
   return count;
 };
 
-const applyLanguage = (value: SupportedLocale) => {
-  language.value = value;
-  i18n.global.locale.value = value;
-  if (typeof document !== "undefined") {
-    document.documentElement.lang = value;
-  }
-};
-
 const isNotFoundOrUnauthorized = (error: unknown): boolean => {
   if (!(error instanceof ApiError)) {
     return false;
@@ -175,6 +191,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 };
 
 const hydrate = async () => {
+  restoreLanguage();
   refreshModelOptions();
 
   const writeInFlight = pendingSettingsWrite;

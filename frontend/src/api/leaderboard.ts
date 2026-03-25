@@ -5,6 +5,9 @@ export type LeaderboardEntry = {
   display_name: string | null;
   total_xp: number;
   rank: number;
+  level?: number;
+  energy_points?: number;
+  is_current_user?: boolean;
 };
 
 export const getLeaderboard = async (limit = 50): Promise<LeaderboardEntry[]> => {

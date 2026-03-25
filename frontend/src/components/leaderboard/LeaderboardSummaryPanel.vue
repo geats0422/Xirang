@@ -1,7 +1,41 @@
 <script setup lang="ts">
-defineProps<{
-  progress: number;
-}>();
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+
+const { t, locale } = useI18n();
+
+const props = withDefaults(
+  defineProps<{
+    progress: number;
+    userXp?: number;
+    userLevel?: number;
+    userName?: string;
+    energyPoints?: number;
+  }>(),
+  {
+    userXp: 0,
+    userLevel: 1,
+    userName: "Default User",
+    energyPoints: 0,
+  },
+);
+
+// Format XP with locale-aware number formatting
+const formattedXp = computed(() => {
+  return new Intl.NumberFormat(locale.value).format(props.userXp);
+});
+
+// Level title with i18n
+const levelTitle = computed(() => {
+  const level = props.userLevel;
+  // Determine rank title based on level
+  let rankTitle = "Novice Scholar";
+  if (level >= 40) rankTitle = "Wandering Sage";
+  else if (level >= 30) rankTitle = "Ancient Scholar";
+  else if (level >= 20) rankTitle = "Journeyman Scholar";
+  else if (level >= 10) rankTitle = "Apprentice Scholar";
+  return `Level ${level} · ${rankTitle}`;
+});
 </script>
 
 <template>
@@ -10,43 +44,43 @@ defineProps<{
       <div class="hero-glow" aria-hidden="true" />
       <div class="avatar-wrap">
         <div class="avatar">🧑</div>
-        <span class="energy-pill">✪ 850</span>
+        <span class="energy-pill">✪ {{ energyPoints }}</span>
       </div>
-      <h1>Scholar Li</h1>
-      <p class="level">Level 42 • Wandering Sage</p>
+      <h1>{{ userName }}</h1>
+      <p class="level">{{ levelTitle }}</p>
 
       <div class="stat-card">
-        <span>TOTAL XP</span>
-        <strong>15,420</strong>
+        <span>{{ t("leaderboard.summary.totalXp") }}</span>
+        <strong>{{ formattedXp }}</strong>
       </div>
 
       <div class="league-card">
         <div class="league-head">
           <span>♠</span>
-          <span>Silver Jade League</span>
+          <span>{{ t("leaderboard.summary.leagueName") }}</span>
         </div>
         <div class="progress-track" role="presentation">
           <span class="progress-fill" :style="{ width: `${progress}%` }" />
         </div>
-        <p>Next Tier: 18,000 XP</p>
+        <p>{{ t("leaderboard.summary.nextTier") }}</p>
       </div>
 
       <div class="badge-card">
         <span class="badge-icon">◉</span>
         <div>
-          <p>Ghost Score</p>
-          <p>Blue Flame Badge Acquired</p>
+          <p>{{ t("leaderboard.summary.ghostScore") }}</p>
+          <p>{{ t("leaderboard.summary.badgeAcquired") }}</p>
         </div>
       </div>
     </article>
 
     <article class="focus-card">
-      <p class="focus-label">DAILY FOCUS</p>
+      <p class="focus-label">{{ t("leaderboard.summary.dailyFocus") }}</p>
       <div class="focus-body">
         <span class="focus-icon">📖</span>
         <div>
-          <p>Read "The Art of War"</p>
-          <p>Progress: 2/5 Chapters</p>
+          <p>{{ t("leaderboard.summary.focusTitle") }}</p>
+          <p>{{ t("leaderboard.summary.focusProgress") }}</p>
         </div>
       </div>
     </article>

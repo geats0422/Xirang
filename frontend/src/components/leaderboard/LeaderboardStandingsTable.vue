@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n();
+
 type StandingRow = {
   rank: string;
   scholar: string;
@@ -16,23 +20,23 @@ defineProps<{
 </script>
 
 <template>
-  <article class="board-panel" role="table" aria-label="Current standings leaderboard">
+  <article class="board-panel" role="table" :aria-label="t('leaderboard.table.aria')">
     <header class="board-header">
       <div>
-        <h2>Current Standings</h2>
-        <p>Weekly competition ends in 2 days</p>
+        <h2>{{ t("leaderboard.table.title") }}</h2>
+        <p>{{ t("leaderboard.table.subtitle") }}</p>
       </div>
-      <div class="switches" role="group" aria-label="Leaderboard scope">
-        <button class="scope-btn scope-btn--active" type="button">Global</button>
-        <button class="scope-btn" type="button">Friends</button>
+      <div class="switches" role="group" :aria-label="t('leaderboard.table.scopeAria')">
+        <button class="scope-btn scope-btn--active" type="button">{{ t("leaderboard.table.global") }}</button>
+        <button class="scope-btn" type="button">{{ t("leaderboard.table.friends") }}</button>
       </div>
     </header>
 
     <div class="table-head" role="rowgroup">
-      <span role="columnheader">RANK</span>
-      <span role="columnheader">SCHOLAR</span>
-      <span role="columnheader">WEEKLY XP</span>
-      <span role="columnheader">STATUS</span>
+      <span role="columnheader">{{ t("leaderboard.table.rank") }}</span>
+      <span role="columnheader">{{ t("leaderboard.table.scholar") }}</span>
+      <span role="columnheader">{{ t("leaderboard.table.weeklyXp") }}</span>
+      <span role="columnheader">{{ t("leaderboard.table.status") }}</span>
     </div>
 
     <div class="table-body" role="rowgroup">
@@ -64,7 +68,7 @@ defineProps<{
 
         <div class="xp-col" role="cell">
           <span>{{ row.xp }}</span>
-          <span>XP</span>
+          <span>{{ t("leaderboard.table.xpSuffix") }}</span>
         </div>
 
         <div class="status-col" role="cell">
@@ -76,8 +80,8 @@ defineProps<{
       </div>
 
       <div class="ellipsis-row">•••</div>
-      <div class="demotion-row">⚠ DEMOTION ZONE</div>
-      <button class="load-more" type="button">Load more scholars ˅</button>
+      <div class="demotion-row">{{ t("leaderboard.table.demotionZone") }}</div>
+      <button class="load-more" type="button">{{ t("leaderboard.table.loadMore") }}</button>
     </div>
   </article>
 </template>

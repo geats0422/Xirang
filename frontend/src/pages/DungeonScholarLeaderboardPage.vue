@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { getLeaderboard, type LeaderboardEntry } from "../api/leaderboard";
 import LeaderboardStandingsTable from "../components/leaderboard/LeaderboardStandingsTable.vue";
 import LeaderboardSummaryPanel from "../components/leaderboard/LeaderboardSummaryPanel.vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import NotificationPopover from "../components/NotificationPopover.vue";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+import { useScholarData } from "../composables/useScholarData";
+
+const { t, locale } = useI18n();
+const { profileName, profileLevel } = useScholarData();
 
 type NotificationItem = {
   id: string;
@@ -68,8 +73,12 @@ const fetchLeaderboard = async () => {
 };
 
 onMounted(async () => {
-  document.title = "Xi Rang Leaderboard";
   await fetchLeaderboard();
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("leaderboard.metaTitle");
 });
 
 const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
@@ -85,7 +94,46 @@ const closeNotifications = () => {
   notificationVisible.value = false;
 };
 
-const progress = computed(() => Math.round((15420 / 18000) * 100));
+// User progress - if no data or empty, show 0
+const userXp = computed(() => {
+  // When leaderboard is empty, user has 0 XP
+  if (!leaderboardData.value || leaderboardData.value.length === 0) {
+    return 0;
+  }
+  const entry = leaderboardData.value.find((e) => e.is_current_user);
+  return entry?.total_xp ?? 0;
+});
+const progress = computed(() => {
+  if (userXp.value === 0) return 0;
+  return Math.round((userXp.value / 18000) * 100);
+});
+
+// User level - if no data, show 1 (novice)
+const userLevel = computed(() => {
+  if (!leaderboardData.value || leaderboardData.value.length === 0) {
+    return 1;
+  }
+  const entry = leaderboardData.value.find((e) => e.is_current_user);
+  return entry?.level ?? 1;
+});
+
+// User name - if no data, show default
+const userName = computed(() => {
+  if (!leaderboardData.value || leaderboardData.value.length === 0) {
+    return t("leaderboard.defaultScholar");
+  }
+  const entry = leaderboardData.value.find((e) => e.is_current_user);
+  return entry?.display_name ?? t("leaderboard.defaultScholar");
+});
+
+// Energy points - if no data, show 0
+const energyPoints = computed(() => {
+  if (!leaderboardData.value || leaderboardData.value.length === 0) {
+    return 0;
+  }
+  const entry = leaderboardData.value.find((e) => e.is_current_user);
+  return entry?.energy_points ?? 0;
+});
 
 const statusClass = (row: StandingRow) => {
   if (row.tone === "gold") {
@@ -106,26 +154,45 @@ const statusClass = (row: StandingRow) => {
 
 <template>
   <div class="leaderboard-page">
-    <AppSidebar :current-path="currentPath" :routing-target="routingTarget" @navigate="navigateTo" />
+    <AppSidebar
+      :current-path="currentPath"
+      :routing-target="routingTarget"
+      :profile-name="profileName"
+      :profile-level="profileLevel"
+      @navigate="navigateTo"
+    />
 
     <main class="main-content">
       <header class="topbar">
-        <p class="topbar__title">Hall of Sages</p>
+        <p class="topbar__title">{{ t("leaderboard.topbarTitle") }}</p>
         <label class="search-box">
           <span aria-hidden="true">⌕</span>
           <input
             type="text"
-            aria-label="Search scholars"
-            placeholder="Search for scrolls, scholars, or guilds..."
+            :aria-label="t('leaderboard.searchAria')"
+            :placeholder="t('leaderboard.searchPlaceholder')"
           />
         </label>
-        <button class="notify-btn" type="button" aria-label="Notifications" @click="toggleNotifications">🔔</button>
+        <button
+          class="notify-btn"
+          type="button"
+          :aria-label="t('leaderboard.notifications')"
+          @click="toggleNotifications"
+        >
+          🔔
+        </button>
       </header>
 
       <NotificationPopover :items="notifications" :visible="notificationVisible" @close="closeNotifications" />
 
       <section class="content-grid" :aria-busy="isLoading">
-        <LeaderboardSummaryPanel :progress="progress" />
+        <LeaderboardSummaryPanel
+          :progress="progress"
+          :user-xp="userXp"
+          :user-level="userLevel"
+          :user-name="userName"
+          :energy-points="energyPoints"
+        />
         <LeaderboardStandingsTable :standings="standings" :status-class="statusClass" />
       </section>
     </main>
@@ -134,7 +201,7 @@ const statusClass = (row: StandingRow) => {
 
 <style scoped>
 .leaderboard-page {
-  background: linear-gradient(180deg, #f7f9f8 0%, #f1f5f4 100%);
+  background: linear-gradient(180deg, var(--color-page-bg) 0%, var(--color-surface-alt) 100%);
   display: grid;
   gap: 24px;
   grid-template-columns: 256px minmax(0, 1fr);
@@ -159,7 +226,7 @@ const statusClass = (row: StandingRow) => {
 }
 
 .topbar__title {
-  color: #1e293b;
+  color: var(--color-text-dark);
   font-family: var(--font-serif);
   font-size: 20px;
   font-weight: 700;
@@ -169,10 +236,10 @@ const statusClass = (row: StandingRow) => {
 
 .search-box {
   align-items: center;
-  background: #f8fafc;
-  border: 1px solid #dbe2ea;
+  background: var(--color-search-bg);
+  border: 1px solid var(--color-search-border);
   border-radius: 999px;
-  color: #94a3b8;
+  color: var(--color-text-light-slate);
   display: flex;
   font-size: 14px;
   gap: 10px;
@@ -186,20 +253,20 @@ const statusClass = (row: StandingRow) => {
 .search-box input {
   background: transparent;
   border: 0;
-  color: #334155;
+  color: var(--color-text-slate);
   flex: 1;
   font-size: 14px;
   outline: 0;
 }
 
 .search-box input::placeholder {
-  color: #94a3b8;
+  color: var(--color-text-light-slate);
 }
 
 .notify-btn {
   background: transparent;
   border: 0;
-  color: #64748b;
+  color: var(--color-text-muted-slate);
   cursor: pointer;
   font-size: 18px;
 }

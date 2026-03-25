@@ -1,48 +1,271 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import BaseButton from "../components/ui/BaseButton.vue";
 import FeatureCard from "../components/ui/FeatureCard.vue";
+import { useTheme, type Theme } from "../composables/useTheme";
+import { SUPPORTED_LOCALES, type SupportedLocale } from "../i18n";
 import { ROUTES } from "../constants/routes";
-
-onMounted(() => {
-  document.title = "Xi Rang Landing";
-});
 
 const isMenuOpen = ref(false);
 const router = useRouter();
-const { t } = useI18n();
+const { locale, t } = useI18n();
+const { theme, setTheme } = useTheme();
 const isRouting = ref(false);
 const activeAction = ref<"login" | "sign-up" | "get-started" | null>(null);
+const showLangDropdown = ref(false);
 
-const navItems = ["Features", "Pricing", "Community"];
+const themeCycle: Theme[] = ["light", "dark", "system"];
 
-const featureCards = [
-  {
-    title: "3 Game Modes",
-    description:
-      "Choose your path to mastery. Engage in rapid-fire duels, long campaigns, or infinite dungeon crawls based on your PDFs.",
-    icon: "🗡",
-    accent: "green" as const,
-  },
-  {
-    title: "AI Dungeon Master",
-    description:
-      "An intelligent guide that crafts your learning adventure, generates quizzes on the fly, and adapts to your skill level.",
-    icon: "🧠",
-    accent: "cyan" as const,
-  },
-  {
-    title: "Zero Friction",
-    description:
-      "Seamlessly drag and drop your documents. Our engine converts them into playable quests instantly. No setup required.",
-    icon: "☁",
-    accent: "green" as const,
-  },
-];
+const languages = computed(() => {
+  // Access locale.value to make computed reactive to locale changes
+  const _ = locale.value;
+  return SUPPORTED_LOCALES.map((code) => ({
+    code,
+    name: t(`settings.localeNames.${code}`),
+  }));
+});
 
-const footerLinks = ["Privacy Policy", "Terms of Service", "Contact Us", "Twitter", "Discord"];
+const currentLangName = computed(() => {
+  return languages.value.find((entry) => entry.code === locale.value)?.name ?? locale.value;
+});
+
+const currentThemeLabel = computed(() => {
+  // Access locale.value to make computed reactive to locale changes
+  const _ = locale.value;
+  return t(`settings.preferences.${theme.value}`);
+});
+
+const closeHeaderDropdowns = () => {
+  showLangDropdown.value = false;
+};
+
+const toggleLang = () => {
+  showLangDropdown.value = !showLangDropdown.value;
+};
+
+const selectLang = (code: SupportedLocale) => {
+  locale.value = code;
+  showLangDropdown.value = false;
+};
+
+const cycleTheme = () => {
+  const currentIndex = themeCycle.indexOf(theme.value);
+  const nextIndex = (currentIndex + 1) % themeCycle.length;
+  setTheme(themeCycle[nextIndex]);
+};
+
+onMounted(() => {
+  document.addEventListener("click", closeHeaderDropdowns);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", closeHeaderDropdowns);
+});
+
+watchEffect(() => {
+  document.title = t("landing.metaTitle");
+});
+
+const navItems = computed(() => {
+  // Access locale.value to make computed reactive to locale changes
+  const _ = locale.value;
+  return [t("landing.features"), t("landing.pricing"), t("landing.community")];
+});
+
+const featureCards = computed(() => {
+  // Access locale.value to make computed reactive to locale changes
+  const _ = locale.value;
+  return [
+    {
+      title: t("landing.gameModesTitle"),
+      description: t("landing.gameModesDesc"),
+      icon: "🗡",
+      accent: "green" as const,
+    },
+    {
+      title: t("landing.aiDungeonTitle"),
+      description: t("landing.aiDungeonDesc"),
+      icon: "🧠",
+      accent: "cyan" as const,
+    },
+    {
+      title: t("landing.zeroFrictionTitle"),
+      description: t("landing.zeroFrictionDesc"),
+      icon: "☁",
+      accent: "green" as const,
+    },
+  ];
+});
+
+const footerLinks = computed(() => {
+  // Access locale.value to make computed reactive to locale changes
+  const _ = locale.value;
+  return [
+    { text: t("landing.privacyPolicy"), href: "/settings/privacy-policy" },
+    { text: t("landing.termsOfService"), href: "/settings/user-agreement" },
+    { text: t("landing.contactUs"), href: "/settings/help-center" },
+    { text: t("landing.twitter"), href: "#" },
+    { text: t("landing.discord"), href: "#" },
+  ];
+});
+
+// Template-level translations that need locale tracking
+const brandName = computed(() => {
+  const _ = locale.value;
+  return t("landing.brand");
+});
+
+const logoAlt = computed(() => {
+  const _ = locale.value;
+  return t("landing.logoAlt");
+});
+
+const mainNavAria = computed(() => {
+  const _ = locale.value;
+  return t("landing.mainNavAria");
+});
+
+const languageLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.languageLabel");
+});
+
+const betaLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.beta");
+});
+
+const heroTitle1 = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroTitle1");
+});
+
+const heroTitle2 = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroTitle2");
+});
+
+const heroTitle3 = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroTitle3");
+});
+
+const heroSubtitle = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroSubtitle");
+});
+
+const getStartedLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.getStarted");
+});
+
+const watchDemoLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.watchDemo");
+});
+
+const scholarsJoinedLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.scholarsJoined");
+});
+
+const forgeTitle = computed(() => {
+  const _ = locale.value;
+  return t("landing.forgeTitle");
+});
+
+const forgeSubtitle = computed(() => {
+  const _ = locale.value;
+  return t("landing.forgeSubtitle");
+});
+
+const joinScholarLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.joinScholar");
+});
+
+const readyAscendLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.readyAscend");
+});
+
+const ascendDescLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.ascendDesc");
+});
+
+const startJourneyLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.startJourney");
+});
+
+const footerBrand = computed(() => {
+  const _ = locale.value;
+  return t("landing.footerBrand");
+});
+
+const copyrightLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.copyright");
+});
+
+const menuLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.menu");
+});
+
+const closeLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.close");
+});
+
+const heroMascotAlt = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroMascotAlt");
+});
+
+const heroStatTopLine1 = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroStatTopLine1");
+});
+
+const heroStatTopLine2 = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroStatTopLine2");
+});
+
+const heroStatBottomLine1 = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroStatBottomLine1");
+});
+
+const heroStatBottomLine2 = computed(() => {
+  const _ = locale.value;
+  return t("landing.heroStatBottomLine2");
+});
+
+const loginLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.login");
+});
+
+const signUpLabel = computed(() => {
+  const _ = locale.value;
+  return t("landing.signUp");
+});
+
+const mobileNavAria = computed(() => {
+  const _ = locale.value;
+  return t("landing.mobileNavAria");
+});
+
+const footerLinksAria = computed(() => {
+  const _ = locale.value;
+  return t("landing.footerLinksAria");
+});
 
 const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => {
   if (isRouting.value) {
@@ -71,14 +294,82 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
       <div class="container site-header__inner">
         <div class="brand">
           <div class="brand__badge">
-            <img src="/taotie-logo.svg" alt="Xi Rang logo" class="brand__logo" />
+            <img src="/taotie-logo.svg" :alt="logoAlt" class="brand__logo" />
           </div>
-          <p class="brand__name">Xi Rang</p>
+          <p class="brand__name">{{ brandName }}</p>
         </div>
 
-        <nav class="site-nav" aria-label="Main navigation">
+        <nav class="site-nav site-nav--centered" :aria-label="mainNavAria">
           <a v-for="item in navItems" :key="item" href="#">{{ item }}</a>
         </nav>
+
+        <div class="header-right">
+          <div class="header-icon-btn" @click.stop>
+            <button
+              class="icon-btn"
+              type="button"
+              :aria-expanded="showLangDropdown"
+              :aria-label="`${languageLabel}: ${currentLangName}`"
+              @click="toggleLang"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+            </button>
+            <div v-if="showLangDropdown" class="header-dropdown" role="menu" :aria-label="languageLabel">
+              <button
+                v-for="lang in languages"
+                :key="lang.code"
+                class="header-dropdown__item"
+                :class="{ 'header-dropdown__item--active': locale === lang.code }"
+                type="button"
+                role="menuitemradio"
+                :aria-checked="locale === lang.code"
+                @click="selectLang(lang.code)"
+              >
+                {{ lang.name }}
+              </button>
+            </div>
+          </div>
+
+          <div class="header-icon-btn" @click.stop>
+            <button
+              class="icon-btn"
+              type="button"
+              :aria-label="`${t('settings.preferences.themeLabel')}: ${currentThemeLabel}`"
+              @click="cycleTheme"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="5" />
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="header-auth">
+            <BaseButton
+              variant="primary"
+              size="sm"
+              class="cta-route-btn"
+              :class="{ 'cta-route-btn--active': activeAction === 'login' }"
+              :disabled="isRouting"
+              @click="routeByAuthState('login')"
+            >
+              {{ loginLabel }}
+            </BaseButton>
+            <BaseButton
+              variant="ghost"
+              size="sm"
+              class="cta-route-btn"
+              :class="{ 'cta-route-btn--active': activeAction === 'sign-up' }"
+              :disabled="isRouting"
+              @click="routeByAuthState('sign-up')"
+            >
+              {{ signUpLabel }}
+            </BaseButton>
+          </div>
+        </div>
 
         <button
           class="menu-toggle"
@@ -87,32 +378,11 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
           aria-controls="mobile-nav"
           @click="isMenuOpen = !isMenuOpen"
         >
-          {{ isMenuOpen ? "Close" : "Menu" }}
+          {{ isMenuOpen ? closeLabel : menuLabel }}
         </button>
-
-        <BaseButton
-          variant="primary"
-          size="sm"
-          class="cta-route-btn"
-          :class="{ 'cta-route-btn--active': activeAction === 'login' }"
-          :disabled="isRouting"
-          @click="routeByAuthState('login')"
-        >
-          {{ t("landing.login") }}
-        </BaseButton>
-        <BaseButton
-          variant="ghost"
-          size="sm"
-          class="cta-route-btn"
-          :class="{ 'cta-route-btn--active': activeAction === 'sign-up' }"
-          :disabled="isRouting"
-          @click="routeByAuthState('sign-up')"
-        >
-          {{ t("landing.signUp") }}
-        </BaseButton>
       </div>
 
-      <nav id="mobile-nav" class="mobile-nav" :class="{ 'mobile-nav--open': isMenuOpen }" aria-label="Mobile navigation">
+      <nav id="mobile-nav" class="mobile-nav" :class="{ 'mobile-nav--open': isMenuOpen }" :aria-label="mobileNavAria">
         <a v-for="item in navItems" :key="`mobile-${item}`" href="#" @click="isMenuOpen = false">{{ item }}</a>
       </nav>
     </header>
@@ -121,15 +391,14 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
       <section class="hero">
         <div class="container hero__inner">
           <div class="hero__content">
-            <p class="hero__beta">Now in Open Beta</p>
+            <p class="hero__beta">{{ betaLabel }}</p>
             <h1 class="hero__title">
-              Your Private
-              <span>Knowledge</span>
-              <span>Dungeon</span>
+              {{ heroTitle1 }}
+              <span>{{ heroTitle2 }}</span>
+              <span>{{ heroTitle3 }}</span>
             </h1>
             <p class="hero__subtitle">
-              Turn boring PDFs into dopamine-driven games. Forge your wisdom in the fires of an eastern fantasy RPG world
-              powered by AI.
+              {{ heroSubtitle }}
             </p>
             <div class="hero__actions">
               <BaseButton
@@ -138,20 +407,20 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
                 :disabled="isRouting"
                 @click="routeByAuthState('get-started')"
               >
-                Get Started →
+                {{ getStartedLabel }}
               </BaseButton>
-              <BaseButton variant="ghost">◉ Watch Demo</BaseButton>
+              <BaseButton variant="ghost">{{ watchDemoLabel }}</BaseButton>
             </div>
-            <p class="hero__social">👥 Scholars joined this week</p>
+            <p class="hero__social">{{ scholarsJoinedLabel }}</p>
           </div>
 
           <div class="hero__visual" aria-hidden="true">
             <div class="hero__card">
-              <div class="hero__stat hero__stat--top">Scroll Decoded<br /><strong>+50 XP</strong></div>
+              <div class="hero__stat hero__stat--top">{{ heroStatTopLine1 }}<br /><strong>{{ heroStatTopLine2 }}</strong></div>
               <div class="hero__mascot">
-                <img src="/taotie-hero.svg" alt="Taotie illustration" class="hero__mascot-image" />
+                <img src="/taotie-hero.svg" :alt="heroMascotAlt" class="hero__mascot-image" />
               </div>
-              <div class="hero__stat hero__stat--bottom">Knowledge<br /><strong>Retained</strong></div>
+              <div class="hero__stat hero__stat--bottom">{{ heroStatBottomLine1 }}<br /><strong>{{ heroStatBottomLine2 }}</strong></div>
             </div>
           </div>
         </div>
@@ -160,9 +429,9 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
       <section class="features" data-node-id="4:1182">
         <div class="container">
           <div class="section-head">
-            <h2>Forge Your Knowledge</h2>
+            <h2>{{ forgeTitle }}</h2>
             <p>
-              Unlock ancient wisdom with modern tools. Our platform transforms study material into an adventure.
+              {{ forgeSubtitle }}
             </p>
           </div>
 
@@ -183,26 +452,25 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
       <section class="cta" data-node-id="4:1217">
         <div class="cta__overlay" />
         <div class="container cta__inner">
-          <p class="cta__badge">✪ Join 10,000+ Scholars</p>
-          <h2>Ready to Ascend?</h2>
+          <p class="cta__badge">{{ joinScholarLabel }}</p>
+          <h2>{{ readyAscendLabel }}</h2>
           <p>
-            The path to enlightenment is fraught with peril... and pop quizzes. Equip yourself with the ultimate study
-            tool.
+            {{ ascendDescLabel }}
           </p>
-          <BaseButton>Start Your Journey Free</BaseButton>
+          <BaseButton>{{ startJourneyLabel }}</BaseButton>
         </div>
       </section>
     </main>
 
     <footer class="site-footer" data-node-id="4:1296">
       <div class="container site-footer__inner">
-        <p class="site-footer__brand">✧ Dungeon Scholar</p>
+        <p class="site-footer__brand">{{ footerBrand }}</p>
 
-        <nav class="site-footer__links" aria-label="Footer links">
-          <a v-for="item in footerLinks" :key="item" href="#">{{ item }}</a>
+        <nav class="site-footer__links" :aria-label="footerLinksAria">
+          <a v-for="item in footerLinks" :key="item.text" :href="item.href">{{ item.text }}</a>
         </nav>
 
-        <p class="site-footer__copyright">© 2023 Dungeon Scholar. All rights reserved.</p>
+        <p class="site-footer__copyright">{{ copyrightLabel }}</p>
       </div>
     </footer>
   </div>
@@ -222,7 +490,7 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
 
 .site-header {
   backdrop-filter: blur(6px);
-  background: rgba(252, 251, 247, 0.9);
+  background: var(--color-glass-bg);
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
@@ -234,11 +502,13 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
   display: flex;
   justify-content: space-between;
   min-height: 64px;
+  position: relative;
 }
 
 .brand {
   align-items: center;
   display: flex;
+  flex-shrink: 0;
   gap: 12px;
 }
 
@@ -260,6 +530,7 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
 }
 
 .brand__name {
+  color: var(--color-text-primary);
   font-family: var(--font-serif);
   font-size: 20px;
   font-weight: 700;
@@ -272,11 +543,25 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
   gap: 32px;
 }
 
-.site-nav a,
+.site-nav--centered {
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.header-right {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+}
+
+.site-nav--centered a,
 .site-footer__links a {
   color: var(--color-text-tertiary);
   font-size: 14px;
   text-decoration: none;
+  transition: color 0.2s ease;
 }
 
 .menu-toggle {
@@ -292,7 +577,7 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
 }
 
 .mobile-nav {
-  background: rgba(252, 251, 247, 0.97);
+  background: var(--color-glass-bg);
   border-bottom: 1px solid var(--color-border);
   display: none;
   flex-direction: column;
@@ -306,9 +591,77 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
   text-decoration: none;
 }
 
-.site-nav a:hover,
+.site-nav--centered a:hover,
 .site-footer__links a:hover {
   color: var(--color-primary-700);
+}
+
+.header-icon-btn {
+  align-items: center;
+  display: inline-flex;
+  position: relative;
+}
+
+.icon-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  transition: color 0.2s ease, background-color 0.2s ease;
+  width: 36px;
+}
+
+.icon-btn:hover {
+  background: var(--color-primary-50);
+  color: var(--color-primary-600);
+}
+
+.header-dropdown {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+  min-width: 140px;
+  overflow: hidden;
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-2));
+  z-index: 100;
+}
+
+.header-dropdown__item {
+  background: transparent;
+  border: 0;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: block;
+  font-size: var(--text-sm);
+  padding: 10px 14px;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  width: 100%;
+}
+
+.header-dropdown__item:hover {
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
+}
+
+.header-dropdown__item--active {
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+  font-weight: 600;
+}
+
+.header-auth {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
 }
 
 .hero {
@@ -366,6 +719,18 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
   flex-wrap: wrap;
   gap: 16px;
   margin-top: 24px;
+}
+
+.hero__actions :deep(.base-btn--ghost) {
+  background: var(--color-glass-bg);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.hero__actions :deep(.base-btn--ghost:hover) {
+  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-glass-bg));
+  border-color: var(--color-border);
+  color: var(--color-text-strong);
 }
 
 .hero__actions :deep(.cta-route-btn),

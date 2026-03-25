@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import NotificationPopover from "../components/NotificationPopover.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
+
+const { t, locale } = useI18n();
 
 type UploadState = "idle" | "loading" | "success" | "failure";
 
@@ -48,9 +51,13 @@ const fetchDocuments = async () => {
 };
 
 onMounted(async () => {
-  document.title = "Xi Rang Home";
   await hydrate();
   await fetchDocuments();
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("home.metaTitle");
 });
 
 const shopRoute = ROUTES.shop;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { listDocuments } from "../api/documents";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import NotificationPopover from "../components/NotificationPopover.vue";
@@ -35,7 +36,8 @@ type NotificationItem = {
   time: string;
 };
 
-const { streak, coins, hydrate } = useScholarData();
+const { streak, coins, hasCoinBalance, hydrate } = useScholarData();
+const { t, locale } = useI18n();
 const notificationVisible = ref(false);
 const notifications = ref<NotificationItem[]>([]);
 
@@ -48,27 +50,31 @@ const closeNotifications = () => {
 };
 
 onMounted(async () => {
-  document.title = "Xi Rang Quests";
   await hydrate();
   await hydrateDailyQuests();
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("quests.metaTitle");
 });
 
 const quests = ref<DailyQuest[]>([
   {
     id: "quest-upload",
-    title: "Upload and parse 1 new document in the Scroll Archive",
+    title: t("quests.missionUploadTitle"),
     type: "upload",
     completed: false,
   },
   {
     id: "quest-streak",
-    title: "Maintain your learning streak",
+    title: t("quests.missionStreakTitle"),
     type: "streak",
     completed: false,
   },
   {
     id: "quest-abyss",
-    title: "Complete 2 challenges in 'Endless Abyss' mode",
+    title: t("quests.missionAbyssTitle"),
     type: "abyss",
     completed: false,
     locked: true,
@@ -110,7 +116,13 @@ const hydrateDailyQuests = async () => {
   }
 };
 
-const coinLabel = computed(() => `${coins.value} Coins`);
+const streakLabel = computed(() => t("quests.streakLabel", { days: streak.value }));
+const coinLabel = computed(() => {
+  const amount = hasCoinBalance.value ? coins.value.toLocaleString("en-US") : "--";
+  return t("quests.coinLabel", { amount });
+});
+const monthlyDaysRemaining = computed(() => t("quests.daysRemaining", { days: streak.value > 0 ? 20 : 0 }));
+const refreshInLabel = computed(() => t("quests.refreshIn", { hours: streak.value > 0 ? 13 : 0 }));
 
 const shopRoute = ROUTES.shop;
 
@@ -120,14 +132,14 @@ const missionCards = computed<MissionCard[]>(() =>
       const isLocked = quest.locked === true;
       return {
         id: quest.id,
-        title: quest.title,
+        title: t("quests.missionAbyssTitle"),
         icon: "⚔",
         iconTone: "violet",
         progress: isLocked ? 0 : 50,
-        progressLabel: isLocked ? "Locked" : "1/2",
-        reward: "Experience Double Card",
+        progressLabel: isLocked ? "0/2" : "1/2",
+        reward: t("quests.rewardDoubleCard"),
         rewardIcon: "🎁",
-        action: isLocked ? "Locked" : "Continue",
+        action: t("quests.continue"),
         actionTone: "ghost",
         disabled: isLocked,
       };
@@ -136,14 +148,14 @@ const missionCards = computed<MissionCard[]>(() =>
     if (quest.type === "streak") {
       return {
         id: quest.id,
-        title: quest.title,
+        title: t("quests.missionStreakTitle"),
         icon: "✓",
         iconTone: "green",
         progress: quest.completed ? 100 : 0,
-        progressLabel: quest.completed ? "Completed" : "In progress",
+        progressLabel: quest.completed ? t("quests.completed") : "0/1",
         reward: "+50",
         rewardIcon: "🪙",
-        action: quest.completed ? "Claim Reward" : "Continue",
+        action: quest.completed ? t("quests.claimReward") : t("quests.continue"),
         actionTone: quest.completed ? "solid" : "ghost",
         disabled: false,
       };
@@ -151,14 +163,14 @@ const missionCards = computed<MissionCard[]>(() =>
 
     return {
       id: quest.id,
-      title: quest.title,
+      title: t("quests.missionUploadTitle"),
       icon: "⤴",
       iconTone: "blue",
       progress: quest.completed ? 100 : 0,
-      progressLabel: quest.completed ? "Completed" : "0/1",
-      reward: "Gold Chest",
+      progressLabel: quest.completed ? t("quests.completed") : "0/1",
+      reward: t("quests.rewardGoldChest"),
       rewardIcon: "🧰",
-      action: quest.completed ? "Claim Reward" : "Upload",
+      action: quest.completed ? t("quests.claimReward") : t("quests.upload"),
       actionTone: "solid",
       disabled: false,
     };
@@ -174,10 +186,10 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
     <main class="quests-main">
       <section class="quests-shell">
-        <header class="quests-statusbar" aria-label="Quest status">
-          <div class="status-pill status-pill--streak">🔥 {{ streak }} Day Streak</div>
+        <header class="quests-statusbar" :aria-label="t('quests.statusAria')">
+          <div class="status-pill status-pill--streak">🔥 {{ streakLabel }}</div>
           <button class="status-pill status-pill--coins" type="button" @click="navigateTo(shopRoute)">🪙 {{ coinLabel }}</button>
-          <button class="notify-btn" type="button" aria-label="Notifications" @click="toggleNotifications">
+          <button class="notify-btn" type="button" :aria-label="t('quests.notifications')" @click="toggleNotifications">
             🔔
             <span class="notify-btn__dot" aria-hidden="true" />
           </button>
@@ -185,28 +197,28 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
         <NotificationPopover :items="notifications" :visible="notificationVisible" @close="closeNotifications" />
 
-        <section class="monthly-banner" aria-label="Monthly challenge banner">
-          <p class="monthly-banner__eyebrow">MONTHLY CHALLENGE</p>
-          <h1>March Special Mission: Spring Voyage</h1>
-          <p class="monthly-banner__copy">Complete 30 daily missions to earn a monthly badge</p>
+        <section class="monthly-banner" :aria-label="t('quests.monthlyAria')">
+          <p class="monthly-banner__eyebrow">{{ t("quests.monthlyEyebrow") }}</p>
+          <h1>{{ t("quests.monthlyTitle") }}</h1>
+          <p class="monthly-banner__copy">{{ t("quests.monthlyDesc") }}</p>
 
           <div class="monthly-banner__progress-head">
-            <span>12 / 30</span>
+            <span>{{ t("quests.progressRatio", { current: streak > 0 ? 12 : 0, total: 30 }) }}</span>
           </div>
 
           <div class="progress-track progress-track--banner" role="presentation">
-            <span class="progress-fill progress-fill--banner" style="width: 40%" />
+            <span class="progress-fill progress-fill--banner" :style="{ width: streak > 0 ? '40%' : '0%' }" />
           </div>
 
           <div class="monthly-banner__footer">
-            <span>⏰ 20 days remaining</span>
+            <span>{{ monthlyDaysRemaining }}</span>
           </div>
         </section>
 
-        <section class="missions-section" aria-label="Daily special missions">
+        <section class="missions-section" :aria-label="t('quests.dailyAria')">
           <div class="section-head">
-            <h2>Daily Special Missions</h2>
-            <span>↻ Refreshes in 13 hours</span>
+            <h2>{{ t("quests.dailyTitle") }}</h2>
+            <span>{{ refreshInLabel }}</span>
           </div>
 
           <div class="mission-list">
@@ -252,7 +264,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 <style scoped>
 .quests-page {
-  background: linear-gradient(180deg, #f7f9f8 0%, #f1f5f4 100%);
+  background: linear-gradient(180deg, var(--color-page-bg) 0%, var(--color-surface-alt) 100%);
   display: grid;
   gap: 24px;
   grid-template-columns: 256px minmax(0, 1fr);
@@ -294,13 +306,13 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .status-pill--streak {
-  background: #fff3e4;
-  color: #ea8a2f;
+  background: var(--color-streak-bg);
+  color: var(--color-streak-text);
 }
 
 .status-pill--coins {
-  background: #fff8d6;
-  color: #c48a0b;
+  background: var(--color-status-coins-bg);
+  color: var(--color-status-amber);
   cursor: pointer;
 }
 
@@ -308,7 +320,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
   align-items: center;
   background: transparent;
   border: 0;
-  color: #d19b1e;
+  color: var(--color-icon-amber);
   cursor: pointer;
   display: inline-flex;
   font-size: 18px;
@@ -319,7 +331,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .notify-btn__dot {
-  background: #ef4444;
+  background: var(--color-icon-red);
   border-radius: 999px;
   height: 8px;
   position: absolute;
@@ -330,17 +342,17 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 .monthly-banner {
   background:
-    radial-gradient(circle at 85% 26%, rgba(255, 255, 255, 0.22), transparent 22%),
-    linear-gradient(90deg, #f17b72 0%, #f17d7b 26%, #c468d8 100%);
+    radial-gradient(circle at 85% 26%, var(--color-overlay-glass), transparent 22%),
+    linear-gradient(90deg, var(--color-primary-500) 0%, var(--color-icon-blue) 48%, var(--color-icon-violet) 100%);
   border-radius: 24px;
-  color: #ffffff;
+  color: var(--color-surface);
   overflow: hidden;
   padding: 26px 28px 24px;
   position: relative;
 }
 
 .monthly-banner::after {
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 70%);
+  background: radial-gradient(circle, var(--color-overlay-glass) 0%, transparent 70%);
   content: "";
   height: 240px;
   position: absolute;
@@ -364,7 +376,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .monthly-banner h1 {
-  color: #ffffff;
+  color: var(--color-surface);
   font-size: 34px;
   line-height: 1.14;
   margin: 10px 0 0;
@@ -390,13 +402,13 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .progress-track {
-  background: #e5ecea;
+  background: var(--color-progress-track);
   border-radius: 999px;
   overflow: hidden;
 }
 
 .progress-track--banner {
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--color-overlay-glass);
   height: 14px;
   margin-top: 10px;
 }
@@ -407,13 +419,13 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .progress-fill {
-  background: linear-gradient(90deg, #7d58ff 0%, #9f73ff 100%);
+  background: linear-gradient(90deg, var(--color-icon-violet) 0%, var(--color-icon-blue) 100%);
   display: block;
   height: 100%;
 }
 
 .progress-fill--banner {
-  background: #ffffff;
+  background: var(--color-surface);
 }
 
 .monthly-banner__footer {
@@ -432,13 +444,13 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .section-head h2 {
-  color: #22313c;
+  color: var(--color-mission-text);
   font-size: 32px;
   margin: 0;
 }
 
 .section-head span {
-  color: #7a8e97;
+  color: var(--color-mission-progress-text);
   font-size: 13px;
   font-weight: 700;
 }
@@ -450,10 +462,10 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 .mission-card {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #e3e9e7;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 12px 24px -28px rgba(15, 23, 42, 0.45);
+  box-shadow: var(--shadow-card);
   display: flex;
   justify-content: space-between;
   padding: 18px 20px;
@@ -469,7 +481,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 .mission-card__icon {
   align-items: center;
   border-radius: 12px;
-  color: #ffffff;
+  color: var(--color-surface);
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 20px;
@@ -479,15 +491,15 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .mission-card__icon--violet {
-  background: #8b5cf6;
+  background: var(--color-icon-violet);
 }
 
 .mission-card__icon--green {
-  background: #22c55e;
+  background: var(--color-icon-green);
 }
 
 .mission-card__icon--blue {
-  background: #3b82f6;
+  background: var(--color-icon-blue);
 }
 
 .mission-card__body {
@@ -495,7 +507,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .mission-card h3 {
-  color: #22313c;
+  color: var(--color-mission-text);
   font-size: 15px;
   margin: 0;
   max-width: 560px;
@@ -509,13 +521,13 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .mission-card__progress-row span {
-  color: #8a98a0;
+  color: var(--color-mission-progress-text);
   font-size: 12px;
   font-weight: 700;
 }
 
 .mission-card__progress-label--done {
-  color: #16a34a;
+  color: var(--color-status-done);
 }
 
 .mission-card__right {
@@ -528,7 +540,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 .mission-card__reward {
   align-items: center;
-  color: #e58b1a;
+  color: var(--color-icon-amber);
   display: inline-flex;
   font-size: 14px;
   font-weight: 700;
@@ -542,10 +554,10 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 .mission-card__action {
   align-items: center;
-  background: #f2f5f7;
+  background: var(--color-action-secondary-bg);
   border: 0;
   border-radius: 12px;
-  color: #4d5a64;
+  color: var(--color-action-secondary-text);
   cursor: pointer;
   display: inline-flex;
   font-size: 13px;
@@ -557,8 +569,8 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 }
 
 .mission-card__action--solid {
-  background: #0f8a95;
-  color: #ffffff;
+  background: var(--color-primary-500);
+  color: var(--color-surface);
 }
 
 .mission-card__action--disabled {

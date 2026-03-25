@@ -36,6 +36,11 @@ const initTheme = () => {
   }
 
   if (theme.value === "system") {
+    if (typeof window.matchMedia !== "function") {
+      applyTheme("light");
+      return;
+    }
+
     const prefersDark = window.matchMedia(MEDIA_QUERY).matches;
     applyTheme(prefersDark ? "dark" : "light");
     return;
@@ -52,7 +57,7 @@ const setTheme = (nextTheme: Theme) => {
   initTheme();
 };
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
   const mediaQuery = window.matchMedia(MEDIA_QUERY);
   mediaQuery.addEventListener("change", () => {
     if (theme.value === "system") {

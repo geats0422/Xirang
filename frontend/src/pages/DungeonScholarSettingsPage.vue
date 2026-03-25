@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { computed, onMounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import SettingsDangerPanel from "../components/settings/SettingsDangerPanel.vue";
 import SettingsForgePanel from "../components/settings/SettingsForgePanel.vue";
@@ -8,6 +9,8 @@ import SettingsProfileHero from "../components/settings/SettingsProfileHero.vue"
 import SettingsSupportPanel from "../components/settings/SettingsSupportPanel.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+
+const { t, locale } = useI18n();
 
 type PreferenceRow = {
   icon: string;
@@ -19,48 +22,54 @@ type PreferenceRow = {
 };
 
 onMounted(() => {
-  document.title = "Xi Rang Settings";
+  document.title = t("settings.title");
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("settings.title");
 });
 
 const profileRoute = ROUTES.profile;
 const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
-const preferenceRows: PreferenceRow[] = [
+// Use computed to make preferenceRows reactive to locale changes
+const preferenceRows = computed<PreferenceRow[]>(() => [
   {
     icon: "◐",
-    title: "Interface Theme",
-    description: "Choose your preferred visual style",
+    title: t("settings.preferences.themeLabel"),
+    description: t("settings.preferences.themeDesc"),
     kind: "theme",
   },
   {
     icon: "文",
-    title: "Language",
-    description: "Select interface language",
+    title: t("settings.preferences.languageLabel"),
+    description: t("settings.preferences.languageDesc"),
     kind: "select",
     value: "English",
   },
   {
     icon: "🔊",
-    title: "Sound Effects",
-    description: "Menu clicks and interaction sounds",
+    title: t("settings.preferences.soundLabel"),
+    description: t("settings.preferences.soundDesc"),
     kind: "toggle",
     enabled: true,
   },
   {
     icon: "📳",
-    title: "Haptic Feedback",
-    description: "Vibrate on successful quest completion",
+    title: t("settings.preferences.hapticLabel"),
+    description: t("settings.preferences.hapticDesc"),
     kind: "toggle",
     enabled: true,
   },
   {
     icon: "⏰",
-    title: "Daily Reminders",
-    description: "Receive scroll notifications at dawn",
+    title: t("settings.preferences.reminderLabel"),
+    description: t("settings.preferences.reminderDesc"),
     kind: "toggle",
     enabled: false,
   },
-];
+]);
 </script>
 
 <template>
@@ -70,8 +79,8 @@ const preferenceRows: PreferenceRow[] = [
     <main class="settings-main">
       <div class="settings-content">
         <header class="page-header">
-          <h1>Settings</h1>
-          <p>Manage your profile, game preferences, and ancient technologies.</p>
+          <h1>{{ t("settings.title") }}</h1>
+          <p>{{ t("settings.subtitle") }}</p>
         </header>
 
         <SettingsProfileHero @edit-profile="navigateTo(profileRoute)" />
@@ -86,7 +95,7 @@ const preferenceRows: PreferenceRow[] = [
 
 <style scoped>
 .settings-page {
-  background: linear-gradient(180deg, #f7f9f8 0%, #f1f5f4 100%);
+  background: var(--color-page-bg);
   display: grid;
   gap: 24px;
   grid-template-columns: 256px minmax(0, 1fr);
@@ -112,7 +121,7 @@ const preferenceRows: PreferenceRow[] = [
 }
 
 .page-header h1 {
-  color: #24323d;
+  color: var(--color-text-dark);
   font-family: var(--font-serif);
   font-size: 40px;
   line-height: 1.1;
@@ -120,7 +129,7 @@ const preferenceRows: PreferenceRow[] = [
 }
 
 .page-header p {
-  color: #91a0a5;
+  color: var(--color-text-muted);
   font-size: 13px;
   margin: 8px 0 0;
 }

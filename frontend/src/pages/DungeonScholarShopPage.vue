@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { getShopBalance as getBalance } from "../api/shop";
 
 type ShopItem = {
@@ -13,6 +14,7 @@ type ShopItem = {
 };
 
 const router = useRouter();
+const { t, locale } = useI18n();
 
 const walletBalance = ref(0);
 const isLoading = ref(true);
@@ -35,8 +37,13 @@ const fetchBalance = async () => {
 };
 
 onMounted(async () => {
-  document.title = "Xi Rang Scholar Shop";
+  document.title = t("shop.metaTitle");
   await fetchBalance();
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("shop.metaTitle");
 });
 
 const shopItems: ShopItem[] = [

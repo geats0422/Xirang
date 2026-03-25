@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
@@ -11,8 +12,15 @@ type IdentityItem = {
   connected: boolean;
 };
 
+const { t, locale } = useI18n();
+
 onMounted(() => {
-  document.title = "Xi Rang Profile";
+  document.title = t("profile.metaTitle");
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("profile.metaTitle");
 });
 
 const settingsRoute = ROUTES.settings;
@@ -53,7 +61,7 @@ const toggleIdentity = (key: string) => {
 
         <div class="avatar-ring">
           <div class="avatar-ring__image">🧝</div>
-          <button class="avatar-ring__camera" type="button" aria-label="Change avatar">📷</button>
+          <button class="avatar-ring__camera" type="button" :aria-label="t('profile.changeAvatar')">📷</button>
         </div>
 
         <header class="identity-head">
@@ -68,18 +76,18 @@ const toggleIdentity = (key: string) => {
               <strong>12,450</strong>
             </article>
             <article class="stat-pill">
-              <span>🔥 STREAK</span>
-              <strong>15 Days</strong>
+              <span>🔥 {{ t("profile.streak") }}</span>
+              <strong>{{ t("profile.days", { days: 15 }) }}</strong>
             </article>
             <button class="stat-pill stat-pill--shop" type="button" @click="navigateTo(shopRoute)">
-              <span>🪙 COINS</span>
+              <span>🪙 {{ t("profile.coins") }}</span>
               <strong>2,300</strong>
             </button>
           </div>
         </header>
 
         <section class="linked-identity">
-          <div class="section-title">⛓ Linked Identity</div>
+          <div class="section-title">⛓ {{ t("profile.linkedIdentity") }}</div>
 
           <button
             v-for="item in identities"
@@ -93,18 +101,18 @@ const toggleIdentity = (key: string) => {
               <span class="identity-row__icon">{{ item.icon }}</span>
               <div>
                 <p class="identity-row__name">{{ item.name }}</p>
-                <p class="identity-row__status">{{ item.connected ? "Connected" : "Not connected" }}</p>
+                <p class="identity-row__status">{{ item.connected ? t("profile.connected") : t("profile.notConnected") }}</p>
               </div>
             </div>
 
             <span class="identity-row__action" :class="{ 'identity-row__action--on': item.connected }">
-              {{ item.connected ? "◉" : "Link" }}
+              {{ item.connected ? "◉" : t("profile.link") }}
             </span>
           </button>
         </section>
 
         <footer class="profile-footer">
-          <button class="signout-btn" type="button">↪ Sign Out</button>
+          <button class="signout-btn" type="button">↪ {{ t("profile.signOut") }}</button>
         </footer>
       </section>
     </main>

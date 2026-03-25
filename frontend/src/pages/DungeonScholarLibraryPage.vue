@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
 import { listDocuments, type DocumentListItem } from "../api/documents";
+
+const { t, locale } = useI18n();
 
 type ScrollCard = {
   id: string;
@@ -35,8 +38,12 @@ const isDragging = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 onMounted(async () => {
-  document.title = "Xi Rang Library";
   await loadDocuments();
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("library.metaTitle");
 });
 
 const loadDocuments = async () => {
@@ -58,11 +65,11 @@ const getScrollCards = (): ScrollCard[] => {
   return documents.value.map((doc) => ({
     id: doc.id,
     title: doc.title,
-    subtitle: "Document awaiting digestion.",
+    subtitle: t("library.awaitingSubtitle"),
     icon: "📖",
     format: "PDF",
     size: "",
-    progressLabel: "Not Started",
+    progressLabel: t("library.notStarted"),
     progressValue: "0%",
     progress: 0,
     action: "begin" as const,
@@ -169,29 +176,33 @@ defineExpose({
     <AppSidebar :current-path="currentPath" :routing-target="routingTarget" @navigate="navigateTo" />
 
     <main class="library-main">
-      <section class="library-toolbar" aria-label="Library controls">
+      <section class="library-toolbar" :aria-label="t('library.controlsAria')">
         <label class="search-box">
           <span class="search-box__icon" aria-hidden="true">⌕</span>
-          <input type="text" placeholder="Search scrolls, scriptures, and texts..." />
+          <input type="text" :placeholder="t('library.searchPlaceholder')" />
         </label>
 
         <button class="sort-btn" type="button">
-          <span class="sort-btn__label">Sort by:</span>
-          <span class="sort-btn__value">Unfinished</span>
+          <span class="sort-btn__label">{{ t("library.sortBy") }}</span>
+          <span class="sort-btn__value">{{ t("library.sortUnfinished") }}</span>
           <span class="sort-btn__caret" aria-hidden="true">▾</span>
         </button>
 
-        <button class="upload-icon-btn" type="button" aria-label="Upload">☁</button>
+        <button class="upload-icon-btn" type="button" :aria-label="t('library.upload')">☁</button>
       </section>
 
-      <section v-if="isLoading" class="card-grid card-grid--loading" aria-label="Loading">
+      <section
+        v-if="isLoading"
+        class="card-grid card-grid--loading"
+        :aria-label="t('library.uploadingAria')"
+      >
         <div class="library-loading">
-          <div class="library-loading__spinner" aria-label="Loading library" />
-          <p>Loading your scrolls...</p>
+          <div class="library-loading__spinner" :aria-label="t('library.uploadingAria')" />
+          <p>{{ t("library.processingScroll") }}</p>
         </div>
       </section>
 
-      <section v-else class="card-grid" aria-label="Library cards">
+      <section v-else class="card-grid" :aria-label="t('library.cardsAria')">
         <article
           v-for="card in getScrollCards()"
           :key="card.id"
@@ -202,11 +213,11 @@ defineExpose({
             'scroll-card--mastered': card.mastered,
           }"
         >
-          <p v-if="card.mastered" class="mastered-stamp">MASTERED</p>
+          <p v-if="card.mastered" class="mastered-stamp">{{ t("library.mastered") }}</p>
 
           <div class="scroll-card__head">
             <span class="scroll-card__icon">{{ card.icon }}</span>
-            <button class="scroll-card__edit" type="button" aria-label="Edit">✎</button>
+            <button class="scroll-card__edit" type="button" :aria-label="t('library.edit')">✎</button>
           </div>
 
           <div class="scroll-card__meta">
@@ -241,10 +252,10 @@ defineExpose({
             <span>
               {{
                 card.action === "continue"
-                  ? "Continue Journey"
+                  ? t("library.continueJourney")
                   : card.action === "begin"
-                    ? "Begin Study"
-                    : "Review"
+                    ? t("library.beginStudy")
+                    : t("library.review")
               }}
             </span>
           </button>
@@ -256,11 +267,11 @@ defineExpose({
           @click="openUploadModal"
         >
           <p class="scroll-card__add-icon">＋</p>
-          <h2>Add New Scroll</h2>
-          <p class="scroll-card__add-text">Upload PDF, TXT, or EPUB to begin a new digestion.</p>
+          <h2>{{ t("library.addNewScroll") }}</h2>
+          <p class="scroll-card__add-text">{{ t("library.addScrollDesc") }}</p>
           <p class="scroll-card__add-disclaimer">
             <span class="scroll-card__beta-tag">BETA</span>
-            Free uploads during beta period.
+            {{ t("library.betaDisclaimer") }}
           </p>
         </article>
       </section>
@@ -345,8 +356,8 @@ defineExpose({
 }
 
 .library-main {
-  background: #fbfbf8;
-  border: 1px solid #eceeea;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 14px;
   padding: 18px;
 }
@@ -360,8 +371,8 @@ defineExpose({
 
 .search-box {
   align-items: center;
-  background: #f4f5f1;
-  border: 1px solid #e2e5df;
+  background: var(--color-search-bg);
+  border: 1px solid var(--color-search-border);
   border-radius: 8px;
   display: flex;
   gap: 8px;
@@ -370,29 +381,29 @@ defineExpose({
 }
 
 .search-box__icon {
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   font-size: 16px;
 }
 
 .search-box input {
   background: transparent;
   border: 0;
-  color: #3d4650;
+  color: var(--color-text-tertiary);
   flex: 1;
   font-size: 15px;
   outline: 0;
 }
 
 .search-box input::placeholder {
-  color: #9aa2ab;
+  color: var(--color-text-muted);
 }
 
 .sort-btn {
   align-items: center;
-  background: #f9faf7;
-  border: 1px solid #bad8d8;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-upload-border);
   border-radius: 8px;
-  color: #4f5d6f;
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: inline-flex;
   font-size: 14px;
@@ -403,12 +414,12 @@ defineExpose({
 }
 
 .sort-btn__value {
-  color: #2f3b48;
+  color: var(--color-text-strong);
   font-weight: 700;
 }
 
 .sort-btn__caret {
-  color: #6b7280;
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -416,7 +427,7 @@ defineExpose({
   align-items: center;
   background: transparent;
   border: 0;
-  color: #1f9aa4;
+  color: var(--color-deep-teal);
   cursor: pointer;
   display: inline-flex;
   font-size: 20px;
@@ -433,10 +444,10 @@ defineExpose({
 }
 
 .scroll-card {
-  background: #ffffff;
-  border: 1px solid #e8ebe6;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
   border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(26, 26, 26, 0.04);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   min-height: 262px;
@@ -445,12 +456,12 @@ defineExpose({
 }
 
 .scroll-card--gold {
-  border-left: 4px solid #f1bb33;
+  border-left: 4px solid var(--color-muted-gold);
   padding-left: 10px;
 }
 
 .scroll-card--selected {
-  border: 2px dashed #2ea4ff;
+  border: 2px dashed var(--color-primary-500);
   padding: 13px;
 }
 
@@ -459,8 +470,8 @@ defineExpose({
 }
 
 .mastered-stamp {
-  border: 2px solid #8ecdd4;
-  color: #8ecdd4;
+  border: 2px solid var(--color-upload-border);
+  color: var(--color-upload-border);
   font-family: var(--font-serif);
   font-size: 16px;
   font-style: italic;
@@ -480,9 +491,9 @@ defineExpose({
 
 .scroll-card__icon {
   align-items: center;
-  background: #f0f2ef;
+  background: var(--color-search-bg);
   border-radius: 10px;
-  color: #169aa5;
+  color: var(--color-deep-teal);
   display: inline-flex;
   font-size: 20px;
   height: 40px;
@@ -493,7 +504,7 @@ defineExpose({
 .scroll-card__edit {
   background: transparent;
   border: 0;
-  color: #c2c7cf;
+  color: var(--color-text-light-slate);
   cursor: pointer;
   font-size: 14px;
   height: 20px;
@@ -509,9 +520,9 @@ defineExpose({
 }
 
 .scroll-card__format {
-  background: #e9f4f4;
+  background: var(--color-primary-50);
   border-radius: 4px;
-  color: #299da7;
+  color: var(--color-primary-500);
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
@@ -519,7 +530,7 @@ defineExpose({
 }
 
 .scroll-card__size {
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
@@ -531,7 +542,7 @@ defineExpose({
 }
 
 .scroll-card__subtitle {
-  color: #8d95a0;
+  color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.35;
   margin: 8px 0 0;
@@ -540,7 +551,7 @@ defineExpose({
 
 .scroll-card__progress-head {
   align-items: baseline;
-  color: #5a6573;
+  color: var(--color-text-secondary);
   display: flex;
   font-size: 13px;
   font-weight: 700;
@@ -549,19 +560,19 @@ defineExpose({
 }
 
 .scroll-card__progress-value--teal {
-  color: #1f9aa4;
+  color: var(--color-primary-500);
 }
 
 .scroll-card__progress-value--gold {
-  color: #d39e1a;
+  color: var(--color-muted-gold);
 }
 
 .scroll-card__progress-value--muted {
-  color: #9aa2ab;
+  color: var(--color-text-muted);
 }
 
 .scroll-card__progress-track {
-  background: #e8ecf0;
+  background: var(--color-progress-track);
   border-radius: 999px;
   height: 6px;
   margin-top: 6px;
@@ -569,13 +580,13 @@ defineExpose({
 }
 
 .scroll-card__progress-fill {
-  background: #1f9aa4;
+  background: var(--color-primary-500);
   display: block;
   height: 100%;
 }
 
 .scroll-card--gold .scroll-card__progress-fill {
-  background: #e5b03a;
+  background: var(--color-muted-gold);
 }
 
 .scroll-card__action {
@@ -598,45 +609,45 @@ defineExpose({
 }
 
 .scroll-card__action--continue {
-  background: #1f9aa4;
-  color: #ffffff;
+  background: var(--color-primary-500);
+  color: var(--color-surface);
 }
 
 .scroll-card__action--begin {
-  background: #f7fbfb;
-  border-color: #8ecdd4;
-  color: #1f9aa4;
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-100);
+  color: var(--color-primary-600);
 }
 
 .scroll-card__action--review {
-  background: #ececec;
-  color: #707784;
+  background: var(--color-border-soft);
+  color: var(--color-text-muted);
 }
 
 .scroll-card--add {
   align-items: center;
-  background: #fafaf7;
-  border: 2px dashed #d6d8d2;
+  background: var(--color-surface-alt);
+  border: 2px dashed var(--color-border);
   justify-content: center;
   text-align: center;
 }
 
 .scroll-card__add-icon {
-  color: #8f959d;
+  color: var(--color-text-muted);
   font-size: 44px;
   line-height: 1;
   margin: 0;
 }
 
 .scroll-card--add h2 {
-  color: #5c5a5a;
+  color: var(--color-text-secondary);
   font-family: var(--font-serif);
   font-size: 30px;
   margin-top: 10px;
 }
 
 .scroll-card__add-text {
-  color: #9a9da3;
+  color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.4;
   margin: 8px 0 0;
@@ -644,19 +655,19 @@ defineExpose({
 }
 
 .scroll-card__add-disclaimer {
-  background: #fef9e7;
-  border: 1px solid #f5e6a3;
+  background: var(--color-chip-gold-bg);
+  border: 1px solid var(--color-muted-gold);
   border-radius: 6px;
-  color: #8a6d1b;
+  color: var(--color-chip-gold-text);
   font-size: 11px;
   margin: 12px 0 0;
   padding: 6px 10px;
 }
 
 .scroll-card__beta-tag {
-  background: #f0ad4e;
+  background: var(--color-muted-gold);
   border-radius: 3px;
-  color: #fff;
+  color: var(--color-surface);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -665,14 +676,14 @@ defineExpose({
 }
 
 .scroll-card--add--loading {
-  border-color: #a0d2db;
+  border-color: var(--color-upload-border);
   border-style: solid;
 }
 
 .scroll-card__spinner {
   animation: spin 1s linear infinite;
-  border: 3px solid #e0f0f0;
-  border-top-color: #1f9aa4;
+  border: 3px solid var(--color-progress-track);
+  border-top-color: var(--color-primary-500);
   border-radius: 50%;
   height: 32px;
   width: 32px;
@@ -699,7 +710,7 @@ defineExpose({
 
 .library-loading {
   align-items: center;
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -707,8 +718,8 @@ defineExpose({
 
 .library-loading__spinner {
   animation: spin 1s linear infinite;
-  border: 3px solid #e0f0f0;
-  border-top-color: #1f9aa4;
+  border: 3px solid var(--color-progress-track);
+  border-top-color: var(--color-primary-500);
   border-radius: 50%;
   height: 32px;
   width: 32px;
@@ -717,8 +728,8 @@ defineExpose({
 /* Hero Upload Styles */
 .hero-upload {
   align-items: center;
-  background: #ffffff;
-  border: 2px dashed #b9d8dc;
+  background: var(--color-surface);
+  border: 2px dashed var(--color-upload-border);
   border-radius: 22px;
   display: flex;
   flex-direction: column;
@@ -749,7 +760,7 @@ defineExpose({
 }
 
 .hero-upload p {
-  color: var(--color-text-secondary, #5a6573);
+  color: var(--color-text-secondary);
   font-size: 16px;
   line-height: 1.7;
   margin: 14px 0 0;
@@ -758,10 +769,10 @@ defineExpose({
 
 .browse-btn {
   align-items: center;
-  background: #f4fbfb;
-  border: 1px solid #b9d8dc;
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-upload-border);
   border-radius: 999px;
-  color: #1f9aa4;
+  color: var(--color-deep-teal);
   cursor: pointer;
   display: inline-flex;
   font-family: var(--font-serif);
@@ -774,25 +785,25 @@ defineExpose({
 }
 
 .support-text {
-  color: var(--color-text-muted, #9aa2ab);
+  color: var(--color-text-muted);
   font-size: 13px;
   margin-top: 12px;
 }
 
 .hero-upload__disclaimer {
-  background: #fef9e7;
-  border: 1px solid #f5e6a3;
+  background: var(--color-chip-gold-bg);
+  border: 1px solid var(--color-muted-gold);
   border-radius: 8px;
-  color: #8a6d1b;
+  color: var(--color-chip-gold-text);
   font-size: 12px;
   margin: 0 0 12px;
   padding: 8px 14px;
 }
 
 .hero-upload__beta-tag {
-  background: #f0ad4e;
+  background: var(--color-muted-gold);
   border-radius: 4px;
-  color: #fff;
+  color: var(--color-surface);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -801,23 +812,23 @@ defineExpose({
 }
 
 .hero-upload--loading {
-  border-color: #a0d2db;
+  border-color: var(--color-upload-border);
 }
 
 .hero-upload--success {
-  border-color: #6ecf9c;
+  border-color: var(--color-status-done);
   border-style: solid;
 }
 
 .hero-upload--failure {
-  border-color: #e8a0a0;
+  border-color: var(--color-danger-border);
   border-style: solid;
 }
 
 .hero-upload--dragging {
-  border-color: #1f9aa4;
+  border-color: var(--color-primary-500);
   border-style: solid;
-  background: #f0fafa;
+  background: var(--color-primary-50);
 }
 
 .hero-upload__file-input {
@@ -826,8 +837,8 @@ defineExpose({
 
 .hero-upload__spinner {
   animation: spin 1s linear infinite;
-  border: 3px solid #e0f0f0;
-  border-top-color: #1f9aa4;
+  border: 3px solid var(--color-progress-track);
+  border-top-color: var(--color-primary-500);
   border-radius: 50%;
   height: 40px;
   margin-top: 20px;
@@ -835,15 +846,15 @@ defineExpose({
 }
 
 .browse-btn--success {
-  background: #e8f8f0;
-  border-color: #6ecf9c;
-  color: #22863a;
+  background: var(--color-primary-100);
+  border-color: var(--color-status-done);
+  color: var(--color-status-done);
 }
 
 .hero-upload__retry {
-  background: #fff5f5;
-  border-color: #e8a0a0;
-  color: #c53030;
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-title);
 }
 
 @keyframes spin {
@@ -865,7 +876,7 @@ defineExpose({
 /* Upload Modal */
 .upload-modal-overlay {
   align-items: center;
-  background: rgba(15, 23, 42, 0.6);
+  background: var(--color-overlay-fallback);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -876,8 +887,8 @@ defineExpose({
 
 .upload-modal {
   align-items: center;
-  background: var(--color-surface, #ffffff);
-  border: 2px dashed #b9d8dc;
+  background: var(--color-surface);
+  border: 2px dashed var(--color-upload-border);
   border-radius: 22px;
   display: flex;
   flex-direction: column;
@@ -892,7 +903,7 @@ defineExpose({
 .upload-modal__close {
   background: transparent;
   border: 0;
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 20px;
   padding: 8px;
@@ -902,7 +913,7 @@ defineExpose({
 }
 
 .upload-modal__close:hover {
-  color: #5a6573;
+  color: var(--color-text-secondary);
 }
 
 @media (max-width: 768px) {

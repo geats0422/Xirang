@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 
 type ModeFlow = "begin" | "review";
 
@@ -14,40 +15,46 @@ type DungeonMode = {
   previewClass: string;
 };
 
+const { t, locale } = useI18n();
+
 onMounted(() => {
-  document.title = "Xi Rang Mode Selection";
+  document.title = t("modeSelection.metaTitle");
+});
+
+watch(locale, () => {
+  document.title = t("modeSelection.metaTitle");
 });
 const libraryRoute = "/library";
 
-const modeOptions: DungeonMode[] = [
+const modeOptions = computed<DungeonMode[]>(() => [
   {
     id: "endless-abyss",
     icon: "♡",
     iconClass: "mode-card__icon--crimson",
-    title: "Endless Abyss",
-    tag: "ROGUELIKE STRATEGY",
-    description: "Descend deeper with every correct answer. Manage your health and collect artifacts.",
+    title: t("modeSelection.options.endlessAbyss.title"),
+    tag: t("modeSelection.options.endlessAbyss.tag"),
+    description: t("modeSelection.options.endlessAbyss.description"),
     previewClass: "mode-card__preview--abyss",
   },
   {
     id: "speed-survival",
     icon: "⚡",
     iconClass: "mode-card__icon--sky",
-    title: "Speed Survival",
-    tag: "FAST-PACED SWIPE",
-    description: "Race against the clock. Swipe left or right to answer. Precision meets speed.",
+    title: t("modeSelection.options.speedSurvival.title"),
+    tag: t("modeSelection.options.speedSurvival.tag"),
+    description: t("modeSelection.options.speedSurvival.description"),
     previewClass: "mode-card__preview--speed",
   },
   {
     id: "knowledge-draft",
     icon: "◫",
     iconClass: "mode-card__icon--gold",
-    title: "Knowledge Draft",
-    tag: "TACTILE CARD PLAYING",
-    description: "Build a deck of answers. Play cards to defeat enemies in turn-based combat.",
+    title: t("modeSelection.options.knowledgeDraft.title"),
+    tag: t("modeSelection.options.knowledgeDraft.tag"),
+    description: t("modeSelection.options.knowledgeDraft.description"),
     previewClass: "mode-card__preview--draft",
   },
-];
+]);
 
 const router = useRouter();
 const route = useRoute();
@@ -62,7 +69,9 @@ const materialTitle = computed(() => {
     return rawTitle;
   }
 
-  return modeFlow.value === "review" ? "Basic Alchemy 101" : "Modern Biology Vol 1";
+  return modeFlow.value === "review"
+    ? t("modeSelection.defaults.reviewMaterialTitle")
+    : t("modeSelection.defaults.beginMaterialTitle");
 });
 
 const materialSubtitle = computed(() => {
@@ -73,47 +82,57 @@ const materialSubtitle = computed(() => {
   }
 
   return modeFlow.value === "review"
-    ? "Return through a new challenge loop to reinforce what you have already learned."
-    : "Choose how this scroll should become your first combat-ready study session.";
+    ? t("modeSelection.defaults.reviewMaterialSubtitle")
+    : t("modeSelection.defaults.beginMaterialSubtitle");
 });
 
 const surfaceTitle = computed(() =>
-  modeFlow.value === "review" ? "Digestion Complete!" : "Choose Your First Dungeon",
+  modeFlow.value === "review"
+    ? t("modeSelection.surface.reviewTitle")
+    : t("modeSelection.surface.beginTitle"),
 );
 
 const surfaceSubtitlePrefix = computed(() =>
-  modeFlow.value === "review" ? "Choose your" : "Begin this scroll with a",
+  modeFlow.value === "review"
+    ? t("modeSelection.surface.reviewSubtitlePrefix")
+    : t("modeSelection.surface.beginSubtitlePrefix"),
 );
 
-const surfaceSubtitleAccent = computed(() => "Dungeon Mode");
+const surfaceSubtitleAccent = computed(() => t("modeSelection.surface.subtitleAccent"));
 
-const heroTitle = computed(() => (modeFlow.value === "review" ? "Mastery Awaits" : "Study Begins"));
+const heroTitle = computed(() =>
+  modeFlow.value === "review"
+    ? t("modeSelection.hero.reviewTitle")
+    : t("modeSelection.hero.beginTitle"),
+);
 
 const heroBody = computed(() =>
   modeFlow.value === "review"
-    ? `Your work on ${materialTitle.value} has been digested. Choose a mode to revisit the knowledge from a different angle.`
-    : `You are about to enter ${materialTitle.value}. Pick a mode that matches how you want to internalize the material.`,
+    ? t("modeSelection.hero.reviewBody", { material: materialTitle.value })
+    : t("modeSelection.hero.beginBody", { material: materialTitle.value }),
 );
 
 const footerMeta = computed(() =>
   modeFlow.value === "review"
-    ? ["15m Session", "92% Retention"]
-    : ["First Run", "Adaptive Trial"],
+    ? [t("modeSelection.footer.reviewSession"), t("modeSelection.footer.reviewRetention")]
+    : [t("modeSelection.footer.beginRun"), t("modeSelection.footer.beginTrial")],
 );
 
 const secondaryActionLabel = computed(() =>
-  modeFlow.value === "review" ? "Review Material Instead" : "Return to Library",
+  modeFlow.value === "review"
+    ? t("modeSelection.actions.reviewMaterialInstead")
+    : t("modeSelection.actions.returnToLibrary"),
 );
 
 const selectedMode = computed(
-  () => modeOptions.find((mode) => mode.id === selectedModeId.value) ?? null,
+  () => modeOptions.value.find((mode) => mode.id === selectedModeId.value) ?? null,
 );
 
-const modeLabels: Record<string, string> = {
-  "endless-abyss": "深度",
-  "speed-survival": "刺激",
-  "knowledge-draft": "轻松",
-};
+const modeLabels = computed<Record<string, string>>(() => ({
+  "endless-abyss": t("modeSelection.labels.endlessAbyss"),
+  "speed-survival": t("modeSelection.labels.speedSurvival"),
+  "knowledge-draft": t("modeSelection.labels.knowledgeDraft"),
+}));
 
 const enterDungeon = async () => {
   if (!selectedModeId.value) {
@@ -173,13 +192,13 @@ const closeModal = async () => {
 
     <div class="mode-overlay" aria-hidden="true" @click="closeModal" />
 
-    <section class="mode-dialog" aria-label="Game mode selection dialog">
+    <section class="mode-dialog" :aria-label="t('modeSelection.dialogAria')">
       <div class="mode-hero">
-        <p class="mode-hero__eyebrow">⌘ DUNGEON SCHOLAR</p>
+        <p class="mode-hero__eyebrow">{{ t("modeSelection.hero.eyebrow") }}</p>
         <h1>{{ heroTitle }}</h1>
         <p class="mode-hero__copy">{{ heroBody }}</p>
         <div class="mode-hero__material">
-          <span>{{ route.query.format || "SCROLL" }}</span>
+          <span>{{ route.query.format || t("modeSelection.defaults.scrollFormat") }}</span>
           <strong>{{ materialTitle }}</strong>
           <p>{{ materialSubtitle }}</p>
         </div>
@@ -220,7 +239,7 @@ const closeModal = async () => {
 
         <footer class="mode-actions">
           <button class="mode-actions__primary" type="button" :disabled="!selectedModeId" @click="enterDungeon">
-            Enter Dungeon →
+            {{ t("modeSelection.actions.enterDungeon") }}
           </button>
           <button class="mode-actions__secondary" type="button" @click="closeModal">
             {{ secondaryActionLabel }}
@@ -233,7 +252,7 @@ const closeModal = async () => {
 
 <style scoped>
 .mode-main {
-  background: #f6f8f6;
+  background: var(--color-page-bg);
   min-height: 100vh;
   overflow: hidden;
   padding: 24px;
@@ -241,9 +260,21 @@ const closeModal = async () => {
 }
 
 .mode-main::before {
-  background: radial-gradient(circle at 18% 22%, rgba(46, 164, 168, 0.14), transparent 24%),
-    radial-gradient(circle at 82% 80%, rgba(246, 185, 113, 0.16), transparent 26%),
-    linear-gradient(180deg, rgba(239, 244, 241, 0.92), rgba(246, 248, 246, 0.98));
+  background: radial-gradient(
+      circle at 18% 22%,
+      color-mix(in srgb, var(--color-cyan-100) 34%, transparent),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 82% 80%,
+      color-mix(in srgb, var(--color-streak-bg) 42%, transparent),
+      transparent 26%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-page-bg) 92%, var(--color-surface) 8%),
+      color-mix(in srgb, var(--color-page-bg) 98%, var(--color-surface) 2%)
+    );
   content: "";
   inset: 0;
   position: absolute;
@@ -257,8 +288,8 @@ const closeModal = async () => {
 .ghost-card {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  background: rgba(255, 255, 255, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: var(--color-overlay-glass);
+  border: 1px solid var(--color-glass-border);
   border-radius: 26px;
   position: absolute;
 }
@@ -287,16 +318,16 @@ const closeModal = async () => {
 .mode-overlay {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--color-overlay-glass);
   inset: 0;
   position: absolute;
 }
 
 .mode-dialog {
-  background: #f9fbfa;
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-glass-border);
   border-radius: 32px;
-  box-shadow: 0 28px 52px rgba(27, 39, 49, 0.12);
+  box-shadow: var(--shadow-elevated);
   display: grid;
   grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.7fr);
   margin: 78px auto 0;
@@ -307,9 +338,13 @@ const closeModal = async () => {
 }
 
 .mode-hero {
-  background: radial-gradient(circle at 58% 52%, rgba(24, 137, 138, 0.18), transparent 24%),
-    linear-gradient(180deg, rgba(2, 18, 26, 1), rgba(3, 30, 41, 0.98));
-  color: #eef8f6;
+  background: radial-gradient(
+      circle at 58% 52%,
+      color-mix(in srgb, var(--color-cyan-100) 28%, transparent),
+      transparent 24%
+    ),
+    linear-gradient(180deg, var(--color-deep-teal), var(--color-primary-700));
+  color: var(--color-surface);
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -318,7 +353,11 @@ const closeModal = async () => {
 }
 
 .mode-hero::after {
-  background: radial-gradient(circle at 65% 60%, rgba(16, 139, 150, 0.22), transparent 28%);
+  background: radial-gradient(
+    circle at 65% 60%,
+    color-mix(in srgb, var(--color-cyan-100) 36%, transparent),
+    transparent 28%
+  );
   content: "";
   inset: 0;
   position: absolute;
@@ -330,7 +369,7 @@ const closeModal = async () => {
 }
 
 .mode-hero__eyebrow {
-  color: #18b6c0;
+  color: var(--color-cyan-100);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -345,22 +384,22 @@ const closeModal = async () => {
 }
 
 .mode-hero__copy {
-  color: rgba(233, 241, 243, 0.8);
+  color: color-mix(in srgb, var(--color-surface) 80%, transparent);
   font-size: 14px;
   line-height: 1.6;
   margin: 18px 0 0;
 }
 
 .mode-hero__material {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(145, 200, 203, 0.16);
+  background: color-mix(in srgb, var(--color-surface) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-cyan-100) 24%, transparent);
   border-radius: 20px;
   margin-top: 24px;
   padding: 18px 16px;
 }
 
 .mode-hero__material span {
-  color: #55d8de;
+  color: var(--color-cyan-100);
   display: inline-block;
   font-size: 11px;
   font-weight: 700;
@@ -376,7 +415,7 @@ const closeModal = async () => {
 }
 
 .mode-hero__material p {
-  color: rgba(233, 241, 243, 0.72);
+  color: color-mix(in srgb, var(--color-surface) 72%, transparent);
   font-size: 13px;
   line-height: 1.6;
   margin: 12px 0 0;
@@ -390,12 +429,12 @@ const closeModal = async () => {
 }
 
 .mode-hero__meta span {
-  color: rgba(233, 241, 243, 0.82);
+  color: color-mix(in srgb, var(--color-surface) 82%, transparent);
   font-size: 12px;
 }
 
 .mode-content {
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--color-login-card-bg);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   display: flex;
@@ -404,7 +443,7 @@ const closeModal = async () => {
 }
 
 .mode-content__header h2 {
-  color: #111827;
+  color: var(--color-text-strong);
   font-family: var(--font-serif);
   font-size: 49px;
   line-height: 1;
@@ -412,13 +451,13 @@ const closeModal = async () => {
 }
 
 .mode-content__header p {
-  color: #5d6775;
+  color: var(--color-text-secondary);
   font-size: 15px;
   margin: 10px 0 0;
 }
 
 .mode-content__header span {
-  color: #1b9ca7;
+  color: var(--color-primary-500);
   font-weight: 700;
 }
 
@@ -430,8 +469,8 @@ const closeModal = async () => {
 }
 
 .mode-card {
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid #dce5ea;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   cursor: pointer;
   display: flex;
@@ -443,14 +482,14 @@ const closeModal = async () => {
 }
 
 .mode-card:hover {
-  border-color: #9fd7db;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  border-color: var(--color-upload-border);
+  box-shadow: var(--shadow-card);
   transform: translateY(-2px);
 }
 
 .mode-card--active {
-  border-color: #2ba0ab;
-  box-shadow: 0 16px 28px rgba(23, 113, 121, 0.14);
+  border-color: var(--color-primary-500);
+  box-shadow: var(--shadow-button);
 }
 
 .mode-card__icon {
@@ -464,22 +503,22 @@ const closeModal = async () => {
 }
 
 .mode-card__icon--crimson {
-  background: #fff0ef;
-  color: #ef5b5b;
+  background: var(--color-danger-surface);
+  color: var(--color-trend-down);
 }
 
 .mode-card__icon--sky {
-  background: #eefafd;
-  color: #39a7d6;
+  background: var(--color-cyan-50);
+  color: var(--color-shop-brand-teal);
 }
 
 .mode-card__icon--gold {
-  background: #fff8eb;
-  color: #ec9f22;
+  background: var(--color-streak-bg);
+  color: var(--color-coin-value);
 }
 
 .mode-card h3 {
-  color: #111827;
+  color: var(--color-text-strong);
   font-family: var(--font-serif);
   font-size: 24px;
   line-height: 1.12;
@@ -487,7 +526,7 @@ const closeModal = async () => {
 }
 
 .mode-card__tag {
-  color: #16946d;
+  color: var(--color-primary-500);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -495,14 +534,14 @@ const closeModal = async () => {
 }
 
 .mode-card__label {
-  color: #f59e0b;
+  color: var(--color-muted-gold);
   font-size: 11px;
   font-weight: 700;
   margin: 4px 0 0;
 }
 
 .mode-card__desc {
-  color: #667085;
+  color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.6;
   margin: 12px 0 0;
@@ -516,37 +555,75 @@ const closeModal = async () => {
 }
 
 .mode-card__preview--abyss {
-  background: linear-gradient(135deg, rgba(234, 88, 12, 0.18), rgba(251, 146, 60, 0.08)),
-    radial-gradient(circle at 24% 30%, rgba(254, 205, 211, 0.7), transparent 32%),
-    linear-gradient(140deg, #fff7ed, #fefce8);
+  background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-streak-text) 20%, transparent),
+      color-mix(in srgb, var(--color-muted-gold) 14%, transparent)
+    ),
+    radial-gradient(
+      circle at 24% 30%,
+      color-mix(in srgb, var(--color-streak-bg) 84%, transparent),
+      transparent 32%
+    ),
+    linear-gradient(140deg, var(--color-streak-bg), var(--color-chip-gold-bg));
 }
 
 .mode-card__preview--speed {
-  background: radial-gradient(circle at 26% 28%, rgba(251, 191, 36, 0.78), transparent 22%),
-    radial-gradient(circle at 64% 34%, rgba(244, 114, 182, 0.68), transparent 24%),
-    radial-gradient(circle at 74% 64%, rgba(96, 165, 250, 0.72), transparent 24%),
-    linear-gradient(135deg, #fff7cc, #f4d8ff 48%, #c9f4ff);
+  background: radial-gradient(
+      circle at 26% 28%,
+      color-mix(in srgb, var(--color-muted-gold) 78%, transparent),
+      transparent 22%
+    ),
+    radial-gradient(
+      circle at 64% 34%,
+      color-mix(in srgb, var(--color-chip-violet-text) 42%, transparent),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 74% 64%,
+      color-mix(in srgb, var(--color-badge-blue-text) 54%, transparent),
+      transparent 24%
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-streak-bg) 86%, var(--color-surface) 14%),
+      color-mix(in srgb, var(--color-chip-violet-bg) 72%, var(--color-surface) 28%) 48%,
+      color-mix(in srgb, var(--color-cyan-100) 76%, var(--color-surface) 24%)
+    );
 }
 
 .mode-card__preview--draft {
-  background: radial-gradient(circle at 24% 32%, rgba(180, 197, 255, 0.9), transparent 20%),
-    radial-gradient(circle at 76% 38%, rgba(147, 197, 253, 0.58), transparent 18%),
-    linear-gradient(145deg, #8295ff, #6c70c5 44%, #90b0ff);
+  background: radial-gradient(
+      circle at 24% 32%,
+      color-mix(in srgb, var(--color-badge-blue-bg) 92%, transparent),
+      transparent 20%
+    ),
+    radial-gradient(
+      circle at 76% 38%,
+      color-mix(in srgb, var(--color-badge-blue-text) 52%, transparent),
+      transparent 18%
+    ),
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--color-badge-blue-text) 66%, var(--color-surface) 34%),
+      color-mix(in srgb, var(--color-chip-violet-text) 70%, var(--color-text-primary) 30%) 44%,
+      color-mix(in srgb, var(--color-badge-blue-bg) 54%, var(--color-badge-blue-text) 46%)
+    );
 }
 
 .mode-actions {
-  border-top: 1px solid #e6ecef;
+  border-top: 1px solid var(--color-border-soft);
   margin-top: 18px;
   padding-top: 18px;
   text-align: center;
 }
 
 .mode-actions__primary {
-  background: linear-gradient(90deg, #15919b, #21a8b0);
+  background: linear-gradient(90deg, var(--color-primary-600), var(--color-primary-500));
   border: 0;
   border-radius: 12px;
-  box-shadow: 0 14px 28px rgba(21, 145, 155, 0.2);
-  color: #ffffff;
+  box-shadow: var(--shadow-button);
+  color: var(--color-surface);
   cursor: pointer;
   font-family: var(--font-serif);
   font-size: 18px;
@@ -557,7 +634,11 @@ const closeModal = async () => {
 }
 
 .mode-actions__primary:disabled {
-  background: linear-gradient(90deg, #9ca3a8, #b0b5ba);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-text-muted) 72%, var(--color-border) 28%),
+    color-mix(in srgb, var(--color-text-muted) 56%, var(--color-border) 44%)
+  );
   box-shadow: none;
   cursor: not-allowed;
 }
@@ -565,7 +646,7 @@ const closeModal = async () => {
 .mode-actions__secondary {
   background: transparent;
   border: 0;
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   cursor: pointer;
   display: block;
   font-size: 13px;
@@ -574,12 +655,12 @@ const closeModal = async () => {
 
 @supports not ((backdrop-filter: blur(6px)) or (-webkit-backdrop-filter: blur(6px))) {
   .mode-overlay {
-    background: rgba(115, 129, 125, 0.68);
+    background: var(--color-overlay-fallback);
   }
 
   .ghost-card,
   .mode-content {
-    background: rgba(246, 248, 246, 0.94);
+    background: var(--color-modal-fallback);
   }
 }
 

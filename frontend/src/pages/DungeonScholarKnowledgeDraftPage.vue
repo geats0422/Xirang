@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 
+const { t, locale } = useI18n();
+
 onMounted(() => {
-  document.title = "Knowledge Draft - Xi Rang";
+  document.title = t("knowledgeDraft.metaTitle");
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("knowledgeDraft.metaTitle");
 });
 
 const route = useRoute();
@@ -177,14 +185,14 @@ defineExpose({
 
 <style scoped>
 .draft-page {
-  background: linear-gradient(180deg, #f8f8f6, #f3f3f0);
+  background: linear-gradient(180deg, var(--color-page-gradient-start), var(--color-page-gradient-end));
   min-height: 100vh;
   padding: 28px;
 }
 
 .draft-shell {
-  background: #fcfcfa;
-  border: 1px solid #dddcd6;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   margin: 0 auto;
   max-width: 1040px;
   min-height: 640px;
@@ -193,7 +201,7 @@ defineExpose({
 
 .draft-topbar {
   align-items: center;
-  border-bottom: 1px solid #e5e5de;
+  border-bottom: 1px solid var(--color-border-soft);
   display: grid;
   gap: 16px;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -210,7 +218,7 @@ defineExpose({
   align-items: center;
   background: transparent;
   border: 0;
-  color: #2a9bb1;
+  color: var(--color-primary-500);
   cursor: pointer;
   display: inline-flex;
   font-size: 18px;
@@ -231,7 +239,7 @@ defineExpose({
 }
 
 .draft-title h1 {
-  color: #252d36;
+  color: var(--color-text-strong);
   font-family: var(--font-serif);
   font-size: 28px;
   margin: 0;
@@ -243,7 +251,7 @@ defineExpose({
 }
 
 .draft-progress__meta {
-  color: #8c918f;
+  color: var(--color-text-muted);
   display: flex;
   font-size: 10px;
   font-weight: 800;
@@ -252,7 +260,7 @@ defineExpose({
 }
 
 .draft-progress__track {
-  background: #d8ddd9;
+  background: var(--color-progress-track);
   border-radius: 999px;
   height: 6px;
   margin-top: 6px;
@@ -260,7 +268,7 @@ defineExpose({
 }
 
 .draft-progress__fill {
-  background: #43b7a0;
+  background: var(--color-primary-500);
   display: block;
   height: 100%;
 }
@@ -273,10 +281,10 @@ defineExpose({
 
 .draft-reward {
   align-items: center;
-  background: #fff8ea;
-  border: 1px solid #ead4a4;
+  background: var(--color-streak-bg);
+  border: 1px solid color-mix(in srgb, var(--color-streak-bg) 72%, var(--color-muted-gold) 28%);
   border-radius: 999px;
-  color: #d8991a;
+  color: var(--color-coin-value);
   display: inline-flex;
   font-size: 12px;
   font-weight: 800;
@@ -286,10 +294,10 @@ defineExpose({
 
 .draft-settings {
   align-items: center;
-  background: #f4f4f1;
-  border: 1px solid #dcded9;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
-  color: #7d838b;
+  color: var(--color-text-muted);
   cursor: pointer;
   display: inline-flex;
   height: 28px;
@@ -309,8 +317,16 @@ defineExpose({
 }
 
 .draft-stage__mountains {
-  background: radial-gradient(circle at 40% 50%, rgba(179, 186, 188, 0.26), transparent 36%),
-    linear-gradient(135deg, rgba(199, 204, 207, 0.25), rgba(240, 242, 242, 0));
+  background: radial-gradient(
+      circle at 40% 50%,
+      color-mix(in srgb, var(--color-text-muted) 26%, transparent),
+      transparent 36%
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-text-muted) 24%, transparent),
+      color-mix(in srgb, var(--color-border-soft) 0%, transparent)
+    );
   clip-path: polygon(5% 88%, 18% 58%, 29% 72%, 40% 42%, 56% 70%, 66% 54%, 78% 76%, 100% 88%, 100% 100%, 0 100%);
   height: 170px;
   left: 20px;
@@ -320,11 +336,31 @@ defineExpose({
 }
 
 .draft-stage__branches {
-  background: radial-gradient(circle at 75% 20%, rgba(196, 201, 200, 0.32), transparent 12%),
-    radial-gradient(circle at 66% 34%, rgba(196, 201, 200, 0.3), transparent 12%),
-    radial-gradient(circle at 54% 50%, rgba(196, 201, 200, 0.28), transparent 11%),
-    radial-gradient(circle at 42% 66%, rgba(196, 201, 200, 0.26), transparent 11%),
-    linear-gradient(180deg, rgba(195, 199, 196, 0.36), rgba(195, 199, 196, 0));
+  background: radial-gradient(
+      circle at 75% 20%,
+      color-mix(in srgb, var(--color-text-muted) 32%, transparent),
+      transparent 12%
+    ),
+    radial-gradient(
+      circle at 66% 34%,
+      color-mix(in srgb, var(--color-text-muted) 30%, transparent),
+      transparent 12%
+    ),
+    radial-gradient(
+      circle at 54% 50%,
+      color-mix(in srgb, var(--color-text-muted) 28%, transparent),
+      transparent 11%
+    ),
+    radial-gradient(
+      circle at 42% 66%,
+      color-mix(in srgb, var(--color-text-muted) 26%, transparent),
+      transparent 11%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-text-muted) 36%, transparent),
+      color-mix(in srgb, var(--color-text-muted) 0%, transparent)
+    );
   border-radius: 140px 140px 0 0;
   bottom: 64px;
   height: 164px;
@@ -340,14 +376,14 @@ defineExpose({
 }
 
 .scroll-rod {
-  background: #d4ccb9;
+  background: color-mix(in srgb, var(--color-soft-brown) 44%, var(--color-surface-alt) 56%);
   border-radius: 2px;
   height: 16px;
   position: relative;
 }
 
 .scroll-cap {
-  background: #837562;
+  background: var(--color-soft-brown);
   border-radius: 3px;
   height: 22px;
   position: absolute;
@@ -356,7 +392,7 @@ defineExpose({
 }
 
 .scroll-cap::before {
-  background: rgba(35, 28, 19, 0.35);
+  background: color-mix(in srgb, var(--color-text-primary) 35%, transparent);
   border-radius: 999px;
   content: "";
   height: 10px;
@@ -375,8 +411,8 @@ defineExpose({
 }
 
 .scroll-paper {
-  background: #fbfaf7;
-  box-shadow: 0 18px 30px rgba(58, 62, 52, 0.12);
+  background: var(--color-surface-alt);
+  box-shadow: var(--shadow-elevated);
   margin: 0 18px;
   min-height: 284px;
   padding: 36px 44px 40px;
@@ -384,9 +420,9 @@ defineExpose({
 }
 
 .scroll-paper__tag {
-  background: #e8f4ec;
+  background: var(--color-primary-50);
   border-radius: 999px;
-  color: #398b6e;
+  color: var(--color-primary-600);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -396,7 +432,7 @@ defineExpose({
 }
 
 .scroll-paper h2 {
-  color: #243246;
+  color: var(--color-text-strong);
   font-family: var(--font-serif);
   font-size: 30px;
   margin: 18px 0 0;
@@ -404,7 +440,7 @@ defineExpose({
 }
 
 .scroll-paper__accent {
-  background: #2ca3af;
+  background: var(--color-primary-500);
   border-radius: 999px;
   height: 4px;
   margin: 14px auto 0;
@@ -412,7 +448,7 @@ defineExpose({
 }
 
 .scroll-paper__body {
-  color: #5f6775;
+  color: var(--color-text-secondary);
   font-family: var(--font-serif);
   font-size: 18px;
   line-height: 1.55;
@@ -421,9 +457,9 @@ defineExpose({
 }
 
 .drop-slot {
-  border: 1px dashed #c8d4e7;
+  border: 1px dashed color-mix(in srgb, var(--color-border) 60%, var(--color-badge-blue-bg) 40%);
   border-radius: 999px;
-  color: #b4becf;
+  color: var(--color-text-light-slate);
   display: inline-flex;
   font-family: inherit;
   font-size: 12px;
@@ -436,14 +472,14 @@ defineExpose({
 
 .scroll-watermark {
   bottom: 24px;
-  color: rgba(203, 206, 202, 0.38);
+  color: color-mix(in srgb, var(--color-text-muted) 38%, transparent);
   font-size: 60px;
   position: absolute;
   right: 26px;
 }
 
 .draft-chip-help {
-  color: #a0a7af;
+  color: var(--color-text-muted);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -461,8 +497,8 @@ defineExpose({
 .draft-chip {
   border: 0;
   border-radius: 16px;
-  box-shadow: 0 8px 20px rgba(147, 157, 149, 0.14);
-  color: #51606c;
+  box-shadow: var(--shadow-card);
+  color: var(--color-text-secondary);
   cursor: pointer;
   font-family: var(--font-serif);
   font-size: 16px;
@@ -472,29 +508,29 @@ defineExpose({
 }
 
 .draft-chip--water {
-  background: #dff7fb;
+  background: var(--color-cyan-50);
 }
 
 .draft-chip--tao {
-  background: #e4f2e7;
+  background: var(--color-primary-50);
 }
 
 .draft-chip--heart {
-  background: #f6e8dc;
+  background: var(--color-streak-bg);
 }
 
 .draft-chip--mountain {
-  background: #ebe5fb;
+  background: var(--color-chip-violet-bg);
 }
 
 .draft-chip--heaven {
-  background: #f8edc8;
+  background: var(--color-chip-amber-bg);
 }
 
 .feedback-action {
   background: transparent;
   border: 0;
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 11px;
   margin-top: 12px;
@@ -508,10 +544,10 @@ defineExpose({
 }
 
 .run-status-notice {
-  background: #e8f8f4;
-  border: 1px solid #cfe6dc;
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-100);
   border-radius: 8px;
-  color: #1d9b83;
+  color: var(--color-primary-600);
   font-size: 12px;
   font-weight: 700;
   margin-top: 12px;

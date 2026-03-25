@@ -1,11 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
 
+const { t, locale } = useI18n();
+
 onMounted(() => {
-  document.title = "Endless Abyss - Xi Rang";
+  document.title = t("endlessAbyss.metaTitle");
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("endlessAbyss.metaTitle");
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("endlessAbyss.metaTitle");
 });
 
 type RunStatus = "normal" | "reduced-reward";
@@ -150,15 +163,24 @@ defineExpose({
 
 <style scoped>
 .abyss-page {
-  background: radial-gradient(circle at 20% 12%, rgba(181, 210, 210, 0.2), transparent 32%),
-    radial-gradient(circle at 86% 86%, rgba(182, 192, 209, 0.16), transparent 36%), #f4f6f4;
+  background: radial-gradient(
+      circle at 20% 12%,
+      color-mix(in srgb, var(--color-cyan-100) 40%, transparent),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 86% 86%,
+      color-mix(in srgb, var(--color-badge-blue-bg) 40%, transparent),
+      transparent 36%
+    ),
+    var(--color-page-bg);
   min-height: 100vh;
   padding: 28px;
 }
 
 .abyss-shell {
-  background: #fdfdfb;
-  border: 1px solid #d7dbd6;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   margin: 0 auto;
   max-width: 1040px;
@@ -167,7 +189,7 @@ defineExpose({
 
 .abyss-status {
   align-items: center;
-  border-bottom: 1px solid #e6e9e3;
+  border-bottom: 1px solid var(--color-border-soft);
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
@@ -181,16 +203,16 @@ defineExpose({
 }
 
 .hp-heart {
-  color: #df5c5c;
+  color: var(--color-trend-down);
   font-size: 14px;
 }
 
 .hp-heart--empty {
-  color: #d7dadd;
+  color: var(--color-border);
 }
 
 .hp-label {
-  color: #75808d;
+  color: var(--color-text-muted);
   font-size: 12px;
   font-weight: 700;
   margin-left: 8px;
@@ -205,21 +227,21 @@ defineExpose({
 
 .floor-block p,
 .floor-block span {
-  color: #117f7f;
+  color: var(--color-primary-600);
   font-size: 11px;
   font-weight: 700;
   margin: 0;
 }
 
 .floor-track {
-  background: #d7dde3;
+  background: var(--color-progress-track);
   border-radius: 999px;
   height: 6px;
   overflow: hidden;
 }
 
 .floor-fill {
-  background: #1a9394;
+  background: var(--color-primary-500);
   display: block;
   height: 100%;
 }
@@ -231,20 +253,20 @@ defineExpose({
 }
 
 .meta-block span {
-  background: #fff7ea;
-  border: 1px solid #eddac2;
+  background: var(--color-streak-bg);
+  border: 1px solid color-mix(in srgb, var(--color-streak-bg) 72%, var(--color-muted-gold) 28%);
   border-radius: 999px;
-  color: #8b6a3e;
+  color: var(--color-soft-brown);
   font-size: 12px;
   font-weight: 700;
   padding: 4px 10px;
 }
 
 .meta-coin {
-  background: #fff7ea;
-  border: 1px solid #eddac2;
+  background: var(--color-streak-bg);
+  border: 1px solid color-mix(in srgb, var(--color-streak-bg) 72%, var(--color-muted-gold) 28%);
   border-radius: 999px;
-  color: #8b6a3e;
+  color: var(--color-soft-brown);
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
@@ -260,11 +282,25 @@ defineExpose({
 }
 
 .dragon-bg {
-  background: radial-gradient(circle at 26% 26%, rgba(210, 216, 212, 0.3), transparent 28%),
-    radial-gradient(circle at 56% 38%, rgba(175, 183, 184, 0.16), transparent 42%),
-    linear-gradient(145deg, #9ba2a7 0%, #757d85 44%, #66717b 72%, #7d8790 100%);
+  background: radial-gradient(
+      circle at 26% 26%,
+      color-mix(in srgb, var(--color-text-muted) 32%, transparent),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 56% 38%,
+      color-mix(in srgb, var(--color-text-muted) 18%, transparent),
+      transparent 42%
+    ),
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--color-text-light-slate) 72%, var(--color-text-secondary) 28%) 0%,
+      var(--color-text-muted) 44%,
+      var(--color-text-tertiary) 72%,
+      color-mix(in srgb, var(--color-text-muted) 86%, var(--color-text-light-slate) 14%) 100%
+    );
   border-radius: 2px;
-  box-shadow: inset 0 -80px 140px rgba(5, 16, 30, 0.32);
+  box-shadow: inset 0 -80px 140px color-mix(in srgb, var(--color-text-primary) 32%, transparent);
   height: 100%;
   overflow: hidden;
   position: absolute;
@@ -272,7 +308,11 @@ defineExpose({
 }
 
 .dragon-art {
-  background-image: linear-gradient(180deg, rgba(246, 249, 248, 0.04), rgba(12, 17, 24, 0.14)),
+  background-image: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface) 8%, transparent),
+      color-mix(in srgb, var(--color-text-primary) 14%, transparent)
+    ),
     url("/figma-endless-abyss-dragon-source.png");
   background-position: center, 60% 12%;
   background-repeat: no-repeat;
@@ -284,19 +324,32 @@ defineExpose({
 }
 
 .dragon-fog {
-  background: linear-gradient(180deg, rgba(250, 252, 251, 0.12), rgba(15, 22, 29, 0.08) 44%, rgba(248, 250, 249, 0.22) 100%),
-    radial-gradient(circle at 17% 18%, rgba(255, 255, 255, 0.24), transparent 22%),
-    radial-gradient(circle at 28% 58%, rgba(255, 255, 255, 0.08), transparent 32%);
+  background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface) 12%, transparent),
+      color-mix(in srgb, var(--color-text-primary) 8%, transparent) 44%,
+      color-mix(in srgb, var(--color-surface) 22%, transparent) 100%
+    ),
+    radial-gradient(
+      circle at 17% 18%,
+      color-mix(in srgb, var(--color-surface) 24%, transparent),
+      transparent 22%
+    ),
+    radial-gradient(
+      circle at 28% 58%,
+      color-mix(in srgb, var(--color-surface) 8%, transparent),
+      transparent 32%
+    );
   inset: 0;
   position: absolute;
 }
 
 .question-card {
-  background: #ffffff;
-  border: 1px solid #d8ece8;
-  border-top: 3px solid #7acfd1;
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary-100);
+  border-top: 3px solid var(--color-cyan-100);
   border-radius: 16px;
-  box-shadow: 0 10px 28px rgba(44, 63, 82, 0.18);
+  box-shadow: var(--shadow-elevated);
   bottom: 62px;
   left: 72px;
   max-width: 478px;
@@ -306,9 +359,9 @@ defineExpose({
 }
 
 .question-card__tag {
-  background: #eef8f8;
+  background: var(--color-cyan-50);
   border-radius: 8px;
-  color: #4a9d96;
+  color: var(--color-primary-500);
   display: inline-block;
   font-size: 10px;
   font-weight: 800;
@@ -318,7 +371,7 @@ defineExpose({
 }
 
 .question-card h1 {
-  color: #26343c;
+  color: var(--color-text-strong);
   font-size: 23px;
   font-weight: 800;
   letter-spacing: -0.01em;
@@ -329,7 +382,7 @@ defineExpose({
 
 .question-card__footer {
   align-items: center;
-  border-top: 1px solid #e9eeef;
+  border-top: 1px solid var(--color-border-soft);
   display: flex;
   justify-content: space-between;
   margin-top: 14px;
@@ -337,15 +390,15 @@ defineExpose({
 }
 
 .question-card__footer span {
-  color: #7f8a94;
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
 .question-card__hint {
-  background: #eaf9fb;
-  border: 1px solid #c7eaf0;
+  background: var(--color-cyan-50);
+  border: 1px solid var(--color-cyan-100);
   border-radius: 999px;
-  color: #67a8b4;
+  color: var(--color-primary-500);
   font-size: 11px;
   font-weight: 700;
   padding: 4px 8px;
@@ -363,10 +416,10 @@ defineExpose({
 
 .answer-input {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #e1e5ea;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   display: flex;
   gap: 8px;
   height: 42px;
@@ -376,17 +429,17 @@ defineExpose({
 .answer-input input {
   background: transparent;
   border: 0;
-  color: #334155;
+  color: var(--color-text-slate);
   flex: 1;
   font-size: 14px;
   outline: 0;
 }
 
 .cast-btn {
-  background: linear-gradient(90deg, #1697a1, #1aaab5);
+  background: linear-gradient(90deg, var(--color-primary-600), var(--color-primary-500));
   border: 0;
   border-radius: 12px;
-  color: #ffffff;
+  color: var(--color-surface);
   cursor: pointer;
   font-family: var(--font-serif);
   font-size: 16px;
@@ -399,7 +452,7 @@ defineExpose({
 .return-btn {
   background: transparent;
   border: 0;
-  color: #7d8893;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 11px;
   font-weight: 700;
@@ -412,7 +465,7 @@ defineExpose({
 .feedback-action {
   background: transparent;
   border: 0;
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 11px;
   margin-top: 12px;
@@ -426,10 +479,10 @@ defineExpose({
 }
 
 .run-status-notice {
-  background: #fef3cd;
-  border: 1px solid #f5e6a3;
+  background: var(--color-focus-amber-bg);
+  border: 1px solid color-mix(in srgb, var(--color-focus-amber-bg) 78%, var(--color-muted-gold) 22%);
   border-radius: 8px;
-  color: #92400e;
+  color: var(--color-focus-amber-text);
   font-size: 12px;
   font-weight: 700;
   margin-top: 12px;

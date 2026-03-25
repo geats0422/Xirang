@@ -1,12 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
-
 import { ROUTES } from "../constants/routes";
 
+const { t, locale } = useI18n();
+
 onMounted(() => {
-  document.title = "Speed Survival - Xi Rang";
+  document.title = t("speedSurvival.metaTitle");
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("speedSurvival.metaTitle");
+});
+
+// Update document title reactively when locale changes
+watch(locale, () => {
+  document.title = t("speedSurvival.metaTitle");
 });
 
 type RunStatus = "normal" | "fast-answer" | "reduced-reward";
@@ -133,14 +145,14 @@ defineExpose({
 
 <style scoped>
 .speed-page {
-  background: linear-gradient(180deg, #f8f5ef, #f3eee5);
+  background: linear-gradient(180deg, var(--color-page-gradient-start), var(--color-page-gradient-end));
   min-height: 100vh;
   padding: 28px;
 }
 
 .speed-shell {
-  background: #fcfaf4;
-  border: 1px solid #ded8ce;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   margin: 0 auto;
   max-width: 1040px;
   min-height: 640px;
@@ -161,10 +173,10 @@ defineExpose({
 
 .speed-topbar__icon {
   align-items: center;
-  background: #eef5f2;
-  border: 1px solid #beded8;
+  background: var(--color-cyan-50);
+  border: 1px solid var(--color-cyan-100);
   border-radius: 999px;
-  color: #1393a1;
+  color: var(--color-primary-500);
   display: inline-flex;
   height: 24px;
   justify-content: center;
@@ -172,7 +184,7 @@ defineExpose({
 }
 
 .speed-topbar h1 {
-  color: #2e2f2c;
+  color: var(--color-text-primary);
   font-size: 20px;
   margin: 0;
 }
@@ -185,10 +197,10 @@ defineExpose({
 
 .exit-btn,
 .settings-btn {
-  background: #f7f3eb;
-  border: 1px solid #ded7ca;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
-  color: #6f6a63;
+  color: var(--color-text-secondary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
@@ -214,18 +226,18 @@ defineExpose({
 
 .countdown-strip__meta p,
 .countdown-strip__meta span {
-  color: #727168;
+  color: var(--color-text-muted);
   font-size: 11px;
   font-weight: 800;
   margin: 0;
 }
 
 .countdown-strip__meta span {
-  color: #3fa6c8;
+  color: var(--color-primary-500);
 }
 
 .countdown-strip__bar {
-  background: #e6e2da;
+  background: var(--color-progress-track);
   border-radius: 999px;
   height: 6px;
   margin-top: 6px;
@@ -233,16 +245,16 @@ defineExpose({
 }
 
 .countdown-strip__fill {
-  background: linear-gradient(90deg, #48c1cc, #7dd3de);
+  background: linear-gradient(90deg, var(--color-primary-600), var(--color-primary-500));
   display: block;
   height: 100%;
 }
 
 .combo-badge {
-  background: #edf8f4;
-  border: 1px solid #cfe6dc;
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-100);
   border-radius: 12px;
-  color: #1d9b83;
+  color: var(--color-primary-600);
   display: inline-flex;
   font-size: 12px;
   font-weight: 800;
@@ -252,9 +264,9 @@ defineExpose({
 }
 
 .survival-card {
-  background: #ffffff;
+  background: var(--color-surface);
   border-radius: 24px;
-  box-shadow: 0 20px 36px rgba(69, 57, 30, 0.1);
+  box-shadow: var(--shadow-elevated);
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr);
   margin-top: 18px;
@@ -262,14 +274,26 @@ defineExpose({
 }
 
 .survival-card__art {
-  background: linear-gradient(180deg, rgba(255, 236, 183, 0.92), rgba(27, 24, 25, 0.25) 10%, rgba(15, 12, 18, 0.96) 18%, rgba(65, 42, 20, 0.96) 50%, rgba(14, 13, 18, 0.96) 82%, rgba(255, 229, 168, 0.88));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-streak-bg) 92%, var(--color-surface) 8%),
+    color-mix(in srgb, var(--color-text-primary) 25%, transparent) 10%,
+    color-mix(in srgb, var(--color-text-primary) 96%, transparent) 18%,
+    color-mix(in srgb, var(--color-soft-brown) 64%, var(--color-text-primary) 36%) 50%,
+    color-mix(in srgb, var(--color-text-primary) 94%, transparent) 82%,
+    color-mix(in srgb, var(--color-streak-bg) 88%, var(--color-surface) 12%)
+  );
   min-height: 194px;
   position: relative;
 }
 
 .survival-card__art::before,
 .survival-card__art::after {
-  background: linear-gradient(180deg, rgba(255, 244, 208, 0.9), rgba(255, 201, 77, 0.18));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-streak-bg) 90%, var(--color-surface) 10%),
+    color-mix(in srgb, var(--color-muted-gold) 20%, transparent)
+  );
   content: "";
   height: 14px;
   left: 0;
@@ -286,9 +310,16 @@ defineExpose({
 }
 
 .survival-card__glow {
-  background: radial-gradient(circle, rgba(255, 235, 107, 0.98) 0%, rgba(255, 208, 34, 0.78) 34%, rgba(255, 198, 24, 0.18) 68%, transparent 78%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-streak-bg) 96%, var(--color-surface) 4%) 0%,
+    color-mix(in srgb, var(--color-muted-gold) 74%, transparent) 34%,
+    color-mix(in srgb, var(--color-muted-gold) 24%, transparent) 68%,
+    transparent 78%
+  );
   border-radius: 999px;
-  box-shadow: 0 0 20px rgba(255, 213, 70, 0.95), 0 0 44px rgba(255, 221, 102, 0.45);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--color-muted-gold) 78%, transparent),
+    0 0 44px color-mix(in srgb, var(--color-streak-bg) 48%, transparent);
   height: 96px;
   left: 36px;
   position: absolute;
@@ -299,7 +330,7 @@ defineExpose({
 
 .survival-card__glow::before,
 .survival-card__glow::after {
-  border: 1px solid rgba(255, 225, 121, 0.6);
+  border: 1px solid color-mix(in srgb, var(--color-streak-bg) 60%, transparent);
   border-radius: 999px;
   content: "";
   inset: 10px;
@@ -315,7 +346,7 @@ defineExpose({
 }
 
 .survival-card__eyebrow {
-  color: #22a8b2;
+  color: var(--color-primary-500);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -323,7 +354,7 @@ defineExpose({
 }
 
 .survival-card__body h2 {
-  color: #2f2d2a;
+  color: var(--color-text-primary);
   font-size: 24px;
   font-weight: 800;
   line-height: 1.15;
@@ -332,7 +363,7 @@ defineExpose({
 }
 
 .survival-card__prompt {
-  color: #7b756b;
+  color: var(--color-text-secondary);
   font-size: 13px;
   margin: 22px 0 0;
 }
@@ -348,7 +379,7 @@ defineExpose({
   align-items: center;
   background: transparent;
   border: 0;
-  color: #8a857d;
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -359,8 +390,8 @@ defineExpose({
 
 .answer-pill__icon {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #e4ddd4;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   display: inline-flex;
   font-size: 28px;
@@ -370,15 +401,15 @@ defineExpose({
 }
 
 .answer-pill--false .answer-pill__icon {
-  color: #e46661;
+  color: var(--color-trend-down);
 }
 
 .answer-pill--true .answer-pill__icon {
-  color: #18a59d;
+  color: var(--color-primary-500);
 }
 
 .answer-tip {
-  color: #a4a097;
+  color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -389,7 +420,7 @@ defineExpose({
 .feedback-action {
   background: transparent;
   border: 0;
-  color: #9aa2ab;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 11px;
   margin-top: 16px;
@@ -403,10 +434,10 @@ defineExpose({
 }
 
 .run-status-notice {
-  background: #e8f8f4;
-  border: 1px solid #cfe6dc;
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-100);
   border-radius: 8px;
-  color: #1d9b83;
+  color: var(--color-primary-600);
   font-size: 12px;
   font-weight: 700;
   margin-top: 16px;

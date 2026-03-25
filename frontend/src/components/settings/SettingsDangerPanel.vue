@@ -1,46 +1,52 @@
+<script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n();
+</script>
+
 <template>
   <section class="danger-panel">
-    <div class="danger-panel__head">⚠ Danger Zone</div>
+    <div class="danger-panel__head">⚠ {{ t("settings.danger.title") }}</div>
 
     <div class="danger-row">
       <div>
-        <p class="danger-row__title">Clear Game Data</p>
-        <p class="danger-row__desc">This will reset your current quest progress but keep your account.</p>
+        <p class="danger-row__title">{{ t("settings.danger.resetTitle") }}</p>
+        <p class="danger-row__desc">{{ t("settings.danger.resetDesc") }}</p>
       </div>
-      <button class="danger-btn danger-btn--ghost" type="button">Clear All Data</button>
+      <button class="danger-btn danger-btn--ghost" type="button">{{ t("settings.danger.resetButton") }}</button>
     </div>
 
     <div class="danger-row">
       <div>
-        <p class="danger-row__title">Delete Account</p>
-        <p class="danger-row__desc">Permanently remove your profile and all achievements. This cannot be undone.</p>
+        <p class="danger-row__title">{{ t("settings.danger.deleteAccountTitle") }}</p>
+        <p class="danger-row__desc">{{ t("settings.danger.deleteAccountDesc") }}</p>
       </div>
-      <button class="danger-btn danger-btn--solid" type="button">Delete Account</button>
+      <button class="danger-btn danger-btn--solid" type="button">{{ t("settings.danger.deleteAccountButton") }}</button>
     </div>
 
     <div class="danger-row">
       <div>
-        <p class="danger-row__title">Log Out</p>
-        <p class="danger-row__desc">End your current session safely.</p>
+        <p class="danger-row__title">{{ t("settings.danger.logoutTitle") }}</p>
+        <p class="danger-row__desc">{{ t("settings.danger.logoutDesc") }}</p>
       </div>
-      <button class="danger-btn danger-btn--logout" type="button">↪ Log Out</button>
+      <button class="danger-btn danger-btn--logout" type="button">↪ {{ t("settings.danger.logoutButton") }}</button>
     </div>
   </section>
 </template>
 
 <style scoped>
 .danger-panel {
-  background: #fff;
-  border: 1px solid #f1d0d0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger-border);
   border-radius: 8px;
   margin-top: 16px;
   overflow: hidden;
 }
 
 .danger-panel__head {
-  background: #fff2f2;
-  border-bottom: 1px solid #f1d0d0;
-  color: #d24141;
+  background: var(--color-danger-surface);
+  border-bottom: 1px solid var(--color-danger-border);
+  color: var(--color-danger-title);
   font-family: var(--font-serif);
   font-size: 24px;
   font-weight: 700;
@@ -49,7 +55,7 @@
 
 .danger-row {
   align-items: center;
-  border-bottom: 1px solid #f1e0e0;
+  border-bottom: 1px solid var(--color-danger-divider);
   display: flex;
   justify-content: space-between;
   padding: 12px 14px;
@@ -60,14 +66,14 @@
 }
 
 .danger-row__title {
-  color: #293640;
+  color: var(--color-text-dark);
   font-size: 14px;
   font-weight: 700;
   margin: 0;
 }
 
 .danger-row__desc {
-  color: #85949b;
+  color: var(--color-text-muted);
   font-size: 12px;
   margin: 2px 0 0;
 }
@@ -82,21 +88,21 @@
 }
 
 .danger-btn--ghost {
-  background: #fff;
-  border: 1px solid #f0bcbc;
-  color: #df6a6a;
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger-title);
 }
 
 .danger-btn--solid {
-  background: #e94a4a;
-  border: 1px solid #e94a4a;
-  color: #fff;
+  background: var(--color-danger-solid-bg);
+  border: 1px solid var(--color-danger-solid-bg);
+  color: var(--color-surface);
 }
 
 .danger-btn--logout {
-  background: #fff;
-  border: 1px solid #d8dddf;
-  color: #3f4d59;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
 }
 
 @media (max-width: 768px) {

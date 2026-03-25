@@ -27,8 +27,8 @@ defineEmits<{
 <style scoped>
 .profile-hero {
   align-items: flex-start;
-  background: #ffffff;
-  border: 1px solid #e6ece8;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   display: grid;
   gap: 18px;
@@ -44,8 +44,8 @@ defineEmits<{
 
 .profile-hero__avatar {
   align-items: center;
-  background: linear-gradient(180deg, #f6f8f9, #dee7e6);
-  border: 1px solid #cad9d5;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 50%;
   display: inline-flex;
   font-size: 48px;
@@ -55,10 +55,10 @@ defineEmits<{
 }
 
 .profile-hero__level {
-  background: #1f9aa4;
+  background: var(--color-primary-500);
   border-radius: 999px;
   bottom: -5px;
-  color: #fff;
+  color: var(--color-surface);
   font-size: 10px;
   font-weight: 700;
   left: 50%;
@@ -74,7 +74,7 @@ defineEmits<{
 }
 
 .profile-hero__name-row h2 {
-  color: #273742;
+  color: var(--color-text-dark);
   font-family: var(--font-serif);
   font-size: 32px;
   line-height: 1;
@@ -82,15 +82,15 @@ defineEmits<{
 }
 
 .verified {
-  color: #2aa6b1;
+  color: var(--color-primary-500);
   font-size: 16px;
   font-weight: 700;
 }
 
 .tier-pill {
-  background: #d7f1f2;
+  background: var(--color-primary-50);
   border-radius: 4px;
-  color: #2f95a0;
+  color: var(--color-primary-600);
   display: inline-block;
   font-size: 11px;
   font-weight: 700;
@@ -99,7 +99,7 @@ defineEmits<{
 }
 
 .profile-hero__body p {
-  color: #5f7a88;
+  color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.45;
   margin: 10px 0 0;
@@ -107,10 +107,10 @@ defineEmits<{
 }
 
 .ghost-btn {
-  background: #fafaf8;
-  border: 1px solid #d3dad7;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  color: #51606b;
+  color: var(--color-text-secondary);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;

@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 
+const { t } = useI18n();
 const router = useRouter();
 
 const navigateTo = (path: string) => {
@@ -12,18 +14,18 @@ const navigateTo = (path: string) => {
   <section class="panel">
     <div class="panel__header">
       <span class="panel__icon">⚒</span>
-      <h3>Support &amp; Legal</h3>
+      <h3>{{ t("settings.support.title") }}</h3>
     </div>
 
     <div class="support-row">
       <div class="support-row__left">
         <span class="support-row__icon">💬</span>
         <div>
-          <p class="support-row__title">Subscription Management</p>
-          <p class="support-row__desc">View current plan details and billing history</p>
+          <p class="support-row__title">{{ t("settings.support.subscription") }}</p>
+          <p class="support-row__desc">{{ t("settings.support.subscriptionDesc") }}</p>
         </div>
       </div>
-      <button class="plan-btn" type="button">Manage Plan</button>
+      <button class="plan-btn" type="button">{{ t("settings.support.manage") }}</button>
     </div>
 
     <div class="legal-links">
@@ -42,8 +44,8 @@ const navigateTo = (path: string) => {
 
 <style scoped>
 .panel {
-  background: #ffffff;
-  border: 1px solid #e6ece8;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   margin-top: 16px;
   overflow: hidden;
@@ -51,19 +53,19 @@ const navigateTo = (path: string) => {
 
 .panel__header {
   align-items: center;
-  border-bottom: 1px solid #edf1ee;
+  border-bottom: 1px solid var(--color-border-soft);
   display: flex;
   gap: 10px;
   padding: 14px 16px;
 }
 
 .panel__icon {
-  color: #728a8d;
+  color: var(--color-icon-text);
   font-size: 16px;
 }
 
 .panel__header h3 {
-  color: #25333d;
+  color: var(--color-text-dark);
   font-family: var(--font-serif);
   font-size: 24px;
   margin: 0;
@@ -71,7 +73,7 @@ const navigateTo = (path: string) => {
 
 .support-row {
   align-items: center;
-  border-bottom: 1px solid #edf1ee;
+  border-bottom: 1px solid var(--color-border-soft);
   display: flex;
   justify-content: space-between;
   padding: 12px 16px;
@@ -85,9 +87,9 @@ const navigateTo = (path: string) => {
 
 .support-row__icon {
   align-items: center;
-  background: #f0f5f2;
+  background: var(--color-icon-bg);
   border-radius: 6px;
-  color: #3a8f99;
+  color: var(--color-icon-text);
   display: inline-flex;
   font-size: 15px;
   height: 26px;
@@ -96,23 +98,23 @@ const navigateTo = (path: string) => {
 }
 
 .support-row__title {
-  color: #2c3c47;
+  color: var(--color-text-dark);
   font-size: 14px;
   font-weight: 700;
   margin: 0;
 }
 
 .support-row__desc {
-  color: #83949a;
+  color: var(--color-text-muted);
   font-size: 12px;
   margin: 2px 0 0;
 }
 
 .plan-btn {
-  background: #dff3f4;
-  border: 1px solid #b9dfe1;
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-100);
   border-radius: 6px;
-  color: #2e8f99;
+  color: var(--color-primary-600);
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
@@ -126,10 +128,10 @@ const navigateTo = (path: string) => {
 }
 
 .legal-links button {
-  background: #fff;
+  background: var(--color-surface);
   border: 0;
-  border-right: 1px solid #edf1ee;
-  color: #74878f;
+  border-right: 1px solid var(--color-border-soft);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 12px;
   height: 44px;
@@ -151,7 +153,7 @@ const navigateTo = (path: string) => {
   }
 
   .legal-links button {
-    border-bottom: 1px solid #edf1ee;
+    border-bottom: 1px solid var(--color-border-soft);
     border-right: 0;
     padding: 0 16px;
     text-align: left;

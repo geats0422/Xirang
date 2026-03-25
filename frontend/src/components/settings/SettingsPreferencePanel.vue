@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useTheme, type Theme } from "../../composables/useTheme";
+import { useScholarData } from "../../composables/useScholarData";
 import { SUPPORTED_LOCALES, type SupportedLocale } from "../../i18n";
 
 type PreferenceRow = {
@@ -29,6 +30,7 @@ const defaultToggleStates: Record<ToggleKey, boolean> = {
 
 const { t, locale } = useI18n();
 const { theme, setTheme } = useTheme();
+const { applyLanguage } = useScholarData();
 
 const showLangDropdown = ref(false);
 const languageSelectRef = ref<HTMLElement | null>(null);
@@ -105,7 +107,7 @@ const toggleLangDropdown = () => {
 };
 
 const selectLanguage = (lang: SupportedLocale) => {
-  locale.value = lang;
+  applyLanguage(lang);
   showLangDropdown.value = false;
 };
 
@@ -206,8 +208,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .panel {
-  background: #ffffff;
-  border: 1px solid #e6ece8;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   margin-top: 16px;
   overflow: visible;
@@ -215,19 +217,19 @@ onBeforeUnmount(() => {
 
 .panel__header {
   align-items: center;
-  border-bottom: 1px solid #edf1ee;
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   gap: 10px;
   padding: 14px 16px;
 }
 
 .panel__icon {
-  color: #728a8d;
+  color: var(--color-text-muted);
   font-size: 16px;
 }
 
 .panel__header h3 {
-  color: #25333d;
+  color: var(--color-text-dark);
   font-family: var(--font-serif);
   font-size: 24px;
   margin: 0;
@@ -239,7 +241,7 @@ onBeforeUnmount(() => {
 
 .prefs-row {
   align-items: center;
-  border-bottom: 1px solid #edf1ee;
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   justify-content: space-between;
   padding: 14px 16px;
@@ -257,9 +259,9 @@ onBeforeUnmount(() => {
 
 .prefs-row__icon {
   align-items: center;
-  background: #f0f5f2;
+  background: var(--color-primary-50);
   border-radius: 999px;
-  color: #5b7f81;
+  color: var(--color-primary-600);
   display: inline-flex;
   font-size: 14px;
   height: 24px;
@@ -268,21 +270,21 @@ onBeforeUnmount(() => {
 }
 
 .prefs-row__title {
-  color: #293741;
+  color: var(--color-text-dark);
   font-size: 14px;
   font-weight: 700;
   margin: 0;
 }
 
 .prefs-row__desc {
-  color: #7f9198;
+  color: var(--color-text-muted);
   font-size: 12px;
   margin: 2px 0 0;
 }
 
 .segmented {
-  background: #f5f7f5;
-  border: 1px solid #e2e8e4;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   display: inline-flex;
   gap: 4px;
@@ -293,7 +295,7 @@ onBeforeUnmount(() => {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  color: #7f9198;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -303,17 +305,17 @@ onBeforeUnmount(() => {
 }
 
 .segmented__btn--active {
-  background: #ffffff;
-  border: 1px solid #d9e1dc;
-  color: #344451;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-dark);
 }
 
 .select-btn {
   align-items: center;
-  background: #f9fbfa;
-  border: 1px solid #dbe3de;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  color: #3b4c57;
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: inline-flex;
   font-size: 13px;
@@ -330,10 +332,10 @@ onBeforeUnmount(() => {
 }
 
 .dropdown-menu {
-  background: #ffffff;
-  border: 1px solid #dbe3de;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  box-shadow: var(--shadow-card);
   left: 0;
   min-width: 180px;
   padding: 6px 0;
@@ -345,7 +347,7 @@ onBeforeUnmount(() => {
 .dropdown-item {
   background: none;
   border: 0;
-  color: #3b4c57;
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: block;
   font-size: 13px;
@@ -356,12 +358,12 @@ onBeforeUnmount(() => {
 }
 
 .dropdown-item:hover {
-  background: #f4f8f6;
+  background: var(--color-primary-50);
 }
 
 .dropdown-item--active {
-  background: #ebf6f4;
-  color: #2a6872;
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
   font-weight: 600;
 }
 
@@ -376,7 +378,7 @@ onBeforeUnmount(() => {
 }
 
 .toggle span {
-  background: #fff;
+  background: var(--color-surface);
   border-radius: 999px;
   display: block;
   height: 16px;

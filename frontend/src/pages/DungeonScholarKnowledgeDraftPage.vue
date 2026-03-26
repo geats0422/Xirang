@@ -4,7 +4,8 @@ import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion, type RunQuestionOption } from "../api/runs";
+import { createRun, submitAnswer, type RunQuestion, type RunQuestionOption } from '../api/runs';
+import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
 
 const { t, locale } = useI18n();
@@ -202,7 +203,29 @@ const chooseOption = async (option: RunQuestionOption) => {
 
 const closeSettlement = () => {
   showSettlement.value = false;
+}
+
+const handleFeedback = async () => {
+  if (!currentQuestion.value || !runId.value) {
+    return;
+  }
+
+  const rawDocumentId = route.query.documentId;
+  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+
+  try {
+    await submitFeedback({
+      question_id: currentQuestion.value.id,
+      document_id: documentId,
+      run_id: runId.value,
+      feedback_type: "wrong_answer",
+      detail_text: "User reported this question has an error.",
+    });
+  } catch (error) {
+    console.error("Failed to submit feedback:", error);
+  }
 };
+;
 
 const setShowNotice = () => {
   showNotice.value = true;
@@ -307,7 +330,7 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <button class="feedback-action" type="button">
+        <button class="feedback-action" type="button" @click="handleFeedback">
           这题有误
         </button>
 

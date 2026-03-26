@@ -1,44 +1,91 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
+import { getShopBalance as getBalance, listShopItems, purchaseShopItem, type ShopOffer } from "../api/shop";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { getShopBalance as getBalance } from "../api/shop";
 
 type ShopItem = {
+  offerId: string;
   name: string;
   rarity: string;
   price: number;
   icon: string;
   description: string;
   accent: "teal" | "violet" | "rose" | "amber";
+  itemCode: string;
 };
 
 const router = useRouter();
 const { t, locale } = useI18n();
 
 const walletBalance = ref(0);
-const isLoading = ref(true);
+const shopItems = ref<ShopItem[]>([]);
+const purchaseError = ref<string | null>(null);
+const isLoading = ref(false);
+const isPurchasing = ref(false);
 const showInsufficientModal = ref(false);
 const selectedItem = ref<ShopItem | null>(null);
 
+
+// Icon mapping based on item_code
+const iconMap: Record<string, string> = {
+  streak_freeze: "",
+  xp_boost: "",
+  revival: "",
+  time_treasure: "",
+  coin_pack: "",
+};
+
+// Accent color mapping based on rarity
+const rarityAccentMap: Record<string, "teal" | "violet" | "rose" | "amber"> = {
+  common: "teal",
+  uncommon: "violet",
+  rare: "rose",
+  legendary: "amber",
+};
+
+const mapOfferToShopItem = (offer: ShopOffer): ShopItem => {
+  const itemCode = offer.item_code || "";
+  const rarityLower = (offer.rarity || "common").toLowerCase();
+  return {
+    offerId: offer.id,
+    name: offer.display_name || itemCode,
+    rarity: offer.rarity || "Common",
+    price: offer.price_amount || 0,
+    icon: iconMap[itemCode] || "",
+    description: "",
+    accent: rarityAccentMap[rarityLower] || "teal",
+    itemCode,
+  };
+};
+
 const fetchBalance = async () => {
-  isLoading.value = true;
   try {
     const balance = await getBalance();
-    const normalizedBalance = balance as { coins?: number; balance?: number };
-    walletBalance.value =
-      (typeof normalizedBalance.coins === "number" ? normalizedBalance.coins : normalizedBalance.balance) || 0;
+    const normalizedBalance = balance as { asset_code: string; balance: number };
+    walletBalance.value = normalizedBalance.balance || 0;
   } catch (error) {
     console.error("Failed to fetch balance:", error);
     walletBalance.value = 0;
+  }
+};
+
+
+const fetchShopItems = async () => {
+  isLoading.value = true;
+  try {
+    const offers = await listShopItems();
+    shopItems.value = (offers as ShopOffer[]).map(mapOfferToShopItem);
+  } catch (error) {
+    console.error("Failed to fetch shop items:", error);
+    shopItems.value = [];
   } finally {
     isLoading.value = false;
   }
 };
-
 onMounted(async () => {
   document.title = t("shop.metaTitle");
-  await fetchBalance();
+  await Promise.all([fetchBalance(), fetchShopItems()]);
 });
 
 // Update document title reactively when locale changes
@@ -46,45 +93,19 @@ watch(locale, () => {
   document.title = t("shop.metaTitle");
 });
 
-const shopItems: ShopItem[] = [
-  {
-    name: "Streak Freeze Ticket",
-    rarity: "Common",
-    price: 500,
-    icon: "❄",
-    description:
-      "A magical charm encased in permafrost. Protects your daily learning streak from breaking for exactly one day.",
-    accent: "teal",
-  },
-  {
-    name: "XP Boost Potion",
-    rarity: "Uncommon",
-    price: 200,
-    icon: "⚗",
-    description:
-      "A vial of concentrated knowledge. Drink to double your experience points gain for the next 30 minutes of study.",
-    accent: "violet",
-  },
-  {
-    name: "Abyss Revive Token",
-    rarity: "Rare",
-    price: 800,
-    icon: "♡",
-    description:
-      "A gemstone pulsating with life force. Instantly restores full HP during an 'Endless Abyss' run, cheating death itself.",
-    accent: "rose",
-  },
-];
 
+// Top-up item for real-money purchases (not from shop API)
 const topUpItem: ShopItem = {
-  name: "Coin Pack",
-  rarity: "Rescue",
+  offerId: 'top_up',
+  name: 'Coin Pack',
+  rarity: 'Legendary',
   price: 199,
-  icon: "💎",
-  description:
-    "Emergency coin pack when you need just a little more. Get 1,000 coins instantly for $1.99.",
-  accent: "amber",
+  icon: '💎',
+  description: 'A pack of 1000 gold coins. Use to purchase items in the shop.',
+  accent: 'amber',
+  itemCode: 'coin_pack',
 };
+
 
 const goBack = async () => {
   if (window.history.length > 1) {
@@ -95,11 +116,8 @@ const goBack = async () => {
   await router.push("/home");
 };
 
-const handlePurchase = (item: ShopItem) => {
-  if (item.accent === "amber") {
-    walletBalance.value += 1000;
-    return;
-  }
+const handlePurchase = async (item: ShopItem) => {
+  if (isPurchasing.value) return;
 
   if (walletBalance.value < item.price) {
     selectedItem.value = item;
@@ -107,7 +125,21 @@ const handlePurchase = (item: ShopItem) => {
     return;
   }
 
-  walletBalance.value -= item.price;
+  isPurchasing.value = true;
+  purchaseError.value = null;
+
+  try {
+    await purchaseShopItem({
+      offerId: item.offerId,
+      idempotencyKey: "purchase-" + Date.now() + "-" + item.offerId,
+    });
+    await fetchBalance();
+  } catch (error) {
+    console.error("Purchase failed:", error);
+    purchaseError.value = "Purchase failed. Please try again.";
+  } finally {
+    isPurchasing.value = false;
+  }
 };
 
 const closeInsufficientModal = () => {
@@ -117,9 +149,6 @@ const closeInsufficientModal = () => {
 
 const buyRescuePack = () => {
   walletBalance.value += 1000;
-  if (selectedItem.value && walletBalance.value >= selectedItem.value.price) {
-    walletBalance.value -= selectedItem.value.price;
-  }
   closeInsufficientModal();
 };
 

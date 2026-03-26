@@ -4,7 +4,8 @@ import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
+import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
+import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
 
 const { t, locale } = useI18n();
@@ -41,7 +42,6 @@ const settlementCombo = ref(0);
 const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(8);
 
-const showFeedbackForm = ref(false);
 
 const materialTitle = computed(() => {
   const rawTitle = route.query.title;
@@ -196,8 +196,25 @@ const closeSettlement = () => {
   showSettlement.value = false;
 };
 
-const toggleFeedbackForm = () => {
-  showFeedbackForm.value = !showFeedbackForm.value;
+const toggleFeedbackForm = async () => {
+  if (!currentQuestion.value || !runId.value) {
+    return;
+  }
+
+  const rawDocumentId = route.query.documentId;
+  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+
+  try {
+    await submitFeedback({
+      question_id: currentQuestion.value.id,
+      document_id: documentId,
+      run_id: runId.value,
+      feedback_type: "wrong_answer",
+      detail_text: "User reported this question has an error.",
+    });
+  } catch (error) {
+    console.error("Failed to submit feedback:", error);
+  }
 };
 
 const setFastAnswer = () => {

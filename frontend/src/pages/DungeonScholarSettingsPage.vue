@@ -9,6 +9,7 @@ import SettingsProfileHero from "../components/settings/SettingsProfileHero.vue"
 import SettingsSupportPanel from "../components/settings/SettingsSupportPanel.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+import { useScholarData } from "../composables/useScholarData";
 
 const { t, locale } = useI18n();
 
@@ -21,8 +22,11 @@ type PreferenceRow = {
   enabled?: boolean;
 };
 
-onMounted(() => {
+const { profileName, profileLevel, hydrate } = useScholarData();
+
+onMounted(async () => {
   document.title = t("settings.title");
+  await hydrate();
 });
 
 // Update document title reactively when locale changes
@@ -74,7 +78,13 @@ const preferenceRows = computed<PreferenceRow[]>(() => [
 
 <template>
   <div class="settings-page">
-    <AppSidebar :current-path="currentPath" :routing-target="routingTarget" @navigate="navigateTo" />
+    <AppSidebar
+      :current-path="currentPath"
+      :routing-target="routingTarget"
+      :profile-name="profileName"
+      :profile-level="profileLevel"
+      @navigate="navigateTo"
+    />
 
     <main class="settings-main">
       <div class="settings-content">
@@ -83,7 +93,11 @@ const preferenceRows = computed<PreferenceRow[]>(() => [
           <p>{{ t("settings.subtitle") }}</p>
         </header>
 
-        <SettingsProfileHero @edit-profile="navigateTo(profileRoute)" />
+        <SettingsProfileHero
+          :profile-name="profileName"
+          :profile-level="profileLevel"
+          @edit-profile="navigateTo(profileRoute)"
+        />
         <SettingsPreferencePanel :rows="preferenceRows" />
         <SettingsForgePanel />
         <SettingsSupportPanel />

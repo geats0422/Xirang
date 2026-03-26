@@ -1,8 +1,24 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ROUTES } from "../constants/routes";
+import { i18n } from "../i18n";
 import DungeonScholarEndlessAbyssPage from "./DungeonScholarEndlessAbyssPage.vue";
+
+const mocks = vi.hoisted(() => ({
+  createRun: vi.fn(),
+  submitAnswer: vi.fn(),
+  getShopBalance: vi.fn(),
+}));
+
+vi.mock("../api/runs", () => ({
+  createRun: mocks.createRun,
+  submitAnswer: mocks.submitAnswer,
+}));
+
+vi.mock("../api/shop", () => ({
+  getShopBalance: mocks.getShopBalance,
+}));
 
 function createTestRouter() {
   return createRouter({
@@ -15,13 +31,35 @@ function createTestRouter() {
 }
 
 describe("DungeonScholarEndlessAbyssPage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getShopBalance.mockResolvedValue({ asset_code: "COIN", balance: 0 });
+    mocks.createRun.mockResolvedValue({
+      run_id: "run-1",
+      mode: "endless",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 10, time_left_sec: 900, pending_coins: 0 },
+      questions: [{ id: "q-1", text: "Question", options: [{ id: "o-1", text: "water" }] }],
+    });
+    mocks.submitAnswer.mockResolvedValue({
+      is_correct: true,
+      run: {
+        id: "run-1",
+        status: "running",
+        score: 10,
+        state: { hp: 3, max_hp: 3, floor: 2, floor_total: 10, time_left_sec: 890, pending_coins: 10 },
+      },
+      settlement: null,
+    });
+  });
+
   it("renders question card with content", async () => {
     const router = createTestRouter();
     await router.push(ROUTES.endlessAbyss);
     await router.isReady();
 
     const wrapper = mount(DungeonScholarEndlessAbyssPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     expect(wrapper.find(".question-card").exists()).toBe(true);
@@ -34,7 +72,7 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarEndlessAbyssPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     expect(wrapper.find(".feedback-action").exists()).toBe(true);
@@ -46,7 +84,7 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarEndlessAbyssPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     const vm = wrapper.vm as unknown as { setReducedReward: () => void };
@@ -62,7 +100,7 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarEndlessAbyssPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
     await wrapper.find(".return-btn").trigger("click");

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { ROUTES } from "../constants/routes";
 
 type ModeFlow = "begin" | "review";
 
@@ -24,7 +25,7 @@ onMounted(() => {
 watch(locale, () => {
   document.title = t("modeSelection.metaTitle");
 });
-const libraryRoute = "/library";
+const libraryRoute = ROUTES.library;
 
 const modeOptions = computed<DungeonMode[]>(() => [
   {
@@ -138,47 +139,24 @@ const enterDungeon = async () => {
   if (!selectedModeId.value) {
     return;
   }
-  if (selectedModeId.value === "endless-abyss") {
-    await router.push({
-      path: "/library/game-modes/endless-abyss",
-      query: {
-        flow: modeFlow.value,
-        title: materialTitle.value,
-        subtitle: materialSubtitle.value,
-        format: route.query.format || "SCROLL",
-      },
-    });
-    return;
-  }
-
-  if (selectedModeId.value === "speed-survival") {
-    await router.push({
-      path: "/library/game-modes/speed-survival",
-      query: {
-        flow: modeFlow.value,
-        title: materialTitle.value,
-        subtitle: materialSubtitle.value,
-        format: route.query.format || "SCROLL",
-      },
-    });
-    return;
-  }
-
-  if (selectedModeId.value === "knowledge-draft") {
-    await router.push({
-      path: "/library/game-modes/knowledge-draft",
-      query: {
-        flow: modeFlow.value,
-        title: materialTitle.value,
-        subtitle: materialSubtitle.value,
-        format: route.query.format || "SCROLL",
-      },
-    });
-  }
+  await router.push({
+    path: ROUTES.levelPath,
+    query: {
+      flow: modeFlow.value,
+      documentId: route.query.documentId,
+      mode: selectedModeId.value,
+      title: materialTitle.value,
+      subtitle: materialSubtitle.value,
+      format: route.query.format || "SCROLL",
+    },
+  });
 };
 
 const closeModal = async () => {
-  await router.push(libraryRoute);
+  await router.push({
+    path: libraryRoute,
+    query: route.query,
+  });
 };
 </script>
 

@@ -1,4 +1,5 @@
-import { apiRequest } from "./http";
+import { getAuthHeaders } from "./authHeaders";
+import { apiRequest, type ApiError } from "./http";
 
 export type AuthUser = {
   id: string;
@@ -19,6 +20,13 @@ export type AuthResponse = {
   tokens: AuthTokens;
 };
 
+export type AuthMeResponse = {
+  id: string;
+  username: string;
+  email: string;
+  status: string;
+};
+
 export type LoginInput = {
   identity: string;
   password: string;
@@ -28,6 +36,48 @@ export type RegisterInput = {
   username: string;
   email: string;
   password: string;
+};
+
+export type AuthApiError = {
+  detail?: string;
+  message?: string;
+};
+
+export const isAuthApiError = (error: unknown): error is ApiError => {
+  return error instanceof Error && error.name === "ApiError";
+};
+
+export const getAuthErrorMessage = (error: unknown): string => {
+  if (isAuthApiError(error)) {
+    const apiError = error as ApiError;
+    if (apiError.detail) {
+      if (typeof apiError.detail === "string") {
+        return apiError.detail;
+      }
+      if (typeof apiError.detail === "object" && apiError.detail !== null) {
+        const detail = apiError.detail as Record<string, unknown>;
+        if (detail.message) {
+          return String(detail.message);
+        }
+        if (detail.msg) {
+          return String(detail.msg);
+        }
+      }
+    }
+    if (apiError.status === 401) {
+      return "Invalid credentials. Please check your email/username and password.";
+    }
+    if (apiError.status === 409) {
+      return "An account with this email or username already exists.";
+    }
+    if (apiError.status === 422) {
+      return "Invalid input. Please check your information and try again.";
+    }
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "An unexpected error occurred. Please try again.";
 };
 
 export const loginWithPassword = async (input: LoginInput): Promise<AuthResponse> => {
@@ -61,5 +111,13 @@ export const persistAuthSession = (payload: AuthResponse): void => {
   storage.setItem("xirang:token", payload.tokens.access_token);
   storage.setItem("xirang:refreshToken", payload.tokens.refresh_token);
   storage.setItem("xirang:userId", payload.user.id);
+  storage.setItem("xirang:username", payload.user.username);
+  storage.setItem("xirang:email", payload.user.email);
   storage.setItem("xirang:isAuthenticated", "true");
+};
+
+export const getCurrentAuthUser = async (): Promise<AuthMeResponse> => {
+  return apiRequest<AuthMeResponse>("/api/v1/auth/me", {
+    headers: getAuthHeaders(),
+  });
 };

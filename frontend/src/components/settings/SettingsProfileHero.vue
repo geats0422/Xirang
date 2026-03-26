@@ -1,4 +1,15 @@
 <script setup lang="ts">
+withDefaults(
+  defineProps<{
+    profileName?: string;
+    profileLevel?: string;
+  }>(),
+  {
+    profileName: "Default user",
+    profileLevel: "Level 1 Scholar",
+  },
+);
+
 defineEmits<{
   editProfile: [];
 }>();
@@ -8,12 +19,12 @@ defineEmits<{
   <section class="profile-hero">
     <div class="profile-hero__avatar-wrap">
       <div class="profile-hero__avatar">🧝</div>
-      <span class="profile-hero__level">LV 42</span>
+      <span class="profile-hero__level">{{ profileLevel }}</span>
     </div>
 
     <div class="profile-hero__body">
       <div class="profile-hero__name-row">
-        <h2>Default User</h2>
+        <h2>{{ profileName }}</h2>
         <span class="verified">✓</span>
       </div>
       <span class="tier-pill">Beta Tier</span>

@@ -15,7 +15,7 @@ const props = withDefaults(
   {
     userXp: 0,
     userLevel: 1,
-    userName: "Default User",
+    userName: "Default user",
     energyPoints: 0,
   },
 );

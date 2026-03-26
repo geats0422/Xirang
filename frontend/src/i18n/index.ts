@@ -319,6 +319,21 @@ const messages = {
       panelSignUpTitle: "Build your own infinite learning world.",
       panelSignUpBody: "Start from one note, then expand into quests, drills, and retention maps designed for you.",
       copyright: "© 2023 Dungeon Scholar. All rights reserved.",
+      signingUp: "Creating account...",
+      loggingIn: "Logging in...",
+    },
+    validation: {
+      usernameRequired: "Please enter your scholar name",
+      usernameMinLength: "Scholar name must be at least 3 characters",
+      emailRequired: "Please enter your email address",
+      emailInvalid: "Please enter a valid email address",
+      passwordRequired: "Please enter your password",
+      passwordMismatch: "Passwords do not match. Please try again.",
+      passwordTooWeak: "Password is too weak",
+    },
+    notifications: {
+      registerSuccess: "Account created! Welcome to Xi Rang, Scholar!",
+      loginSuccess: "Welcome back, Scholar! Your dungeon awaits.",
     },
     modeSelection: {
       metaTitle: "Xi Rang Mode Selection",
@@ -791,6 +806,21 @@ const messages = {
       panelSignUpTitle: "搭建属于你的无限学习世界。",
       panelSignUpBody: "从一条笔记开始，扩展成任务、训练与记忆网络。",
       copyright: "© 2023 Dungeon Scholar. 保留所有权利。",
+      signingUp: "正在创建账号...",
+      loggingIn: "正在登录...",
+    },
+    validation: {
+      usernameRequired: "请输入学者昵称",
+      usernameMinLength: "学者昵称至少需要 3 个字符",
+      emailRequired: "请输入邮箱地址",
+      emailInvalid: "请输入有效的邮箱地址",
+      passwordRequired: "请输入密码",
+      passwordMismatch: "两次输入的密码不一致，请重新输入",
+      passwordTooWeak: "密码强度不足",
+    },
+    notifications: {
+      registerSuccess: "账号创建成功！欢迎加入息壤，学者！",
+      loginSuccess: "欢迎回来，学者！你的副本在等着你。",
     },
     modeSelection: {
       metaTitle: "息壤模式选择",

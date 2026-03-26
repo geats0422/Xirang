@@ -24,6 +24,12 @@
   --color-search-border: #4a3f32;
   --color-streak-bg: #3d2512;
   --color-streak-text: #f8e8c1;
+  --color-batch-checkbox-bg: #2e2820;
+  --color-batch-checkbox-border: #7f705d;
+  --color-batch-checkbox-bg-checked: #5eead4;
+  --color-batch-checkbox-border-checked: #5eead4;
+  --color-batch-checkbox-check: #1f1412;
+  --color-batch-checkbox-shadow-focus: rgba(94, 234, 212, 0.24);
 
   /* Decorative accents — dark theme adjustments */
   --color-decor-teal: #5eead4;

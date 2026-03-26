@@ -10,7 +10,7 @@ import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
 
 const { t, locale } = useI18n();
-const { profileName, profileLevel } = useScholarData();
+const { profileName, profileLevel, hydrate } = useScholarData();
 
 type NotificationItem = {
   id: string;
@@ -73,7 +73,7 @@ const fetchLeaderboard = async () => {
 };
 
 onMounted(async () => {
-  await fetchLeaderboard();
+  await Promise.all([hydrate(), fetchLeaderboard()]);
 });
 
 // Update document title reactively when locale changes
@@ -120,10 +120,10 @@ const userLevel = computed(() => {
 // User name - if no data, show default
 const userName = computed(() => {
   if (!leaderboardData.value || leaderboardData.value.length === 0) {
-    return t("leaderboard.defaultScholar");
+    return profileName.value;
   }
   const entry = leaderboardData.value.find((e) => e.is_current_user);
-  return entry?.display_name ?? t("leaderboard.defaultScholar");
+  return entry?.display_name || profileName.value;
 });
 
 // Energy points - if no data, show 0

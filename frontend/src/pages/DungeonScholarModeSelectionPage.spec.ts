@@ -1,6 +1,8 @@
+import { flushPromises, mount } from "@vue/test-utils";
 import { describe, it, expect } from "vitest";
-import { mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { ROUTES } from "../constants/routes";
+import { i18n } from "../i18n";
 import DungeonScholarModeSelectionPage from "./DungeonScholarModeSelectionPage.vue";
 
 describe("DungeonScholarModeSelectionPage", () => {
@@ -12,6 +14,10 @@ describe("DungeonScholarModeSelectionPage", () => {
           path: "/library/game-modes",
           component: DungeonScholarModeSelectionPage,
         },
+        {
+          path: ROUTES.levelPath,
+          component: { template: "<div>Level Path</div>" },
+        },
       ],
     });
 
@@ -20,7 +26,7 @@ describe("DungeonScholarModeSelectionPage", () => {
 
     const wrapper = mount(DungeonScholarModeSelectionPage, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
       },
     });
 
@@ -36,6 +42,10 @@ describe("DungeonScholarModeSelectionPage", () => {
           path: "/library/game-modes",
           component: DungeonScholarModeSelectionPage,
         },
+        {
+          path: ROUTES.levelPath,
+          component: { template: "<div>Level Path</div>" },
+        },
       ],
     });
 
@@ -44,7 +54,7 @@ describe("DungeonScholarModeSelectionPage", () => {
 
     const wrapper = mount(DungeonScholarModeSelectionPage, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
       },
     });
 
@@ -60,6 +70,10 @@ describe("DungeonScholarModeSelectionPage", () => {
           path: "/library/game-modes",
           component: DungeonScholarModeSelectionPage,
         },
+        {
+          path: ROUTES.levelPath,
+          component: { template: "<div>Level Path</div>" },
+        },
       ],
     });
 
@@ -68,7 +82,7 @@ describe("DungeonScholarModeSelectionPage", () => {
 
     const wrapper = mount(DungeonScholarModeSelectionPage, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
       },
     });
 
@@ -77,5 +91,39 @@ describe("DungeonScholarModeSelectionPage", () => {
 
     const primaryButton = wrapper.find(".mode-actions__primary");
     expect(primaryButton.attributes("disabled")).toBeUndefined();
+  });
+
+  it("routes to path selection after choosing mode", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: ROUTES.gameModes,
+          component: DungeonScholarModeSelectionPage,
+        },
+        {
+          path: ROUTES.levelPath,
+          component: { template: "<div>Level Path</div>" },
+        },
+      ],
+    });
+
+    await router.push({ path: ROUTES.gameModes, query: { documentId: "doc-1", title: "bulk-order-07.txt" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarModeSelectionPage, {
+      global: {
+        plugins: [router, i18n],
+      },
+    });
+
+    await wrapper.findAll(".mode-card")[1].trigger("click");
+    await wrapper.vm.$nextTick();
+    await wrapper.find(".mode-actions__primary").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe(ROUTES.levelPath);
+    expect(router.currentRoute.value.query.mode).toBe("speed-survival");
+    expect(router.currentRoute.value.query.documentId).toBe("doc-1");
   });
 });

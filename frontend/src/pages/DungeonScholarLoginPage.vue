@@ -1,19 +1,34 @@
 <script setup lang="ts">
-import { computed, ref, watchEffect } from "vue";
+import { computed, ref, watchEffect, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import BaseButton from "../components/ui/BaseButton.vue";
+import ToastContainer from "../components/ui/ToastContainer.vue";
 import { useScholarData } from "../composables/useScholarData";
+import { useToast } from "../composables/useToast";
 import { ROUTES } from "../constants/routes";
 import { SUPPORTED_LOCALES, type SupportedLocale } from "../i18n";
+import { loginWithPassword, registerWithPassword, persistAuthSession, getAuthErrorMessage } from "../api/auth";
+import { validatePassword } from "../utils/passwordValidator";
 
 const route = useRoute();
 const router = useRouter();
 const { t, locale } = useI18n();
 const { applyLanguage } = useScholarData();
+const toast = useToast();
 
 const isSignUpRoute = computed(() => route.path === ROUTES.signUp);
 const isLanguageMenuOpen = ref(false);
+
+const formState = ref({
+  username: "",
+  email: "",
+  password: "",
+  confirmPassword: "",
+});
+
+const isSubmitting = ref(false);
+const fieldErrors = ref<Record<string, string>>({});
 
 const socialProviders = computed(() => [
   {
@@ -78,9 +93,100 @@ const goToSignUp = async () => {
   await router.push(ROUTES.signUp);
 };
 
+const clearFieldErrors = () => {
+  fieldErrors.value = {};
+};
+
+const validateForm = (): boolean => {
+  clearFieldErrors();
+  let isValid = true;
+
+  if (isSignUpRoute.value) {
+    if (!formState.value.username.trim()) {
+      fieldErrors.value.username = t("validation.usernameRequired");
+      isValid = false;
+    } else if (formState.value.username.length < 3) {
+      fieldErrors.value.username = t("validation.usernameMinLength");
+      isValid = false;
+    }
+  }
+
+  if (!formState.value.email.trim()) {
+    fieldErrors.value.email = t("validation.emailRequired");
+    isValid = false;
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formState.value.email)) {
+    fieldErrors.value.email = t("validation.emailInvalid");
+    isValid = false;
+  }
+
+  if (!formState.value.password) {
+    fieldErrors.value.password = t("validation.passwordRequired");
+    isValid = false;
+  }
+
+  if (isSignUpRoute.value) {
+    if (formState.value.password !== formState.value.confirmPassword) {
+      fieldErrors.value.confirmPassword = t("validation.passwordMismatch");
+      isValid = false;
+    }
+
+    if (isValid) {
+      const passwordResult = validatePassword(formState.value.password);
+      if (!passwordResult.valid) {
+        fieldErrors.value.password = passwordResult.errors[0];
+        isValid = false;
+      }
+    }
+  }
+
+  return isValid;
+};
+
+const handleSubmit = async () => {
+  if (!validateForm()) {
+    return;
+  }
+
+  isSubmitting.value = true;
+
+  try {
+    if (isSignUpRoute.value) {
+      const response = await registerWithPassword({
+        username: formState.value.username.trim(),
+        email: formState.value.email.trim().toLowerCase(),
+        password: formState.value.password,
+      });
+      persistAuthSession(response);
+      toast.success(t("notifications.registerSuccess"));
+      await router.push(ROUTES.home);
+    } else {
+      const response = await loginWithPassword({
+        identity: formState.value.email.trim().toLowerCase(),
+        password: formState.value.password,
+      });
+      persistAuthSession(response);
+      toast.success(t("notifications.loginSuccess"));
+      await router.push(ROUTES.home);
+    }
+  } catch (error) {
+    const message = getAuthErrorMessage(error);
+    toast.error(message);
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
 watchEffect(() => {
   document.title = isSignUpRoute.value ? t("login.signUpMetaTitle") : t("login.metaTitle");
 });
+
+watch(
+  () => route.path,
+  () => {
+    clearFieldErrors();
+    formState.value = { username: "", email: "", password: "", confirmPassword: "" };
+  }
+);
 </script>
 
 <template>
@@ -151,39 +257,75 @@ watchEffect(() => {
           <span>{{ $t("login.emailDivider") }}</span>
         </div>
 
-        <form class="email-form" @submit.prevent>
+        <form class="email-form" @submit.prevent="handleSubmit">
           <label v-if="isSignUpRoute" class="email-form__field">
             <span>{{ $t("login.nameLabel") }}</span>
             <span class="email-form__input-wrap">
-              <input type="text" :placeholder="$t('login.namePlaceholder')" />
+              <input
+                v-model="formState.username"
+                type="text"
+                :placeholder="$t('login.namePlaceholder')"
+                :class="{ 'input--error': fieldErrors.username }"
+                autocomplete="username"
+              />
             </span>
+            <span v-if="fieldErrors.username" class="email-form__error">{{ fieldErrors.username }}</span>
           </label>
 
           <label class="email-form__field">
             <span>{{ $t("login.emailLabel") }}</span>
             <span class="email-form__input-wrap">
-              <input type="email" :placeholder="$t('login.emailPlaceholder')" />
+              <input
+                v-model="formState.email"
+                type="email"
+                :placeholder="$t('login.emailPlaceholder')"
+                :class="{ 'input--error': fieldErrors.email }"
+                autocomplete="email"
+              />
               <img class="email-form__field-icon email-form__field-icon--mail" :src="mailIcon" alt="" aria-hidden="true" />
             </span>
+            <span v-if="fieldErrors.email" class="email-form__error">{{ fieldErrors.email }}</span>
           </label>
 
           <label class="email-form__field">
             <span>{{ $t("login.passwordLabel") }}</span>
             <span class="email-form__input-wrap">
-              <input type="password" :placeholder="$t('login.passwordPlaceholder')" />
+              <input
+                v-model="formState.password"
+                type="password"
+                :placeholder="$t('login.passwordPlaceholder')"
+                :class="{ 'input--error': fieldErrors.password }"
+                :autocomplete="isSignUpRoute ? 'new-password' : 'current-password'"
+              />
               <img class="email-form__field-icon email-form__field-icon--eye" :src="eyeIcon" alt="" aria-hidden="true" />
             </span>
+            <span v-if="fieldErrors.password" class="email-form__error">{{ fieldErrors.password }}</span>
           </label>
 
           <label v-if="isSignUpRoute" class="email-form__field">
             <span>{{ $t("login.confirmPasswordLabel") }}</span>
             <span class="email-form__input-wrap">
-              <input type="password" :placeholder="$t('login.confirmPasswordPlaceholder')" />
+              <input
+                v-model="formState.confirmPassword"
+                type="password"
+                :placeholder="$t('login.confirmPasswordPlaceholder')"
+                :class="{ 'input--error': fieldErrors.confirmPassword }"
+                autocomplete="new-password"
+              />
               <img class="email-form__field-icon email-form__field-icon--eye" :src="eyeIcon" alt="" aria-hidden="true" />
             </span>
+            <span v-if="fieldErrors.confirmPassword" class="email-form__error">{{ fieldErrors.confirmPassword }}</span>
           </label>
 
-          <BaseButton class="email-form__submit" full-width>{{ primaryActionLabel }}</BaseButton>
+          <BaseButton
+            class="email-form__submit"
+            full-width
+            :disabled="isSubmitting"
+            :loading="isSubmitting"
+            type="submit"
+          >
+            {{ isSubmitting ? (isSignUpRoute ? $t("login.signingUp") : $t("login.loggingIn")) : primaryActionLabel }}
+          </BaseButton>
         </form>
 
         <footer class="card-footer">
@@ -204,6 +346,8 @@ watchEffect(() => {
       <p>{{ $t("login.copyright") }}</p>
     </footer>
   </div>
+
+  <ToastContainer />
 </template>
 
 <style scoped>
@@ -522,6 +666,17 @@ watchEffect(() => {
 .email-form__field-icon--eye {
   height: 11.25px;
   width: 16.5px;
+}
+
+.email-form__error {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.email-form__input-wrap input.input--error {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
 }
 
 .email-form__submit {

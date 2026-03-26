@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import { ROUTES } from "../constants/routes";
+import { createRun, submitAnswer, type RunQuestion, type RunQuestionOption } from "../api/runs";
+import { getShopBalance } from "../api/shop";
 
 const { t, locale } = useI18n();
 
@@ -18,29 +21,125 @@ watch(locale, () => {
 const route = useRoute();
 const router = useRouter();
 
-const progressCurrent = ref(3);
-const progressTotal = ref(10);
+const progressCurrent = ref(0);
+const progressTotal = ref(1);
+const coins = ref(0);
+const timeLeftSec = ref(600);
+const maxRunTime = ref(600);
 
-const _wordChips = [
-  { label: "Water", tone: "water" },
-  { label: "Tao", tone: "tao" },
-  { label: "Heart", tone: "heart" },
-  { label: "Mountain", tone: "mountain" },
-  { label: "Heaven", tone: "heaven" },
-] as const;
+const runId = ref<string | null>(null);
+const questions = ref<RunQuestion[]>([]);
+const questionIndex = ref(0);
+const questionStartAt = ref<number>(Date.now());
+let tickerId: number | null = null;
 
 const progressWidth = computed(() => `${(progressCurrent.value / progressTotal.value) * 100}%`);
 const backNavigating = ref(false);
-const filledSlots = ref<Array<string | null>>([null, null, null]);
 const showSettlement = ref(false);
+const settlementXp = ref(0);
+const settlementCoins = ref(0);
+const settlementCombo = ref(0);
+const settlementGoalCurrent = ref(0);
+const settlementGoalTotal = ref(10);
 
 const showNotice = ref(false);
 
+const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
+
+const questionText = computed(() => {
+  if (currentQuestion.value?.text) {
+    return currentQuestion.value.text;
+  }
+  return "To understand the Way, choose the word that best completes the meaning.";
+});
+
+const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
+
+const optionChips = computed(() =>
+  (currentQuestion.value?.options ?? []).map((option, index) => ({
+    ...option,
+    tone: chipTones[index % chipTones.length],
+  })),
+);
+
+const timerLabel = computed(() => `${Math.max(0, timeLeftSec.value)}s`);
+
+const applyRunState = (state: Record<string, unknown> | null | undefined) => {
+  if (!state) {
+    return;
+  }
+  const nextTime = Number(state.time_left_sec ?? timeLeftSec.value);
+  timeLeftSec.value = Number.isFinite(nextTime) ? nextTime : timeLeftSec.value;
+  if (maxRunTime.value < timeLeftSec.value) {
+    maxRunTime.value = timeLeftSec.value;
+  }
+};
+
+const stopTicker = () => {
+  if (tickerId !== null) {
+    window.clearInterval(tickerId);
+    tickerId = null;
+  }
+};
+
+const startTicker = () => {
+  stopTicker();
+  tickerId = window.setInterval(() => {
+    if (showSettlement.value || timeLeftSec.value <= 0) {
+      return;
+    }
+    timeLeftSec.value = Math.max(0, timeLeftSec.value - 1);
+  }, 1000);
+};
+
+const refreshBalance = async () => {
+  try {
+    const balance = await getShopBalance();
+    coins.value = balance.balance;
+  } catch {
+    coins.value = 0;
+  }
+};
+
+const syncProgress = () => {
+  progressTotal.value = Math.max(1, questions.value.length);
+  progressCurrent.value = Math.min(progressTotal.value, questionIndex.value + 1);
+};
+
+const bootstrapRun = async () => {
+  await refreshBalance();
+
+  const rawDocumentId = route.query.documentId;
+  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+  const rawPathId = route.query.pathId;
+  const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  if (!documentId) {
+    return;
+  }
+
+  try {
+    const created = await createRun(documentId, "draft", 8, pathId);
+    runId.value = created.run_id;
+    questions.value = created.questions;
+    questionIndex.value = 0;
+    syncProgress();
+    applyRunState(created.run_state);
+    questionStartAt.value = Date.now();
+    startTicker();
+  } catch {
+    showNotice.value = true;
+  }
+};
+
 const goBack = async () => {
   await router.push({
-    path: "/library/game-modes",
+    path: route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
     query: route.query,
   });
+};
+
+const goLibrary = async () => {
+  await router.push(ROUTES.library);
 };
 
 const goPreviousPage = async () => {
@@ -61,21 +160,43 @@ const goPreviousPage = async () => {
   }, 220);
 };
 
-const _onChipSelect = (label: string) => {
-  if (showSettlement.value) {
+const chooseOption = async (option: RunQuestionOption) => {
+  if (showSettlement.value || !runId.value || !currentQuestion.value) {
     return;
   }
 
-  const emptyIndex = filledSlots.value.findIndex((slot) => slot === null);
+  const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
 
-  if (emptyIndex === -1) {
-    return;
-  }
+  try {
+    const result = await submitAnswer(
+      runId.value,
+      currentQuestion.value.id,
+      [option.id],
+      elapsedMs,
+    );
 
-  filledSlots.value[emptyIndex] = label;
+    applyRunState(result.run.state);
+    if (!result.is_correct) {
+      showNotice.value = true;
+    }
 
-  if (filledSlots.value.every((slot) => slot !== null)) {
-    showSettlement.value = true;
+    if (result.settlement) {
+      settlementXp.value = result.settlement.xp_earned;
+      settlementCoins.value = result.settlement.coins_earned;
+      settlementCombo.value = result.settlement.combo_max;
+      settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+      settlementGoalTotal.value = result.settlement.goal_total ?? 10;
+      showSettlement.value = true;
+      stopTicker();
+      await refreshBalance();
+      return;
+    }
+
+    questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
+    syncProgress();
+    questionStartAt.value = Date.now();
+  } catch {
+    showNotice.value = true;
   }
 };
 
@@ -89,6 +210,23 @@ const setShowNotice = () => {
 
 defineExpose({
   setShowNotice,
+});
+
+onMounted(async () => {
+  await bootstrapRun();
+  if (!runId.value) {
+    startTicker();
+  }
+});
+
+watch(showSettlement, (visible) => {
+  if (visible) {
+    stopTicker();
+  }
+});
+
+onUnmounted(() => {
+  stopTicker();
 });
 </script>
 
@@ -120,7 +258,8 @@ defineExpose({
         </div>
 
         <div class="draft-actions">
-          <span class="draft-reward">🪙 +50</span>
+          <span class="draft-reward">🪙 {{ coins }}</span>
+          <span class="draft-timer">🕒 {{ timerLabel }}</span>
           <button class="draft-settings" type="button" aria-label="Settings">⚙</button>
         </div>
       </header>
@@ -141,13 +280,7 @@ defineExpose({
             <div class="scroll-paper__accent" />
 
             <p class="scroll-paper__body">
-              To understand the Way, one must be like
-              <span class="drop-slot">{{ filledSlots[0] ?? "drop here" }}</span>
-              . It nourishes all things without striving. It flows to places men reject and so it is like the
-              <span class="drop-slot">{{ filledSlots[1] ?? "drop here" }}</span>
-              . In dwelling, be close to the land. In meditation, go deep in the
-              <span class="drop-slot">{{ filledSlots[2] ?? "drop here" }}</span>
-              .
+              {{ questionText }}
             </p>
 
             <div class="scroll-watermark" aria-hidden="true">✎</div>
@@ -160,6 +293,19 @@ defineExpose({
         </article>
 
         <div class="draft-chip-help">↕ DRAG WORDS TO COMPLETE THE SCROLL</div>
+
+        <div class="draft-chip-row">
+          <button
+            v-for="chip in optionChips"
+            :key="chip.id"
+            class="draft-chip"
+            :class="`draft-chip--${chip.tone}`"
+            type="button"
+            @click="chooseOption(chip)"
+          >
+            {{ chip.text }}
+          </button>
+        </div>
 
         <button class="feedback-action" type="button">
           这题有误
@@ -174,11 +320,14 @@ defineExpose({
     <GameSettlementModal
       :visible="showSettlement"
       mode-name="Knowledge Draft"
-      :xp-gained="250"
-      :coin-reward="50"
+      :xp-gained="settlementXp"
+      :coin-reward="settlementCoins"
+      :combo-count="settlementCombo"
+      :goal-current="settlementGoalCurrent"
+      :goal-total="settlementGoalTotal"
       goal-text="Keep filling the scroll to reach enlightenment through study."
       @close="closeSettlement"
-      @confirm="goBack"
+      @confirm="goLibrary"
     />
   </main>
 </template>
@@ -285,6 +434,19 @@ defineExpose({
   border: 1px solid color-mix(in srgb, var(--color-streak-bg) 72%, var(--color-muted-gold) 28%);
   border-radius: 999px;
   color: var(--color-coin-value);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 28px;
+  padding: 0 10px;
+}
+
+.draft-timer {
+  align-items: center;
+  background: var(--color-streak-bg);
+  border: 1px solid color-mix(in srgb, var(--color-streak-bg) 72%, var(--color-muted-gold) 28%);
+  border-radius: 999px;
+  color: var(--color-soft-brown);
   display: inline-flex;
   font-size: 12px;
   font-weight: 800;

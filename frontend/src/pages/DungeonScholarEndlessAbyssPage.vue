@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
+import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
+import { getShopBalance } from "../api/shop";
 
 const { t, locale } = useI18n();
 
 onMounted(() => {
-  document.title = t("endlessAbyss.metaTitle");
-});
-
-// Update document title reactively when locale changes
-watch(locale, () => {
   document.title = t("endlessAbyss.metaTitle");
 });
 
@@ -27,54 +24,193 @@ const route = useRoute();
 const router = useRouter();
 const shopRoute = ROUTES.shop;
 
-const maxHp = 5;
+const maxHp = ref(3);
 const hpLevel = ref(3);
-const floor = ref(5);
+const floor = ref(1);
 const floorTotal = ref(10);
-const time = ref("12:45");
-const coins = ref(350);
+const timeLeftSec = ref(900);
+const coins = ref(0);
+
+const runId = ref<string | null>(null);
+const questions = ref<RunQuestion[]>([]);
+const questionIndex = ref(0);
+const questionStartAt = ref<number>(Date.now());
+let tickerId: number | null = null;
 
 const answer = ref("");
 const showSettlement = ref(false);
 const runStatus = ref<RunStatus>("normal");
+const settlementXp = ref(0);
+const settlementCoins = ref(0);
+const settlementCombo = ref(0);
+const settlementGoalCurrent = ref(0);
+const settlementGoalTotal = ref(10);
 
 const showNotice = ref(false);
 
 const materialTitle = computed(() => {
   const rawTitle = route.query.title;
-    return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Ancient Wisdom";
+  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Ancient Wisdom";
 });
 
-    const chapterTitle = computed(() => `Chapter 3: ${materialTitle.value}`);
+const chapterTitle = computed(() => `Chapter ${floor.value}: ${materialTitle.value}`);
 
-                const floorProgress = computed(() => (floor.value / floorTotal.value) * 100);
+const time = computed(() => {
+  const minutes = Math.floor(timeLeftSec.value / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.floor(timeLeftSec.value % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+});
 
-                const goBack = async () => {
-                    await router.push({
-                        path: ROUTES.gameModes,
-                        query: route.query,
-                    });
-                };
+const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 
-                const castSpell = () => {
-                    if (!answer.value.trim()) {
-                        return;
-                    }
+const questionTitle = computed(() => {
+  if (currentQuestion.value?.text) {
+    return currentQuestion.value.text;
+  }
+  return "The philosophical concept of ____ emphasizes living in harmony with the Dao.";
+});
 
-                    answer.value = "";
-                    coins.value += 10;
-                    showSettlement.value = true;
-                };
+const questionHint = computed(() => {
+  const firstOption = currentQuestion.value?.options[0];
+  if (!firstOption?.text) {
+    return "HINT: THINK ABOUT DAOISM";
+  }
+  const firstChar = firstOption.text.trim().charAt(0).toUpperCase();
+  return firstChar ? `HINT: STARTS WITH ${firstChar}` : "HINT: THINK ABOUT DAOISM";
+});
 
-                const closeSettlement = () => {
-                    showSettlement.value = false;
-                };
+const floorProgress = computed(() => (floor.value / Math.max(1, floorTotal.value)) * 100);
 
-                const goShop = async () => {
-                    await router.push(shopRoute);
-                };
+const applyRunState = (state: Record<string, unknown> | null | undefined) => {
+  if (!state) {
+    return;
+  }
+  hpLevel.value = Number(state.hp ?? hpLevel.value);
+  maxHp.value = Number(state.max_hp ?? maxHp.value);
+  floor.value = Number(state.floor ?? floor.value);
+  floorTotal.value = Number(state.floor_total ?? floorTotal.value);
+  timeLeftSec.value = Number(state.time_left_sec ?? timeLeftSec.value);
+};
 
-                const setShowNotice = () => {
+const startTicker = () => {
+  if (tickerId !== null) {
+    window.clearInterval(tickerId);
+  }
+  tickerId = window.setInterval(() => {
+    if (showSettlement.value || timeLeftSec.value <= 0) {
+      return;
+    }
+    timeLeftSec.value = Math.max(0, timeLeftSec.value - 1);
+  }, 1000);
+};
+
+const stopTicker = () => {
+  if (tickerId !== null) {
+    window.clearInterval(tickerId);
+    tickerId = null;
+  }
+};
+
+const refreshBalance = async () => {
+  try {
+    const balance = await getShopBalance();
+    coins.value = balance.balance;
+  } catch {
+    coins.value = 0;
+  }
+};
+
+const bootstrapRun = async () => {
+  await refreshBalance();
+
+  const rawDocumentId = route.query.documentId;
+  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+  const rawPathId = route.query.pathId;
+  const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  if (!documentId) {
+    return;
+  }
+
+  try {
+    const created = await createRun(documentId, "endless", 10, pathId);
+    runId.value = created.run_id;
+    questions.value = created.questions;
+    questionIndex.value = 0;
+    applyRunState(created.run_state);
+    questionStartAt.value = Date.now();
+    startTicker();
+  } catch {
+    runStatus.value = "reduced-reward";
+  }
+};
+
+const goBack = async () => {
+  await router.push({
+    path: route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
+    query: route.query,
+  });
+};
+
+const goLibrary = async () => {
+  await router.push(ROUTES.library);
+};
+
+const castSpell = async () => {
+  if (!answer.value.trim() || !runId.value || !currentQuestion.value) {
+    return;
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
+  const normalizedAnswer = answer.value.trim().toLowerCase();
+  const matchedOption = currentQuestion.value.options.find(
+    (option) => option.text.trim().toLowerCase() === normalizedAnswer,
+  );
+
+  try {
+    const result = await submitAnswer(
+      runId.value,
+      currentQuestion.value.id,
+      matchedOption ? [matchedOption.id] : [],
+      elapsedMs,
+    );
+    applyRunState(result.run.state);
+
+    if (!result.is_correct) {
+      showNotice.value = true;
+    }
+
+    if (result.settlement) {
+      settlementXp.value = result.settlement.xp_earned;
+      settlementCoins.value = result.settlement.coins_earned;
+      settlementCombo.value = result.settlement.combo_max;
+      settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+      settlementGoalTotal.value = result.settlement.goal_total ?? 10;
+      showSettlement.value = true;
+      await refreshBalance();
+    } else {
+      questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
+      questionStartAt.value = Date.now();
+    }
+  } catch {
+    runStatus.value = "reduced-reward";
+  } finally {
+    answer.value = "";
+  }
+};
+
+const closeSettlement = () => {
+  showSettlement.value = false;
+};
+
+const goShop = async () => {
+  await router.push(shopRoute);
+};
+
+const setShowNotice = () => {
   showNotice.value = true;
 };
 
@@ -85,6 +221,14 @@ const setReducedReward = () => {
 defineExpose({
   setShowNotice,
   setReducedReward,
+});
+
+onMounted(async () => {
+  await bootstrapRun();
+});
+
+onUnmounted(() => {
+  stopTicker();
 });
 </script>
 
@@ -121,11 +265,11 @@ defineExpose({
 
         <article class="question-card" aria-label="Question card">
           <p class="question-card__tag">QUESTION CARD</p>
-          <h1>The philosophical concept of ____ emphasizes living in harmony with the Dao.</h1>
+          <h1>{{ questionTitle }}</h1>
 
           <footer class="question-card__footer">
             <span>{{ chapterTitle }}</span>
-            <span class="question-card__hint">HINT: STARTS WITH W</span>
+            <span class="question-card__hint">{{ questionHint }}</span>
           </footer>
         </article>
       </section>
@@ -143,6 +287,10 @@ defineExpose({
           这题有误
         </button>
 
+        <div v-if="showNotice" class="run-status-notice run-status-notice--danger">
+          ⚠ Wrong answer. HP decreased.
+        </div>
+
         <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
           ⚠ Reduced rewards: -50% XP/coins
         </div>
@@ -152,11 +300,14 @@ defineExpose({
     <GameSettlementModal
       :visible="showSettlement"
       mode-name="Endless Abyss"
-      :xp-gained="250"
-      :coin-reward="50"
+      :xp-gained="settlementXp"
+      :coin-reward="settlementCoins"
+      :combo-count="settlementCombo"
+      :goal-current="settlementGoalCurrent"
+      :goal-total="settlementGoalTotal"
       goal-text="Keep meditating to reach enlightenment through the abyss."
       @close="closeSettlement"
-      @confirm="goBack"
+      @confirm="goLibrary"
     />
   </main>
 </template>
@@ -488,6 +639,12 @@ defineExpose({
   margin-top: 12px;
   padding: 8px 12px;
   text-align: center;
+}
+
+.run-status-notice--danger {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-title);
 }
 
 @media (max-width: 900px) {

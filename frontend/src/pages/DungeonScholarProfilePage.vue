@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
+import { useScholarData } from "../composables/useScholarData";
 
 type IdentityItem = {
   key: string;
   name: string;
   icon: string;
   connected: boolean;
+  status: string;
 };
 
 const { t, locale } = useI18n();
@@ -23,23 +25,50 @@ watch(locale, () => {
   document.title = t("profile.metaTitle");
 });
 
-const settingsRoute = ROUTES.settings;
 const shopRoute = ROUTES.shop;
 
-const identities = ref<IdentityItem[]>([
-  { key: "github", name: "GitHub", icon: "⌘", connected: true },
-  { key: "google", name: "Google", icon: "G", connected: false },
-  { key: "microsoft", name: "Microsoft", icon: "◰", connected: false },
-  { key: "email", name: "Email", icon: "✉", connected: false },
+const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
+const { profileName, profileLevel, coins, streak, leaderboard, linkedEmail, hydrate } = useScholarData();
+
+const identities = computed<IdentityItem[]>(() => [
+  {
+    key: "github",
+    name: "GitHub",
+    icon: "⌘",
+    connected: false,
+    status: t("profile.notConnected"),
+  },
+  {
+    key: "google",
+    name: "Google",
+    icon: "G",
+    connected: false,
+    status: t("profile.notConnected"),
+  },
+  {
+    key: "microsoft",
+    name: "Microsoft",
+    icon: "◰",
+    connected: false,
+    status: t("profile.notConnected"),
+  },
+  {
+    key: "email",
+    name: "Email",
+    icon: "✉",
+    connected: Boolean(linkedEmail.value),
+    status: linkedEmail.value || t("profile.notConnected"),
+  },
 ]);
 
-const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
+const userXp = computed(() => {
+  const currentUser = leaderboard.value.find((entry) => entry.is_current_user);
+  return typeof currentUser?.total_xp === "number" ? currentUser.total_xp : 0;
+});
 
-const toggleIdentity = (key: string) => {
-  identities.value = identities.value.map((item) =>
-    item.key === key ? { ...item, connected: !item.connected } : item,
-  );
-};
+onMounted(async () => {
+  await hydrate();
+});
 </script>
 
 <template>
@@ -47,13 +76,13 @@ const toggleIdentity = (key: string) => {
     <AppSidebar
       :current-path="currentPath"
       :routing-target="routingTarget"
-      profile-name="Scholar Li"
-      profile-level="Level 42 Scholar"
+      :profile-name="profileName"
+      :profile-level="profileLevel"
       @navigate="navigateTo"
     />
 
     <main class="profile-main">
-      <div class="profile-overlay" aria-hidden="true" @click="navigateTo(settingsRoute)" />
+      <div class="profile-overlay" aria-hidden="true" />
 
       <section class="profile-modal" aria-label="Profile dialog">
         <div class="profile-modal__decor profile-modal__decor--teal" />
@@ -66,22 +95,22 @@ const toggleIdentity = (key: string) => {
 
         <header class="identity-head">
           <div class="identity-head__name-row">
-            <h1>Seeker_01</h1>
+            <h1>{{ profileName }}</h1>
             <span>✓</span>
           </div>
 
           <div class="identity-stats">
             <article class="stat-pill">
               <span>XP</span>
-              <strong>12,450</strong>
+              <strong>{{ userXp.toLocaleString("en-US") }}</strong>
             </article>
             <article class="stat-pill">
               <span>🔥 {{ t("profile.streak") }}</span>
-              <strong>{{ t("profile.days", { days: 15 }) }}</strong>
+              <strong>{{ t("profile.days", { days: streak }) }}</strong>
             </article>
             <button class="stat-pill stat-pill--shop" type="button" @click="navigateTo(shopRoute)">
               <span>🪙 {{ t("profile.coins") }}</span>
-              <strong>2,300</strong>
+              <strong>{{ coins.toLocaleString("en-US") }}</strong>
             </button>
           </div>
         </header>
@@ -95,13 +124,15 @@ const toggleIdentity = (key: string) => {
             class="identity-row"
             :class="{ 'identity-row--connected': item.connected }"
             type="button"
-            @click="toggleIdentity(item.key)"
+            disabled
           >
             <div class="identity-row__left">
               <span class="identity-row__icon">{{ item.icon }}</span>
               <div>
                 <p class="identity-row__name">{{ item.name }}</p>
-                <p class="identity-row__status">{{ item.connected ? t("profile.connected") : t("profile.notConnected") }}</p>
+                <p class="identity-row__status">
+                  {{ item.connected ? `${t("profile.connected")}: ${item.status}` : item.status }}
+                </p>
               </div>
             </div>
 
@@ -121,15 +152,21 @@ const toggleIdentity = (key: string) => {
 
 <style scoped>
 .profile-page {
+  background: var(--color-page-bg);
   display: grid;
+  gap: 24px;
   grid-template-columns: 256px minmax(0, 1fr);
+  height: 100vh;
   min-height: 100vh;
+  overflow: hidden;
+  padding: 24px;
 }
 
 .profile-main {
-  background: #f6f8f6;
-  min-height: 100vh;
-  overflow: hidden;
+  background: var(--color-page-bg);
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
   padding: 24px;
   position: relative;
 }
@@ -416,6 +453,11 @@ const toggleIdentity = (key: string) => {
 }
 
 @media (max-width: 768px) {
+  .profile-page {
+    height: 100vh;
+    padding: 14px;
+  }
+
   .profile-main {
     order: -1;
     padding: 14px;

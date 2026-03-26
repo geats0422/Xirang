@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import DocumentDeleteConfirmModal from "../components/documents/DocumentDeleteConfirmModal.vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import NotificationPopover from "../components/NotificationPopover.vue";
 import { ROUTES } from "../constants/routes";
@@ -14,6 +15,7 @@ type UploadState = "idle" | "loading" | "success" | "failure";
 type HomeDocumentCard = {
   id: string;
   title: string;
+  createdAt: string;
   lastVisited: string;
   progress: number;
   icon: string;
@@ -27,7 +29,17 @@ type NotificationItem = {
 
 const getDocIcon = (): string => "📖";
 
-const { streak, coins, documents: scholarDocs, uploadAndRefresh, hydrate } = useScholarData();
+const {
+  profileName,
+  profileLevel,
+  streak,
+  coins,
+  documents: scholarDocs,
+  uploadAndRefresh,
+  deleteAndRefresh,
+  deleteManyAndRefresh,
+  hydrate,
+} = useScholarData();
 
 const documents = ref<HomeDocumentCard[]>([]);
 const isLoading = ref(false);
@@ -35,9 +47,18 @@ const isLoading = ref(false);
 const fetchDocuments = async () => {
   isLoading.value = true;
   try {
-    documents.value = scholarDocs.value.map((doc) => ({
+    const sortedRecentDocs = [...scholarDocs.value]
+      .sort((left, right) => {
+        const leftTime = Date.parse(left.created_at ?? "") || 0;
+        const rightTime = Date.parse(right.created_at ?? "") || 0;
+        return rightTime - leftTime;
+      })
+      .slice(0, 9);
+
+    documents.value = sortedRecentDocs.map((doc) => ({
       id: doc.id,
       title: doc.title,
+      createdAt: doc.created_at ?? "",
       lastVisited: "Just now",
       progress: 0,
       icon: getDocIcon(),
@@ -69,6 +90,14 @@ const isDragging = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 const notificationVisible = ref(false);
 const notifications = ref<NotificationItem[]>([]);
+const activeCardMenuId = ref<string | null>(null);
+const pendingDeleteCard = ref<HomeDocumentCard | null>(null);
+const pendingBatchDeleteIds = ref<string[]>([]);
+const isDeleting = ref(false);
+const isBatchDeleteMode = ref(false);
+const selectedDocumentIds = ref<string[]>([]);
+
+const selectedCount = computed(() => selectedDocumentIds.value.length);
 
 const handleBrowseClick = () => {
   fileInput.value?.click();
@@ -131,6 +160,77 @@ const closeNotifications = () => {
   notificationVisible.value = false;
 };
 
+const toggleCardMenu = (documentId: string) => {
+  if (isBatchDeleteMode.value) {
+    return;
+  }
+  activeCardMenuId.value = activeCardMenuId.value === documentId ? null : documentId;
+};
+
+const requestDelete = (card: HomeDocumentCard) => {
+  activeCardMenuId.value = null;
+  pendingDeleteCard.value = card;
+};
+
+const closeDeleteModal = () => {
+  pendingBatchDeleteIds.value = [];
+  pendingDeleteCard.value = null;
+};
+
+const confirmDelete = async () => {
+  const singleDeleteId = pendingDeleteCard.value?.id;
+  const batchDeleteIds = pendingBatchDeleteIds.value;
+  if (!singleDeleteId && batchDeleteIds.length === 0) {
+    return;
+  }
+
+  isDeleting.value = true;
+  try {
+    if (batchDeleteIds.length > 0) {
+      await deleteManyAndRefresh(batchDeleteIds);
+      selectedDocumentIds.value = [];
+      isBatchDeleteMode.value = false;
+    } else if (singleDeleteId) {
+      await deleteAndRefresh(singleDeleteId);
+    }
+    await fetchDocuments();
+    closeDeleteModal();
+  } catch {
+    closeDeleteModal();
+  } finally {
+    isDeleting.value = false;
+  }
+};
+
+const toggleBatchDeleteMode = () => {
+  activeCardMenuId.value = null;
+  pendingDeleteCard.value = null;
+  pendingBatchDeleteIds.value = [];
+  isBatchDeleteMode.value = !isBatchDeleteMode.value;
+  if (!isBatchDeleteMode.value) {
+    selectedDocumentIds.value = [];
+  }
+};
+
+const toggleDocumentSelection = (documentId: string) => {
+  if (!isBatchDeleteMode.value) {
+    return;
+  }
+  if (selectedDocumentIds.value.includes(documentId)) {
+    selectedDocumentIds.value = selectedDocumentIds.value.filter((item) => item !== documentId);
+    return;
+  }
+  selectedDocumentIds.value = [...selectedDocumentIds.value, documentId];
+};
+
+const openBatchDeleteConfirm = () => {
+  if (selectedDocumentIds.value.length === 0) {
+    return;
+  }
+  pendingDeleteCard.value = null;
+  pendingBatchDeleteIds.value = [...selectedDocumentIds.value];
+};
+
 defineExpose({
   uploadState,
   documents,
@@ -141,7 +241,13 @@ defineExpose({
 
 <template>
   <div class="home-page">
-    <AppSidebar :current-path="currentPath" :routing-target="routingTarget" @navigate="navigateTo" />
+    <AppSidebar
+      :current-path="currentPath"
+      :routing-target="routingTarget"
+      :profile-name="profileName"
+      :profile-level="profileLevel"
+      @navigate="navigateTo"
+    />
 
     <main class="main-content">
       <header class="status-bar" :aria-label="$t('home.statusBarAria')">
@@ -184,7 +290,7 @@ defineExpose({
           <input
             ref="fileInput"
             type="file"
-            accept=".pdf,.txt,.md,.markdown"
+            accept=".pdf,.txt,.md,.markdown,.doc,.docx,.ppt,.pptx"
             multiple
             class="hero-upload__file-input"
             @change="handleFileSelect"
@@ -221,14 +327,51 @@ defineExpose({
       <section class="recent-section" :aria-label="$t('home.recentAria')">
         <div class="recent-section__head">
           <h2>{{ $t("home.recentTitle") }}</h2>
-          <a href="#">{{ $t("home.viewAll") }}</a>
+          <div class="recent-section__actions">
+            <button class="recent-section__batch-btn" type="button" @click="toggleBatchDeleteMode">
+              {{ isBatchDeleteMode ? "Cancel Batch" : "Batch Delete" }}
+            </button>
+            <button
+              v-if="isBatchDeleteMode"
+              class="recent-section__batch-btn recent-section__batch-btn--danger"
+              type="button"
+              :disabled="selectedCount === 0"
+              @click="openBatchDeleteConfirm"
+            >
+              Delete Selected ({{ selectedCount }})
+            </button>
+            <a href="#">{{ $t("home.viewAll") }}</a>
+          </div>
         </div>
 
         <div class="dungeon-grid">
           <article v-for="card in documents" :key="card.id" class="dungeon-card">
-            <div class="dungeon-card__head">
+            <div class="dungeon-card__head" :class="{ 'dungeon-card__head--batch': isBatchDeleteMode }">
               <span class="dungeon-card__icon">{{ card.icon }}</span>
-              <button class="dungeon-card__menu" type="button" :aria-label="$t('home.moreOptions')">⋯</button>
+              <label v-if="isBatchDeleteMode" class="dungeon-card__check-wrap">
+                <input
+                  type="checkbox"
+                  class="dungeon-card__check batch-select-checkbox"
+                  :checked="selectedDocumentIds.includes(card.id)"
+                  @change="toggleDocumentSelection(card.id)"
+                />
+              </label>
+              <div class="dungeon-card__menu-wrap">
+                <button
+                  v-if="!isBatchDeleteMode"
+                  class="dungeon-card__menu"
+                  type="button"
+                  :aria-label="$t('home.moreOptions')"
+                  @click.stop="toggleCardMenu(card.id)"
+                >
+                  ⋯
+                </button>
+                <div v-if="activeCardMenuId === card.id" class="dungeon-card__menu-popover">
+                  <button class="dungeon-card__menu-action dungeon-card__menu-action--danger" type="button" @click="requestDelete(card)">
+                    Delete
+                  </button>
+                </div>
+              </div>
             </div>
             <h3>{{ card.title }}</h3>
             <p>{{ $t("home.lastVisitedPrefix") }} {{ card.lastVisited }}</p>
@@ -241,6 +384,15 @@ defineExpose({
           </article>
         </div>
       </section>
+
+      <DocumentDeleteConfirmModal
+        :visible="Boolean(pendingDeleteCard) || pendingBatchDeleteIds.length > 0"
+        :title="pendingDeleteCard?.title || ''"
+        :message="pendingBatchDeleteIds.length > 0 ? `Are you sure you want to delete ${pendingBatchDeleteIds.length} selected documents?` : ''"
+        :processing="isDeleting"
+        @cancel="closeDeleteModal"
+        @confirm="confirmDelete"
+      />
     </main>
   </div>
 </template>
@@ -437,6 +589,35 @@ defineExpose({
   justify-content: space-between;
 }
 
+.recent-section__actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.recent-section__batch-btn {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.recent-section__batch-btn--danger {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.recent-section__batch-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .recent-section__head h2 {
   font-family: var(--font-serif);
   font-size: 34px;
@@ -472,6 +653,71 @@ defineExpose({
   justify-content: space-between;
 }
 
+.dungeon-card__head--batch .dungeon-card__menu-wrap {
+  display: none;
+}
+
+.dungeon-card__head--batch .dungeon-card__check-wrap {
+  margin-left: auto;
+  margin-right: 2px;
+}
+
+.dungeon-card__menu-wrap {
+  position: relative;
+}
+
+.dungeon-card__check-wrap {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.dungeon-card__check {
+  cursor: pointer;
+}
+
+.batch-select-checkbox {
+  appearance: none;
+  background: var(--color-batch-checkbox-bg);
+  border: 1.5px solid var(--color-batch-checkbox-border);
+  border-radius: 5px;
+  display: grid;
+  height: 16px;
+  margin: 0;
+  place-content: center;
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  width: 16px;
+}
+
+.batch-select-checkbox::before {
+  border: solid var(--color-batch-checkbox-check);
+  border-width: 0 1.5px 1.5px 0;
+  content: "";
+  height: 7px;
+  opacity: 0;
+  transform: rotate(45deg);
+  transition: opacity 120ms ease;
+  width: 4px;
+}
+
+.batch-select-checkbox:hover {
+  border-color: var(--color-batch-checkbox-border-checked);
+}
+
+.batch-select-checkbox:checked {
+  background: var(--color-batch-checkbox-bg-checked);
+  border-color: var(--color-batch-checkbox-border-checked);
+}
+
+.batch-select-checkbox:checked::before {
+  opacity: 1;
+}
+
+.batch-select-checkbox:focus-visible {
+  box-shadow: 0 0 0 3px var(--color-batch-checkbox-shadow-focus);
+  outline: none;
+}
+
 .dungeon-card__icon {
   align-items: center;
   background: #f2f8f8;
@@ -491,6 +737,33 @@ defineExpose({
   font-size: 20px;
   line-height: 1;
   padding: 0;
+}
+
+.dungeon-card__menu-popover {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+}
+
+.dungeon-card__menu-action {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #1e293b;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+.dungeon-card__menu-action--danger {
+  color: #dc2626;
 }
 
 .dungeon-card h3 {

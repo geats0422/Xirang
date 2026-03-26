@@ -16,6 +16,7 @@ export type CreateRunResponse = {
   run_id: string;
   mode: string;
   status: string;
+  run_state: Record<string, unknown>;
   questions: RunQuestion[];
 };
 
@@ -27,10 +28,32 @@ export type SettlementPayload = {
   accuracy: number;
   correct_count: number;
   total_count: number;
+  path_id?: string | null;
+  goal_current?: number;
+  goal_total?: number | null;
+};
+
+export type RunPathOption = {
+  path_id: string;
+  label: string;
+  kind: string;
+  description: string;
+  goal_total: number;
+};
+
+export type RunPathOptionsResponse = {
+  mode: "endless" | "speed" | "draft";
+  options: RunPathOption[];
 };
 
 export type SubmitAnswerResponse = {
   is_correct: boolean;
+  run: {
+    id: string;
+    status: string;
+    score: number;
+    state: Record<string, unknown>;
+  };
   settlement: SettlementPayload | null;
 };
 
@@ -38,6 +61,7 @@ export type RunListItem = {
   id: string;
   status: string;
   mode?: string;
+  run_state?: Record<string, unknown>;
   started_at?: string;
   ended_at?: string | null;
   score?: number;
@@ -47,6 +71,7 @@ export const createRun = async (
   documentId: string,
   mode: "endless" | "speed" | "draft",
   questionCount = 1,
+  pathId?: string,
 ): Promise<CreateRunResponse> => {
   return apiRequest<CreateRunResponse>("/api/v1/runs", {
     method: "POST",
@@ -55,14 +80,30 @@ export const createRun = async (
       document_id: documentId,
       mode,
       question_count: questionCount,
+      path_id: pathId,
     },
   });
+};
+
+export const listRunPathOptions = async (
+  documentId: string,
+  mode: "endless" | "speed" | "draft",
+): Promise<RunPathOptionsResponse> => {
+  const encodedDocumentId = encodeURIComponent(documentId);
+  const encodedMode = encodeURIComponent(mode);
+  return apiRequest<RunPathOptionsResponse>(
+    `/api/v1/runs/path-options?mode=${encodedMode}&document_id=${encodedDocumentId}`,
+    {
+      headers: getAuthHeaders(),
+    },
+  );
 };
 
 export const submitAnswer = async (
   runId: string,
   questionId: string,
   selectedOptionIds: string[],
+  answerTimeMs?: number,
 ): Promise<SubmitAnswerResponse> => {
   return apiRequest<SubmitAnswerResponse>(`/api/v1/runs/${runId}/answers`, {
     method: "POST",
@@ -70,6 +111,7 @@ export const submitAnswer = async (
     body: {
       question_id: questionId,
       selected_option_ids: selectedOptionIds,
+      answer_time_ms: answerTimeMs,
     },
   });
 };

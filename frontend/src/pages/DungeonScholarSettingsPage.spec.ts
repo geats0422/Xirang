@@ -2,6 +2,7 @@ import { mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { describe, expect, it } from "vitest";
 import { ROUTES } from "../constants/routes";
+import { i18n } from "../i18n";
 import DungeonScholarSettingsPage from "./DungeonScholarSettingsPage.vue";
 
 describe("DungeonScholarSettingsPage", () => {
@@ -16,7 +17,7 @@ describe("DungeonScholarSettingsPage", () => {
 
     const wrapper = mount(DungeonScholarSettingsPage, {
       global: {
-        plugins: [router],
+        plugins: [router, i18n],
       },
     });
 

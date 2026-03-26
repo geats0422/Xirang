@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
+import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
+import { getShopBalance } from "../api/shop";
 
 const { t, locale } = useI18n();
 
 onMounted(() => {
-  document.title = t("speedSurvival.metaTitle");
-});
-
-// Update document title reactively when locale changes
-watch(locale, () => {
   document.title = t("speedSurvival.metaTitle");
 });
 
@@ -26,10 +23,23 @@ type RunStatus = "normal" | "fast-answer" | "reduced-reward";
 const route = useRoute();
 const router = useRouter();
 
-const timeRemaining = ref(10);
-const combo = ref(10);
+const timeRemaining = ref(120);
+const combo = ref(0);
+const coins = ref(0);
+const maxRunTime = ref(120);
+const runId = ref<string | null>(null);
+const questions = ref<RunQuestion[]>([]);
+const questionIndex = ref(0);
+const questionStartAt = ref<number>(Date.now());
+let tickerId: number | null = null;
+
 const showSettlement = ref(false);
 const runStatus = ref<RunStatus>("normal");
+const settlementXp = ref(0);
+const settlementCoins = ref(0);
+const settlementCombo = ref(0);
+const settlementGoalCurrent = ref(0);
+const settlementGoalTotal = ref(8);
 
 const showFeedbackForm = ref(false);
 
@@ -38,31 +48,184 @@ const materialTitle = computed(() => {
   return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Ancient Scrolls";
 });
 
-const questionText = computed(() => `Taotie monsters are known for their greed and gluttony in ${materialTitle.value.toLowerCase()}.`);
+const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
+
+const questionText = computed(() => {
+  if (currentQuestion.value?.text) {
+    return currentQuestion.value.text;
+  }
+  return `Taotie monsters are known for their greed and gluttony in ${materialTitle.value.toLowerCase()}.`;
+});
+
+const progressPercent = computed(() => {
+  if (maxRunTime.value <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, (timeRemaining.value / maxRunTime.value) * 100));
+});
+
+const answerPrompt = computed(() => {
+  if (!currentQuestion.value) {
+    return "Is this statement True or False?";
+  }
+  return currentQuestion.value.options.length === 2
+    ? "Choose the best option"
+    : "Tap the option that matches the statement";
+});
+
+const falseOptionLabel = computed(() => currentQuestion.value?.options[0]?.text || "False");
+const trueOptionLabel = computed(() => currentQuestion.value?.options[1]?.text || "True");
+
+const applyRunState = (state: Record<string, unknown> | null | undefined) => {
+  if (!state) {
+    return;
+  }
+  const nextTime = Number(state.time_left_sec ?? timeRemaining.value);
+  timeRemaining.value = Number.isFinite(nextTime) ? nextTime : timeRemaining.value;
+  if (maxRunTime.value < timeRemaining.value) {
+    maxRunTime.value = timeRemaining.value;
+  }
+};
+
+const stopTicker = () => {
+  if (tickerId !== null) {
+    window.clearInterval(tickerId);
+    tickerId = null;
+  }
+};
+
+const startTicker = () => {
+  stopTicker();
+  tickerId = window.setInterval(() => {
+    if (showSettlement.value || timeRemaining.value <= 0) {
+      return;
+    }
+    timeRemaining.value = Math.max(0, timeRemaining.value - 1);
+  }, 1000);
+};
+
+const refreshBalance = async () => {
+  try {
+    const balance = await getShopBalance();
+    coins.value = balance.balance;
+  } catch {
+    coins.value = 0;
+  }
+};
+
+const bootstrapRun = async () => {
+  await refreshBalance();
+  const rawDocumentId = route.query.documentId;
+  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+  const rawPathId = route.query.pathId;
+  const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  if (!documentId) {
+    return;
+  }
+
+  try {
+    const created = await createRun(documentId, "speed", 8, pathId);
+    runId.value = created.run_id;
+    questions.value = created.questions;
+    questionIndex.value = 0;
+    applyRunState(created.run_state);
+    questionStartAt.value = Date.now();
+    startTicker();
+  } catch {
+    runStatus.value = "reduced-reward";
+  }
+};
+
 const goBack = async () => {
   await router.push({
-    path: ROUTES.gameModes,
+    path: route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
     query: route.query,
   });
 };
-const chooseAnswer = (_answer: "false" | "true") => {
-  if (showSettlement.value) {
+
+const goLibrary = async () => {
+  await router.push(ROUTES.library);
+};
+
+const chooseAnswer = async (answer: "false" | "true") => {
+  if (showSettlement.value || !runId.value || !currentQuestion.value) {
     return;
   }
-  timeRemaining.value = Math.max(0, timeRemaining.value - 1);
-  showSettlement.value = true;
+
+  const selectedOption = answer === "false"
+    ? currentQuestion.value.options[0]
+    : currentQuestion.value.options[1] || currentQuestion.value.options[0];
+  const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
+
+  try {
+    const result = await submitAnswer(
+      runId.value,
+      currentQuestion.value.id,
+      selectedOption ? [selectedOption.id] : [],
+      elapsedMs,
+    );
+    applyRunState(result.run.state);
+
+    if (result.is_correct) {
+      combo.value += 1;
+      runStatus.value = elapsedMs <= 1500 ? "fast-answer" : "normal";
+    } else {
+      combo.value = 0;
+      runStatus.value = "normal";
+    }
+
+    if (result.settlement) {
+      settlementXp.value = result.settlement.xp_earned;
+      settlementCoins.value = result.settlement.coins_earned;
+      settlementCombo.value = result.settlement.combo_max;
+      settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+      settlementGoalTotal.value = result.settlement.goal_total ?? 8;
+      showSettlement.value = true;
+      stopTicker();
+      await refreshBalance();
+    } else {
+      questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
+      questionStartAt.value = Date.now();
+    }
+  } catch {
+    runStatus.value = "reduced-reward";
+  }
 };
+
 const closeSettlement = () => {
   showSettlement.value = false;
 };
+
 const toggleFeedbackForm = () => {
   showFeedbackForm.value = !showFeedbackForm.value;
 };
+
 const setFastAnswer = () => {
   runStatus.value = "fast-answer";
 };
+
 defineExpose({
   setFastAnswer,
+});
+
+onMounted(async () => {
+  await bootstrapRun();
+});
+
+onMounted(() => {
+  if (!runId.value) {
+    startTicker();
+  }
+});
+
+watch(showSettlement, (visible) => {
+  if (visible) {
+    stopTicker();
+  }
+});
+
+onUnmounted(() => {
+  stopTicker();
 });
 </script>
 
@@ -76,6 +239,7 @@ defineExpose({
         </div>
 
         <div class="speed-topbar__actions">
+          <button class="coin-badge" type="button">🪙 {{ coins }}</button>
           <button class="exit-btn" type="button" @click="goBack">Exit Game</button>
           <button class="settings-btn" type="button" aria-label="Settings">⚙</button>
         </div>
@@ -89,7 +253,7 @@ defineExpose({
           </div>
 
           <div class="countdown-strip__bar" role="presentation">
-            <span class="countdown-strip__fill" :style="{ width: `${timeRemaining * 10}%` }" />
+            <span class="countdown-strip__fill" :style="{ width: `${progressPercent}%` }" />
           </div>
 
           <div class="combo-badge">⚡ Combo x{{ combo }}</div>
@@ -103,19 +267,19 @@ defineExpose({
           <div class="survival-card__body">
             <p class="survival-card__eyebrow">✦ MYTHOLOGY</p>
             <h2>{{ questionText }}</h2>
-            <p class="survival-card__prompt">Is this statement True or False?</p>
+            <p class="survival-card__prompt">{{ answerPrompt }}</p>
           </div>
         </article>
 
         <footer class="answer-pad">
           <button class="answer-pill answer-pill--false" type="button" @click="chooseAnswer('false')">
             <span class="answer-pill__icon">✕</span>
-            <span class="answer-pill__label">False</span>
+            <span class="answer-pill__label">{{ falseOptionLabel }}</span>
           </button>
 
           <button class="answer-pill answer-pill--true" type="button" @click="chooseAnswer('true')">
             <span class="answer-pill__icon">✓</span>
-            <span class="answer-pill__label">True</span>
+            <span class="answer-pill__label">{{ trueOptionLabel }}</span>
           </button>
         </footer>
 
@@ -134,11 +298,14 @@ defineExpose({
     <GameSettlementModal
       :visible="showSettlement"
       mode-name="Speed Survival"
-      :xp-gained="250"
-      :coin-reward="50"
+      :xp-gained="settlementXp"
+      :coin-reward="settlementCoins"
+      :combo-count="settlementCombo"
+      :goal-current="settlementGoalCurrent"
+      :goal-total="settlementGoalTotal"
       goal-text="Keep sharpening your reflexes to reach enlightenment through speed." 
       @close="closeSettlement"
-      @confirm="goBack"
+      @confirm="goLibrary"
     />
   </main>
 </template>
@@ -193,6 +360,17 @@ defineExpose({
   align-items: center;
   display: flex;
   gap: 10px;
+}
+
+.coin-badge {
+  background: var(--color-streak-bg);
+  border: 1px solid color-mix(in srgb, var(--color-streak-bg) 72%, var(--color-muted-gold) 28%);
+  border-radius: 999px;
+  color: var(--color-soft-brown);
+  font-size: 12px;
+  font-weight: 700;
+  height: 30px;
+  padding: 0 10px;
 }
 
 .exit-btn,

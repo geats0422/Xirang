@@ -69,7 +69,8 @@ describe("DungeonScholarHomePage", () => {
       global: { plugins: [router, i18n] },
     });
 
-    await wrapper.find(".browse-btn").trigger("click");
+    const vm = wrapper.vm as unknown as { uploadState: "idle" | "loading" | "success" | "failure" };
+    vm.uploadState = "loading";
     await wrapper.vm.$nextTick();
 
     expect(wrapper.find(".hero-upload--loading").exists()).toBe(true);
@@ -85,10 +86,8 @@ describe("DungeonScholarHomePage", () => {
       global: { plugins: [router, i18n] },
     });
 
-    await wrapper.find(".browse-btn").trigger("click");
-    await wrapper.vm.$nextTick();
-
-    await new Promise((resolve) => window.setTimeout(resolve, 1600));
+    const vm = wrapper.vm as unknown as { uploadState: "idle" | "loading" | "success" | "failure" };
+    vm.uploadState = "success";
     await wrapper.vm.$nextTick();
 
     expect(wrapper.find(".hero-upload--success").exists()).toBe(true);

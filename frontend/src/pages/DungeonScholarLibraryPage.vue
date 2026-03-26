@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import DocumentDeleteConfirmModal from "../components/documents/DocumentDeleteConfirmModal.vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
-import { listDocuments, type DocumentListItem } from "../api/documents";
+import { batchDeleteDocuments, deleteDocument, listDocuments, type DocumentListItem } from "../api/documents";
 
 const { t, locale } = useI18n();
 
@@ -30,7 +31,7 @@ type UploadState = "idle" | "loading" | "success" | "failure";
 const documents = ref<DocumentListItem[]>([]);
 const isLoading = ref(true);
 
-const { uploadAndRefresh } = useScholarData();
+const { profileName, profileLevel, uploadAndRefresh, hydrate } = useScholarData();
 
 const uploadModalVisible = ref(false);
 const uploadState = ref<UploadState>("idle");
@@ -38,7 +39,7 @@ const isDragging = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 onMounted(async () => {
-  await loadDocuments();
+  await Promise.all([hydrate(), loadDocuments()]);
 });
 
 // Update document title reactively when locale changes
@@ -52,7 +53,12 @@ const loadDocuments = async () => {
   }, 5000);
 
   try {
-    documents.value = await listDocuments();
+    const response = await listDocuments();
+    documents.value = [...response].sort((left, right) => {
+      const leftTime = Date.parse(left.created_at ?? "") || 0;
+      const rightTime = Date.parse(right.created_at ?? "") || 0;
+      return rightTime - leftTime;
+    });
   } catch {
     documents.value = [];
   } finally {
@@ -77,11 +83,17 @@ const getScrollCards = (): ScrollCard[] => {
   }));
 };
 
-const gameModesRoute = ROUTES.gameModes;
-
 const { currentPath, navigateTo, router, routingTarget } = useRouteNavigation();
 
 const openingCard = ref<string | null>(null);
+const activeCardMenuId = ref<string | null>(null);
+const pendingDeleteCard = ref<ScrollCard | null>(null);
+const pendingBatchDeleteIds = ref<string[]>([]);
+const isDeleting = ref(false);
+const isBatchDeleteMode = ref(false);
+const selectedDocumentIds = ref<string[]>([]);
+
+const selectedCount = computed(() => selectedDocumentIds.value.length);
 
 const openModeSelection = async (card: ScrollCard) => {
   if (card.action === "continue") {
@@ -91,9 +103,10 @@ const openModeSelection = async (card: ScrollCard) => {
   openingCard.value = card.title;
 
   await router.push({
-    path: gameModesRoute,
+    path: ROUTES.gameModes,
     query: {
       flow: card.action,
+      documentId: card.id,
       title: card.title,
       subtitle: card.subtitle,
       format: card.format,
@@ -166,6 +179,77 @@ const handleRetry = () => {
   uploadState.value = "idle";
 };
 
+const toggleCardMenu = (cardId: string) => {
+  if (isBatchDeleteMode.value) {
+    return;
+  }
+  activeCardMenuId.value = activeCardMenuId.value === cardId ? null : cardId;
+};
+
+const requestDelete = (card: ScrollCard) => {
+  activeCardMenuId.value = null;
+  pendingDeleteCard.value = card;
+};
+
+const closeDeleteModal = () => {
+  pendingBatchDeleteIds.value = [];
+  pendingDeleteCard.value = null;
+};
+
+const confirmDelete = async () => {
+  const singleDeleteId = pendingDeleteCard.value?.id;
+  const batchDeleteIds = pendingBatchDeleteIds.value;
+  if (!singleDeleteId && batchDeleteIds.length === 0) {
+    return;
+  }
+
+  isDeleting.value = true;
+  try {
+    if (batchDeleteIds.length > 0) {
+      await batchDeleteDocuments(batchDeleteIds);
+      selectedDocumentIds.value = [];
+      isBatchDeleteMode.value = false;
+    } else if (singleDeleteId) {
+      await deleteDocument(singleDeleteId);
+    }
+    await loadDocuments();
+    closeDeleteModal();
+  } catch {
+    closeDeleteModal();
+  } finally {
+    isDeleting.value = false;
+  }
+};
+
+const toggleBatchDeleteMode = () => {
+  activeCardMenuId.value = null;
+  pendingDeleteCard.value = null;
+  pendingBatchDeleteIds.value = [];
+  isBatchDeleteMode.value = !isBatchDeleteMode.value;
+  if (!isBatchDeleteMode.value) {
+    selectedDocumentIds.value = [];
+  }
+};
+
+const toggleDocumentSelection = (documentId: string) => {
+  if (!isBatchDeleteMode.value) {
+    return;
+  }
+  if (selectedDocumentIds.value.includes(documentId)) {
+    selectedDocumentIds.value = selectedDocumentIds.value.filter((item) => item !== documentId);
+    return;
+  }
+  selectedDocumentIds.value = [...selectedDocumentIds.value, documentId];
+};
+
+const openBatchDeleteConfirm = () => {
+  if (selectedDocumentIds.value.length === 0) {
+    return;
+  }
+  pendingDeleteCard.value = null;
+  pendingBatchDeleteIds.value = [...selectedDocumentIds.value];
+};
+
 defineExpose({
   openUploadModal,
 });
@@ -173,7 +257,13 @@ defineExpose({
 
 <template>
   <div class="library-page">
-    <AppSidebar :current-path="currentPath" :routing-target="routingTarget" @navigate="navigateTo" />
+    <AppSidebar
+      :current-path="currentPath"
+      :routing-target="routingTarget"
+      :profile-name="profileName"
+      :profile-level="profileLevel"
+      @navigate="navigateTo"
+    />
 
     <main class="library-main">
       <section class="library-toolbar" :aria-label="t('library.controlsAria')">
@@ -186,6 +276,20 @@ defineExpose({
           <span class="sort-btn__label">{{ t("library.sortBy") }}</span>
           <span class="sort-btn__value">{{ t("library.sortUnfinished") }}</span>
           <span class="sort-btn__caret" aria-hidden="true">▾</span>
+        </button>
+
+        <button class="sort-btn" type="button" @click="toggleBatchDeleteMode">
+          {{ isBatchDeleteMode ? "Cancel Batch" : "Batch Delete" }}
+        </button>
+
+        <button
+          v-if="isBatchDeleteMode"
+          class="sort-btn sort-btn--danger"
+          type="button"
+          :disabled="selectedCount === 0"
+          @click="openBatchDeleteConfirm"
+        >
+          Delete Selected ({{ selectedCount }})
         </button>
 
         <button class="upload-icon-btn" type="button" :aria-label="t('library.upload')">☁</button>
@@ -215,9 +319,32 @@ defineExpose({
         >
           <p v-if="card.mastered" class="mastered-stamp">{{ t("library.mastered") }}</p>
 
-          <div class="scroll-card__head">
+          <div class="scroll-card__head" :class="{ 'scroll-card__head--batch': isBatchDeleteMode }">
             <span class="scroll-card__icon">{{ card.icon }}</span>
-            <button class="scroll-card__edit" type="button" :aria-label="t('library.edit')">✎</button>
+            <label v-if="isBatchDeleteMode" class="scroll-card__check-wrap">
+              <input
+                type="checkbox"
+                class="scroll-card__check batch-select-checkbox"
+                :checked="selectedDocumentIds.includes(card.id)"
+                @change="toggleDocumentSelection(card.id)"
+              />
+            </label>
+            <div class="scroll-card__menu-wrap">
+              <button
+                v-if="!isBatchDeleteMode"
+                class="scroll-card__edit"
+                type="button"
+                :aria-label="t('library.edit')"
+                @click.stop="toggleCardMenu(card.id)"
+              >
+                ✎
+              </button>
+              <div v-if="activeCardMenuId === card.id" class="scroll-card__menu-popover">
+                <button class="scroll-card__menu-action scroll-card__menu-action--danger" type="button" @click="requestDelete(card)">
+                  Delete
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="scroll-card__meta">
@@ -309,7 +436,7 @@ defineExpose({
           <input
             ref="fileInput"
             type="file"
-            accept=".pdf,.txt,.md,.markdown"
+            accept=".pdf,.txt,.md,.markdown,.doc,.docx,.ppt,.pptx"
             multiple
             class="hero-upload__file-input"
             @change="handleFileSelect"
@@ -343,6 +470,15 @@ defineExpose({
         </template>
       </section>
     </div>
+
+    <DocumentDeleteConfirmModal
+      :visible="Boolean(pendingDeleteCard) || pendingBatchDeleteIds.length > 0"
+      :title="pendingDeleteCard?.title || ''"
+      :message="pendingBatchDeleteIds.length > 0 ? `Are you sure you want to delete ${pendingBatchDeleteIds.length} selected documents?` : ''"
+      :processing="isDeleting"
+      @cancel="closeDeleteModal"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
 
@@ -364,9 +500,9 @@ defineExpose({
 
 .library-toolbar {
   align-items: center;
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) 180px 34px;
 }
 
 .search-box {
@@ -375,6 +511,7 @@ defineExpose({
   border: 1px solid var(--color-search-border);
   border-radius: 8px;
   display: flex;
+  flex: 1 1 320px;
   gap: 8px;
   height: 40px;
   padding: 0 12px;
@@ -421,6 +558,17 @@ defineExpose({
 .sort-btn__caret {
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.sort-btn--danger {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.sort-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .upload-icon-btn {
@@ -489,6 +637,71 @@ defineExpose({
   justify-content: space-between;
 }
 
+.scroll-card__head--batch .scroll-card__menu-wrap {
+  display: none;
+}
+
+.scroll-card__head--batch .scroll-card__check-wrap {
+  margin-left: auto;
+  margin-right: 2px;
+}
+
+.scroll-card__menu-wrap {
+  position: relative;
+}
+
+.scroll-card__check-wrap {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.scroll-card__check {
+  cursor: pointer;
+}
+
+.batch-select-checkbox {
+  appearance: none;
+  background: var(--color-batch-checkbox-bg);
+  border: 1.5px solid var(--color-batch-checkbox-border);
+  border-radius: 5px;
+  display: grid;
+  height: 16px;
+  margin: 0;
+  place-content: center;
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  width: 16px;
+}
+
+.batch-select-checkbox::before {
+  border: solid var(--color-batch-checkbox-check);
+  border-width: 0 1.5px 1.5px 0;
+  content: "";
+  height: 7px;
+  opacity: 0;
+  transform: rotate(45deg);
+  transition: opacity 120ms ease;
+  width: 4px;
+}
+
+.batch-select-checkbox:hover {
+  border-color: var(--color-batch-checkbox-border-checked);
+}
+
+.batch-select-checkbox:checked {
+  background: var(--color-batch-checkbox-bg-checked);
+  border-color: var(--color-batch-checkbox-border-checked);
+}
+
+.batch-select-checkbox:checked::before {
+  opacity: 1;
+}
+
+.batch-select-checkbox:focus-visible {
+  box-shadow: 0 0 0 3px var(--color-batch-checkbox-shadow-focus);
+  outline: none;
+}
+
 .scroll-card__icon {
   align-items: center;
   background: var(--color-search-bg);
@@ -510,6 +723,33 @@ defineExpose({
   height: 20px;
   line-height: 1;
   width: 20px;
+}
+
+.scroll-card__menu-popover {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+}
+
+.scroll-card__menu-action {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #1e293b;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+.scroll-card__menu-action--danger {
+  color: #dc2626;
 }
 
 .scroll-card__meta {
@@ -927,7 +1167,8 @@ defineExpose({
   }
 
   .library-toolbar {
-    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .sort-btn {

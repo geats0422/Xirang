@@ -36,7 +36,7 @@ type NotificationItem = {
   time: string;
 };
 
-const { streak, coins, hasCoinBalance, hydrate } = useScholarData();
+const { profileName, profileLevel, streak, coins, hasCoinBalance, hydrate } = useScholarData();
 const { t, locale } = useI18n();
 const notificationVisible = ref(false);
 const notifications = ref<NotificationItem[]>([]);
@@ -182,7 +182,13 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 <template>
   <div class="quests-page">
-    <AppSidebar :current-path="currentPath" :routing-target="routingTarget" @navigate="navigateTo" />
+    <AppSidebar
+      :current-path="currentPath"
+      :routing-target="routingTarget"
+      :profile-name="profileName"
+      :profile-level="profileLevel"
+      @navigate="navigateTo"
+    />
 
     <main class="quests-main">
       <section class="quests-shell">

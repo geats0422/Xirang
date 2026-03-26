@@ -1,7 +1,5 @@
 const ACCESS_TOKEN_KEY = "xirang:accessToken";
 const USER_ID_KEY = "xirang:userId";
-const DEV_ACCESS_TOKEN = "dev-local-token";
-const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 const getStorage = (): Storage | null => {
   if (typeof window === "undefined") {
@@ -13,21 +11,21 @@ const getStorage = (): Storage | null => {
 export const ensureAuthIdentity = (): { accessToken: string; userId: string } => {
   const storage = getStorage();
   if (storage === null) {
-    return { accessToken: DEV_ACCESS_TOKEN, userId: DEV_USER_ID };
+    return { accessToken: "", userId: "" };
   }
 
   const storedToken = storage.getItem(ACCESS_TOKEN_KEY)?.trim();
   const storedUserId = storage.getItem(USER_ID_KEY)?.trim();
-  const accessToken = storedToken && storedToken.length > 0 ? storedToken : DEV_ACCESS_TOKEN;
-  const userId = storedUserId && storedUserId.length > 0 ? storedUserId : DEV_USER_ID;
-
-  storage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  storage.setItem(USER_ID_KEY, userId);
+  const accessToken = storedToken && storedToken.length > 0 ? storedToken : "";
+  const userId = storedUserId && storedUserId.length > 0 ? storedUserId : "";
   return { accessToken, userId };
 };
 
 export const getAuthHeaders = (): Record<string, string> => {
   const identity = ensureAuthIdentity();
+  if (!identity.accessToken || !identity.userId) {
+    return {};
+  }
   return {
     Authorization: `Bearer ${identity.accessToken}`,
     "X-User-Id": identity.userId,

@@ -5,6 +5,7 @@ export type DocumentListItem = {
   id: string;
   title: string;
   status?: string;
+  created_at?: string | null;
 };
 
 export type DocumentListResponse = {
@@ -43,4 +44,31 @@ export const uploadDocument = async (file: File): Promise<DocumentListItem> => {
     title: response.document.title,
     status: response.document.ingest_status,
   };
+};
+
+type DeleteDocumentResponse = {
+  id: string;
+  deleted: boolean;
+};
+
+export const deleteDocument = async (documentId: string): Promise<DeleteDocumentResponse> => {
+  return apiRequest<DeleteDocumentResponse>(`/api/v1/documents/${documentId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+};
+
+type BatchDeleteDocumentsResponse = {
+  deleted_ids: string[];
+  deleted_count: number;
+};
+
+export const batchDeleteDocuments = async (
+  documentIds: string[],
+): Promise<BatchDeleteDocumentsResponse> => {
+  return apiRequest<BatchDeleteDocumentsResponse>("/api/v1/documents/batch-delete", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: { document_ids: documentIds },
+  });
 };

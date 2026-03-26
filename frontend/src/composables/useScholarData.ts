@@ -1,5 +1,12 @@
 import { computed, ref } from "vue";
-import { type DocumentListItem, listDocuments, uploadDocument } from "../api/documents";
+import { getCurrentAuthUser } from "../api/auth";
+import {
+  batchDeleteDocuments,
+  deleteDocument,
+  type DocumentListItem,
+  listDocuments,
+  uploadDocument,
+} from "../api/documents";
 import { ApiError } from "../api/http";
 import { getLeaderboard, type LeaderboardEntry } from "../api/leaderboard";
 import { getMyProfile } from "../api/profile";
@@ -14,14 +21,60 @@ type ProviderConfig = {
   models: string[];
 };
 
-const DEFAULT_DISPLAY_NAME = "Default User";
+const DEFAULT_DISPLAY_NAME = "Default user";
 const DEFAULT_LEVEL_LABEL = "Level 1 Scholar";
+
+const getStoredUsername = (): string | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const isAuthenticated = window.localStorage.getItem("xirang:isAuthenticated") === "true";
+  if (!isAuthenticated) {
+    return null;
+  }
+  const value = window.localStorage.getItem("xirang:username")?.trim();
+  return value && value.length > 0 ? value : null;
+};
+
+const getStoredEmail = (): string | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const isAuthenticated = window.localStorage.getItem("xirang:isAuthenticated") === "true";
+  if (!isAuthenticated) {
+    return null;
+  }
+  const value = window.localStorage.getItem("xirang:email")?.trim();
+  return value && value.length > 0 ? value : null;
+};
+
+const clearAuthSessionStorage = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem("xirang:accessToken");
+  window.localStorage.removeItem("xirang:token");
+  window.localStorage.removeItem("xirang:refreshToken");
+  window.localStorage.removeItem("xirang:userId");
+  window.localStorage.removeItem("xirang:username");
+  window.localStorage.removeItem("xirang:email");
+  window.localStorage.removeItem("xirang:isAuthenticated");
+};
+
+const resolveProfileName = (displayName: string | null | undefined): string => {
+  const normalizedDisplayName = typeof displayName === "string" ? displayName.trim() : "";
+  if (normalizedDisplayName.length > 0) {
+    return normalizedDisplayName;
+  }
+  return getStoredUsername() || DEFAULT_DISPLAY_NAME;
+};
 
 const profileName = ref(DEFAULT_DISPLAY_NAME);
 const profileLevel = ref(DEFAULT_LEVEL_LABEL);
 const coins = ref(0);
 const hasCoinBalance = ref(false);
 const streak = ref(0);
+const linkedEmail = ref<string | null>(null);
 const documents = ref<DocumentListItem[]>([]);
 const runs = ref<RunListItem[]>([]);
 const leaderboard = ref<LeaderboardEntry[]>([]);
@@ -210,9 +263,10 @@ const hydrate = async () => {
     }
   };
 
-  const [profileResult, balanceResult, docsResult, runsResult, settingsResult, leaderboardResult] =
+  const [profileResult, authUserResult, balanceResult, docsResult, runsResult, settingsResult, leaderboardResult] =
     await Promise.allSettled([
       invoke(() => getMyProfile()),
+      invoke(() => getCurrentAuthUser()),
       invoke(() => getShopBalance()),
       invoke(() => listDocuments()),
       invoke(() => listRuns()),
@@ -221,8 +275,24 @@ const hydrate = async () => {
     ]);
 
   if (profileResult.status === "fulfilled") {
-    profileName.value = profileResult.value.display_name?.trim() || DEFAULT_DISPLAY_NAME;
+    profileName.value = resolveProfileName(profileResult.value.display_name);
     profileLevel.value = profileResult.value.tier_label?.trim() || DEFAULT_LEVEL_LABEL;
+  } else {
+    if (isNotFoundOrUnauthorized(profileResult.reason)) {
+      clearAuthSessionStorage();
+    }
+    profileName.value = getStoredUsername() || DEFAULT_DISPLAY_NAME;
+    profileLevel.value = DEFAULT_LEVEL_LABEL;
+  }
+
+  if (authUserResult.status === "fulfilled") {
+    const normalizedEmail = authUserResult.value.email?.trim();
+    linkedEmail.value = normalizedEmail && normalizedEmail.length > 0 ? normalizedEmail : null;
+  } else {
+    if (isNotFoundOrUnauthorized(authUserResult.reason)) {
+      clearAuthSessionStorage();
+    }
+    linkedEmail.value = getStoredEmail();
   }
 
   if (balanceResult.status === "fulfilled") {
@@ -346,6 +416,19 @@ const uploadAndRefresh = async (fileList: FileList | File[]) => {
   documents.value = await listDocuments();
 };
 
+const deleteAndRefresh = async (documentId: string) => {
+  await deleteDocument(documentId);
+  documents.value = await listDocuments();
+};
+
+const deleteManyAndRefresh = async (documentIds: string[]) => {
+  if (documentIds.length === 0) {
+    return;
+  }
+  await batchDeleteDocuments(documentIds);
+  documents.value = await listDocuments();
+};
+
 const completedRuns = computed(() =>
   (Array.isArray(runs.value) ? runs.value : []).filter(
     (run) => isRecord(run) && typeof run.status === "string" && run.status === "completed",
@@ -366,6 +449,7 @@ export const useScholarData = () => {
     hydrate,
     isBootstrapped,
     language,
+    linkedEmail,
     leaderboard,
     modelOptions,
     profileLevel,
@@ -375,6 +459,8 @@ export const useScholarData = () => {
     streak,
     theme,
     setActiveModel,
+    deleteAndRefresh,
+    deleteManyAndRefresh,
     updateSettingState,
     uploadAndRefresh,
   };

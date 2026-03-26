@@ -25,7 +25,7 @@ const props = withDefaults(
   }>(),
   {
     profileLevel: "Level 1 Scholar",
-    profileName: "Default User",
+    profileName: "Default user",
   },
 );
 

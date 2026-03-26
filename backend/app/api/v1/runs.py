@@ -38,16 +38,22 @@ async def create_run(
     mode = request.get("mode", RunMode.ENDLESS.value)
     run_mode = RunMode(mode)
 
+    document_id = request.get("document_id")
+    if not isinstance(document_id, str):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id")
+
     result, questions = await service.create_run(
         user_id=user_id,
-        document_id=UUID(request.get("document_id")),
+        document_id=UUID(document_id),
         mode=run_mode,
         question_count=question_count,
+        path_id=request.get("path_id"),
     )
     return {
         "run_id": str(result.id),
         "mode": str(result.mode),
         "status": result.status,
+        "run_state": result.mode_state,
         "questions": [
             {
                 "id": str(q.id),
@@ -56,6 +62,22 @@ async def create_run(
             }
             for q in questions
         ],
+    }
+
+
+@router.get("/path-options")
+async def list_path_options(
+    mode: str,
+    document_id: str,
+    _user_id: UUID = Depends(get_current_user_id),
+    service: Any = Depends(get_run_service),
+) -> dict[str, Any]:
+    _ = document_id
+    run_mode = RunMode(mode)
+    options = service.list_path_options(mode=run_mode)
+    return {
+        "mode": run_mode.value,
+        "options": options,
     }
 
 
@@ -70,6 +92,7 @@ async def list_runs(
             "id": str(r.id),
             "status": str(r.status),
             "mode": str(r.mode),
+            "run_state": r.mode_state,
             "started_at": r.started_at.isoformat(),
             "ended_at": None if r.ended_at is None else r.ended_at.isoformat(),
             "score": r.score,
@@ -90,6 +113,8 @@ async def submit_answer(
         run_id=run_id,
         question_id=UUID(request.get("question_id")),
         selected_option_ids=[UUID(oid) for oid in request.get("selected_option_ids", [])],
+        answer_time_ms=request.get("answer_time_ms"),
+        owner_user_id=user_id,
     )
     return {
         "is_correct": result.is_correct,
@@ -103,6 +128,7 @@ async def submit_answer(
             "id": str(result.run.id),
             "status": str(result.run.status),
             "score": result.run.score,
+            "state": result.run.mode_state,
         },
         "settlement": None
         if result.settlement is None
@@ -114,6 +140,9 @@ async def submit_answer(
             "accuracy": result.settlement.accuracy,
             "correct_count": result.settlement.correct_count,
             "total_count": result.settlement.total_count,
+            "path_id": result.run.mode_state.get("path_id"),
+            "goal_current": result.run.mode_state.get("goal_current", 0),
+            "goal_total": result.run.mode_state.get("goal_total"),
         },
     }
 
@@ -125,7 +154,8 @@ async def get_settlement(
     service: Any = Depends(get_run_service),
 ) -> dict[str, Any]:
     """Get run settlement."""
-    settlement = await service.get_settlement(run_id)
+    run = await service.get_run(run_id, owner_user_id=user_id)
+    settlement = await service.get_settlement(run.id)
     return {
         "run_id": str(settlement.run_id),
         "xp_earned": settlement.xp_earned,
@@ -135,4 +165,7 @@ async def get_settlement(
         "correct_count": settlement.correct_count,
         "total_questions": settlement.total_count,
         "correct_answers": settlement.correct_count,
+        "path_id": run.mode_state.get("path_id"),
+        "goal_current": run.mode_state.get("goal_current", 0),
+        "goal_total": run.mode_state.get("goal_total"),
     }

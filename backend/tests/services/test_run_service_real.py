@@ -24,6 +24,7 @@ class FakeRun:
     total_questions: int
     correct_answers: int
     combo_count: int
+    mode_state: dict[str, object]
     started_at: datetime
     ended_at: datetime | None = None
 
@@ -54,6 +55,8 @@ class InMemoryRunRepository:
         document_id: UUID,
         mode: RunMode,
         total_questions: int,
+        mode_state: dict[str, object] | None = None,
+        path_id: str | None = None,
     ) -> FakeRun:
         run = FakeRun(
             id=uuid4(),
@@ -65,6 +68,7 @@ class InMemoryRunRepository:
             total_questions=total_questions,
             correct_answers=0,
             combo_count=0,
+            mode_state=mode_state or {},
             started_at=datetime.now(UTC),
         )
         self._runs[run.id] = run
@@ -85,6 +89,7 @@ class InMemoryRunRepository:
         total_questions: int | None = None,
         correct_answers: int | None = None,
         combo_count: int | None = None,
+        mode_state: dict[str, object] | None = None,
         ended_at: datetime | None = None,
     ) -> None:
         run = self._runs[run_id]
@@ -98,6 +103,8 @@ class InMemoryRunRepository:
             run.correct_answers = correct_answers
         if combo_count is not None:
             run.combo_count = combo_count
+        if mode_state is not None:
+            run.mode_state = mode_state
         if ended_at is not None:
             run.ended_at = ended_at
 
@@ -107,6 +114,7 @@ class InMemoryRunRepository:
         document_id: UUID,
         mode: RunMode,
         count: int,
+        path_id: str | None = None,
     ) -> list[QuestionData]:
         return [q for q in self._source_questions if q.document_id == document_id][:count]
 
@@ -320,3 +328,48 @@ async def test_real_run_service_get_settlement_requires_completion() -> None:
 
     with pytest.raises(RunNotCompletedError):
         await service.get_settlement(run.id)
+
+
+@pytest.mark.asyncio
+async def test_real_run_service_accumulates_study_seconds_and_goal_progress() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    questions = _build_questions(document_id)
+    for question in questions:
+        question.correct_option_ids = [UUID(question.options[0]["id"])]
+
+    repository = InMemoryRunRepository(questions)
+    service = RunService(repository=repository)
+
+    run, generated = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.SPEED,
+        question_count=3,
+        path_id="speed-route-focus",
+    )
+    assert run.mode_state["study_seconds"] == 0
+    assert run.mode_state["goal_current"] == 0
+    assert run.mode_state["goal_total"] == 8
+
+    await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[generated[0].correct_option_ids[0]],
+        answer_time_ms=61_000,
+    )
+    after_first = await service.get_run(run.id)
+    assert after_first.mode_state["study_seconds"] == 61
+    assert after_first.mode_state["goal_current"] == 1
+    assert after_first.mode_state["goal_total"] == 8
+
+    await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[1].id,
+        selected_option_ids=[generated[1].correct_option_ids[0]],
+        answer_time_ms=61_000,
+    )
+    after_second = await service.get_run(run.id)
+    assert after_second.mode_state["study_seconds"] == 122
+    assert after_second.mode_state["goal_current"] == 2
+    assert after_second.mode_state["goal_total"] == 8

@@ -34,7 +34,10 @@ class StubObjectStorage(ObjectStorageDocumentStorage):
 
 def test_validate_upload_accepts_phase1_formats_within_size_limit() -> None:
     validate_upload(file_name="chapter-1.pdf", file_size_bytes=1024)
+    validate_upload(file_name="legacy.doc", file_size_bytes=1536)
     validate_upload(file_name="notes.docx", file_size_bytes=2048)
+    validate_upload(file_name="deck.ppt", file_size_bytes=3072)
+    validate_upload(file_name="deck.pptx", file_size_bytes=3584)
     validate_upload(file_name="summary.txt", file_size_bytes=4096)
     validate_upload(file_name="outline.md", file_size_bytes=8192)
 

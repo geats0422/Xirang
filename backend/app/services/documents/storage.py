@@ -7,8 +7,6 @@ from pathlib import Path
 """Storage abstraction layer for file persistence."""
 
 
-
-
 class FileValidationError(ValueError):
     pass
 
@@ -27,7 +25,7 @@ class StoredFile:
     media_type: str
 
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".markdown"}
+ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt", ".md", ".markdown"}
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 
 

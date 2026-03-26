@@ -11,7 +11,7 @@ from app.core.config import get_settings
 from app.db.models.documents import DocumentFormat
 from app.db.session import get_db_session
 from app.repositories.document_repository import DocumentRepository
-from app.services.documents.service import DocumentService
+from app.services.documents.service import DocumentService, DocumentServiceError
 from app.services.documents.storage import StorageMode
 from app.services.documents.storage import build_storage as build_document_storage
 
@@ -44,10 +44,13 @@ async def upload_document(
     fmt_raw = (format or extension).lower()
     format_map = {
         "pdf": DocumentFormat.PDF,
+        "doc": DocumentFormat.DOC,
         "txt": DocumentFormat.TXT,
         "md": DocumentFormat.MARKDOWN,
         "markdown": DocumentFormat.MARKDOWN,
         "docx": DocumentFormat.DOCX,
+        "ppt": DocumentFormat.PPT,
+        "pptx": DocumentFormat.PPTX,
     }
     if fmt_raw not in format_map:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported file type")
@@ -72,6 +75,28 @@ async def upload_document(
             "status": str(result.job.status),
         },
     }
+
+
+@router.post("/batch-delete")
+async def batch_delete_documents(
+    payload: dict[str, list[str]],
+    user_id: UUID = Depends(get_current_user_id),
+    service: Any = Depends(get_document_service),
+) -> dict[str, Any]:
+    ids_raw = payload.get("document_ids", [])
+    try:
+        document_ids = [UUID(item) for item in ids_raw]
+        deleted_docs = await service.delete_documents(
+            document_ids=document_ids, owner_user_id=user_id
+        )
+        return {
+            "deleted_ids": [str(doc.id) for doc in deleted_docs],
+            "deleted_count": len(deleted_docs),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except DocumentServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.get("/{document_id}")
@@ -99,7 +124,17 @@ async def list_documents(
 ) -> dict[str, Any]:
     """List user documents."""
     documents = await service.list_documents(owner_user_id=user_id)
-    return {"items": [{"id": str(d.id), "title": d.title} for d in documents]}
+    return {
+        "items": [
+            {
+                "id": str(d.id),
+                "title": d.title,
+                "status": str(d.ingest_status),
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in documents
+        ]
+    }
 
 
 @router.post("/{document_id}/retry")
@@ -132,3 +167,19 @@ async def get_job_status(
         "id": str(job.id),
         "status": str(job.status),
     }
+
+
+@router.delete("/{document_id}")
+async def delete_document(
+    document_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    service: Any = Depends(get_document_service),
+) -> dict[str, Any]:
+    try:
+        deleted = await service.delete_document(document_id=document_id, owner_user_id=user_id)
+        return {
+            "id": str(deleted.id),
+            "deleted": True,
+        }
+    except DocumentServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e

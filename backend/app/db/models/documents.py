@@ -31,7 +31,10 @@ class JobStatus(StrEnum):
 
 class DocumentFormat(StrEnum):
     PDF = "pdf"
+    DOC = "doc"
     DOCX = "docx"
+    PPT = "ppt"
+    PPTX = "pptx"
     TXT = "txt"
     MARKDOWN = "markdown"
 

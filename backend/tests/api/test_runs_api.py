@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -10,6 +11,9 @@ from app.api.v1 import runs as runs_router
 from app.db.models.runs import RunMode, RunStatus
 from app.main import create_app
 from app.services.runs.schemas import AnswerResult, QuestionData, Settlement, SubmitAnswerResult
+
+if TYPE_CHECKING:
+    from app.db.models.runs import Run
 
 
 @dataclass
@@ -23,6 +27,7 @@ class FakeRun:
     total_questions: int
     correct_answers: int
     combo_count: int
+    mode_state: dict[str, object]
     started_at: datetime
     ended_at: datetime | None = None
 
@@ -41,6 +46,7 @@ class FakeRunService:
         document_id: UUID,
         mode: RunMode,
         question_count: int,
+        path_id: str | None = None,
     ) -> tuple[FakeRun, list[QuestionData]]:
         run_id = uuid4()
         questions = [
@@ -70,15 +76,30 @@ class FakeRunService:
             total_questions=question_count,
             correct_answers=0,
             combo_count=0,
+            mode_state={
+                "hp": 3,
+                "max_hp": 3,
+                "floor": 1,
+                "floor_total": question_count,
+                "time_left_sec": 900,
+                "pending_coins": 0,
+                "path_id": path_id or "F1",
+                "goal_metric": "study_minutes",
+                "goal_current": 0,
+                "goal_total": 10,
+                "study_seconds": 0,
+            },
             started_at=datetime.now(UTC),
         )
         self.runs[run_id] = run
         self.questions[run_id] = questions
         return run, questions
 
-    async def get_run(self, run_id: UUID, user_id: UUID | None = None) -> FakeRun:
+    async def get_run(self, run_id: UUID, owner_user_id: UUID | None = None) -> FakeRun:
         run = self.runs.get(run_id)
         if not run:
+            raise ValueError("Run not found")
+        if owner_user_id is not None and run.user_id != owner_user_id:
             raise ValueError("Run not found")
         return run
 
@@ -91,6 +112,7 @@ class FakeRunService:
         question_id: UUID,
         selected_option_ids: list[UUID],
         answer_time_ms: int | None = None,
+        owner_user_id: UUID | None = None,
     ) -> SubmitAnswerResult:
         run = await self.get_run(run_id)
         if run.status != RunStatus.RUNNING:
@@ -116,6 +138,22 @@ class FakeRunService:
         run.correct_answers += 1 if is_correct else 0
         run.combo_count = run.combo_count + 1 if is_correct else 0
         run.score = run.correct_answers * 10
+        elapsed_sec = 0
+        if answer_time_ms is not None and answer_time_ms > 0:
+            elapsed_sec = (answer_time_ms + 999) // 1000
+        study_seconds_raw = run.mode_state.get("study_seconds", 0)
+        goal_total_raw = run.mode_state.get("goal_total", 10)
+        study_seconds_base = study_seconds_raw if isinstance(study_seconds_raw, int) else 0
+        goal_total = goal_total_raw if isinstance(goal_total_raw, int) else 10
+        study_seconds = study_seconds_base + elapsed_sec
+        goal_current = min(goal_total, study_seconds // 60)
+        run.mode_state = {
+            **run.mode_state,
+            "floor": min(run.total_questions, len(self.answers[run_id]) + 1),
+            "pending_coins": run.correct_answers * 10,
+            "study_seconds": study_seconds,
+            "goal_current": goal_current,
+        }
         settlement = None
         if len(self.answers[run_id]) >= run.total_questions:
             run.status = RunStatus.COMPLETED
@@ -133,7 +171,7 @@ class FakeRunService:
         return SubmitAnswerResult(
             answer=answer,
             is_correct=is_correct,
-            run=run,
+            run=cast("Run", run),
             settlement=settlement,
         )
 
@@ -145,6 +183,37 @@ class FakeRunService:
         if not settlement:
             raise ValueError("Settlement not found")
         return settlement
+
+    def list_path_options(self, *, mode: RunMode) -> list[dict[str, object]]:
+        if mode == RunMode.ENDLESS:
+            return [
+                {
+                    "path_id": "F1",
+                    "label": "F1",
+                    "kind": "floor",
+                    "description": "Warm-up",
+                    "goal_total": 10,
+                }
+            ]
+        if mode == RunMode.SPEED:
+            return [
+                {
+                    "path_id": "speed-route-focus",
+                    "label": "R1",
+                    "kind": "checkpoint",
+                    "description": "Focus",
+                    "goal_total": 8,
+                }
+            ]
+        return [
+            {
+                "path_id": "draft-route-classic",
+                "label": "R1",
+                "kind": "round",
+                "description": "Classic",
+                "goal_total": 10,
+            }
+        ]
 
 
 def create_test_client(user_id: UUID) -> TestClient:
@@ -281,3 +350,45 @@ class TestRunsAPI:
             },
         )
         assert response.status_code == 401
+
+    def test_list_path_options_returns_mode_options(self) -> None:
+        user_id = uuid4()
+        client = create_test_client(user_id)
+        response = client.get(f"/api/v1/runs/path-options?mode=endless&document_id={uuid4()}")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["mode"] == "endless"
+        assert len(body["options"]) == 1
+
+    def test_get_settlement_returns_goal_fields_from_run_state(self) -> None:
+        user_id = uuid4()
+        doc_id = uuid4()
+        client = create_test_client(user_id)
+        create_response = client.post(
+            "/api/v1/runs",
+            json={
+                "document_id": str(doc_id),
+                "mode": "endless",
+                "question_count": 1,
+                "path_id": "F1",
+            },
+        )
+        run_id = create_response.json()["run_id"]
+        question_id = create_response.json()["questions"][0]["id"]
+
+        answer_response = client.post(
+            f"/api/v1/runs/{run_id}/answers",
+            json={
+                "question_id": question_id,
+                "selected_option_ids": [str(uuid4())],
+                "answer_time_ms": 120_000,
+            },
+        )
+        assert answer_response.status_code == 200
+
+        settlement_response = client.get(f"/api/v1/runs/{run_id}/settlement")
+        assert settlement_response.status_code == 200
+        body = settlement_response.json()
+        assert body["path_id"] == "F1"
+        assert body["goal_total"] == 10
+        assert body["goal_current"] == 2

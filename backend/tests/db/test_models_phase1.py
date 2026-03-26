@@ -196,6 +196,7 @@ def test_run_and_review_models_cover_settlement_and_feedback_loop() -> None:
             "mode",
             "status",
             "score",
+            "mode_state",
             "started_at",
             "ended_at",
         },

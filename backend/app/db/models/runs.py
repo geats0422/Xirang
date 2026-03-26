@@ -64,6 +64,9 @@ class Run(UUIDPrimaryKeyMixin, Base):
         Integer, nullable=False, default=0, server_default="0"
     )
     combo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    mode_state: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.v1.documents import get_current_user_id, get_document_service
@@ -131,6 +132,26 @@ class FakeApiDocumentService:
             ingest_version=2,
         )
 
+    async def delete_document(self, *, document_id: UUID, owner_user_id: UUID) -> FakeDocument:
+        doc = self.documents.get(document_id)
+        if not doc or doc.owner_user_id != owner_user_id:
+            raise ValueError("Document not found")
+        del self.documents[document_id]
+        return doc
+
+    async def delete_documents(
+        self, *, document_ids: list[UUID], owner_user_id: UUID
+    ) -> list[FakeDocument]:
+        docs: list[FakeDocument] = []
+        for document_id in document_ids:
+            doc = self.documents.get(document_id)
+            if not doc or doc.owner_user_id != owner_user_id:
+                raise ValueError("One or more documents were not found")
+            docs.append(doc)
+        for doc in docs:
+            del self.documents[doc.id]
+        return docs
+
 
 def create_test_client() -> TestClient:
     app = create_app()
@@ -152,6 +173,33 @@ def test_upload_endpoint_creates_document_with_processing_status() -> None:
     body = response.json()
     assert body["document"]["ingest_status"] == "processing"
     assert body["job"]["status"] == "pending"
+
+
+@pytest.mark.parametrize(
+    ("file_name", "mime_type"),
+    [
+        ("test.pdf", "application/pdf"),
+        ("test.md", "text/markdown"),
+        ("test.doc", "application/msword"),
+        (
+            "test.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        ("test.ppt", "application/vnd.ms-powerpoint"),
+        (
+            "test.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ),
+    ],
+)
+def test_upload_endpoint_accepts_required_file_types(file_name: str, mime_type: str) -> None:
+    client = create_test_client()
+    response = client.post(
+        "/api/v1/documents/upload",
+        files={"file": (file_name, b"dummy-content", mime_type)},
+        data={"title": f"Upload {file_name}"},
+    )
+    assert response.status_code == 201
 
 
 def test_upload_endpoint_validates_file_type() -> None:
@@ -194,3 +242,51 @@ def test_upload_endpoint_rejects_invalid_user_id_header() -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_delete_endpoint_removes_document_for_owner() -> None:
+    client = create_test_client()
+    upload = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"title": "Delete Me"},
+    )
+    assert upload.status_code == 201
+    document_id = upload.json()["document"]["id"]
+
+    delete_response = client.delete(f"/api/v1/documents/{document_id}")
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"id": document_id, "deleted": True}
+
+    list_response = client.get("/api/v1/documents/")
+    assert list_response.status_code == 200
+    assert list_response.json()["items"] == []
+
+
+def test_batch_delete_endpoint_removes_multiple_documents() -> None:
+    client = create_test_client()
+    upload_one = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("one.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"title": "One"},
+    )
+    upload_two = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("two.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"title": "Two"},
+    )
+    first_id = upload_one.json()["document"]["id"]
+    second_id = upload_two.json()["document"]["id"]
+
+    response = client.post(
+        "/api/v1/documents/batch-delete",
+        json={"document_ids": [first_id, second_id]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["deleted_count"] == 2
+    assert set(body["deleted_ids"]) == {first_id, second_id}
+
+    list_response = client.get("/api/v1/documents/")
+    assert list_response.status_code == 200
+    assert list_response.json()["items"] == []

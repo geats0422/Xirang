@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import Select, func, select
 
-from app.db.models.questions import Question, QuestionOption
+from app.db.models.documents import DocumentQuestionSet, QuestionSetStatus
+from app.db.models.questions import Question, QuestionOption, QuestionType
 from app.db.models.runs import Run, RunAnswer, RunMode, RunQuestion, RunStatus, Settlement
 from app.services.runs.schemas import AnswerResult, QuestionData
 
@@ -26,6 +27,7 @@ class RunRepository:
         document_id: UUID,
         mode: RunMode,
         total_questions: int,
+        mode_state: dict[str, object] | None = None,
     ) -> Run:
         run = Run(
             user_id=user_id,
@@ -36,6 +38,7 @@ class RunRepository:
             total_questions=total_questions,
             correct_answers=0,
             combo_count=0,
+            mode_state=mode_state or {},
         )
         self._session.add(run)
         await self._session.flush()
@@ -60,6 +63,7 @@ class RunRepository:
         total_questions: int | None = None,
         correct_answers: int | None = None,
         combo_count: int | None = None,
+        mode_state: dict[str, object] | None = None,
         ended_at: datetime | None = None,
     ) -> None:
         run = await self.get_run(run_id)
@@ -76,6 +80,8 @@ class RunRepository:
             run.correct_answers = correct_answers
         if combo_count is not None:
             run.combo_count = combo_count
+        if mode_state is not None:
+            run.mode_state = mode_state
         if ended_at is not None:
             run.ended_at = ended_at
 
@@ -87,10 +93,24 @@ class RunRepository:
         document_id: UUID,
         mode: RunMode,
         count: int,
+        path_id: str | None = None,
     ) -> list[QuestionData]:
         stmt: Select[tuple[Question]] = select(Question).where(Question.document_id == document_id)
-        if mode == RunMode.SPEED:
+        if mode == RunMode.ENDLESS and path_id:
+            target_difficulty = self._target_endless_difficulty(path_id)
+            stmt = stmt.order_by(
+                func.abs(Question.difficulty - target_difficulty).asc(), Question.created_at.asc()
+            )
+        elif mode == RunMode.SPEED and path_id == "speed-route-burst":
             stmt = stmt.order_by(Question.difficulty.desc(), Question.created_at.asc())
+        elif mode == RunMode.SPEED and path_id == "speed-route-endurance":
+            stmt = stmt.order_by(Question.created_at.asc(), Question.difficulty.asc())
+        elif mode == RunMode.SPEED:
+            stmt = stmt.order_by(Question.difficulty.asc(), Question.created_at.asc())
+        elif mode == RunMode.DRAFT and path_id == "draft-route-theory":
+            stmt = stmt.order_by(Question.difficulty.desc(), Question.created_at.asc())
+        elif mode == RunMode.DRAFT and path_id == "draft-route-memory":
+            stmt = stmt.order_by(func.length(Question.prompt).asc(), Question.created_at.asc())
         else:
             stmt = stmt.order_by(Question.created_at.asc())
 
@@ -101,6 +121,18 @@ class RunRepository:
 
         result = await self._session.execute(stmt)
         question_rows = list(result.scalars().all())
+
+        if not question_rows:
+            fallback_stmt: Select[tuple[Question]] = select(Question).order_by(
+                Question.created_at.asc()
+            )
+            fallback_stmt = fallback_stmt.limit(fetch_limit)
+            fallback_result = await self._session.execute(fallback_stmt)
+            question_rows = list(fallback_result.scalars().all())
+
+        if not question_rows:
+            generated_question = await self._ensure_fallback_question(document_id=document_id)
+            question_rows = [generated_question]
 
         if mode == RunMode.DRAFT:
             hard = [q for q in question_rows if q.difficulty >= 3]
@@ -130,6 +162,16 @@ class RunRepository:
             )
 
         return questions
+
+    @staticmethod
+    def _target_endless_difficulty(path_id: str) -> int:
+        if path_id.startswith("F") and len(path_id) >= 2:
+            try:
+                floor_index = int(path_id[1:])
+            except ValueError:
+                return 1
+            return max(1, min(5, floor_index))
+        return 1
 
     async def add_run_questions(self, run_id: UUID, questions: list[QuestionData]) -> None:
         for sequence_no, question in enumerate(questions, start=1):
@@ -343,3 +385,59 @@ class RunRepository:
         for option in options:
             option_map[option.question_id].append(option)
         return option_map
+
+    async def _ensure_fallback_question(self, *, document_id: UUID) -> Question:
+        question_set_stmt = (
+            select(DocumentQuestionSet)
+            .where(DocumentQuestionSet.document_id == document_id)
+            .order_by(DocumentQuestionSet.generation_version.desc())
+            .limit(1)
+        )
+        question_set_result = await self._session.execute(question_set_stmt)
+        question_set = question_set_result.scalar_one_or_none()
+
+        if question_set is None:
+            question_set = DocumentQuestionSet(
+                document_id=document_id,
+                generation_version=1,
+                status=QuestionSetStatus.READY,
+                question_count=1,
+                generated_at=datetime.now(UTC),
+            )
+            self._session.add(question_set)
+            await self._session.flush()
+
+        question = Question(
+            question_set_id=question_set.id,
+            document_id=document_id,
+            question_type=QuestionType.SINGLE_CHOICE,
+            prompt="In Daoist thought, which concept emphasizes flowing in harmony with nature?",
+            explanation="Wu wei highlights effortless alignment with the natural order.",
+            source_locator={"kind": "fallback"},
+            difficulty=1,
+            question_metadata={"source": "runtime_fallback"},
+        )
+        self._session.add(question)
+        await self._session.flush()
+
+        self._session.add_all(
+            [
+                QuestionOption(
+                    question_id=question.id,
+                    option_key="A",
+                    content="Wu wei",
+                    is_correct=True,
+                    sort_order=1,
+                ),
+                QuestionOption(
+                    question_id=question.id,
+                    option_key="B",
+                    content="Legalism",
+                    is_correct=False,
+                    sort_order=2,
+                ),
+            ]
+        )
+        await self._session.flush()
+
+        return question

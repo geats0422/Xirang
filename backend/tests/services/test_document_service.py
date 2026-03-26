@@ -111,6 +111,20 @@ class FakeDocumentRepository:
     async def get_document_by_id(self, document_id: UUID) -> FakeDocument | None:
         return self.documents.get(document_id)
 
+    async def get_documents_for_owner(
+        self,
+        *,
+        document_ids: list[UUID],
+        owner_user_id: UUID,
+    ) -> list[FakeDocument]:
+        return [
+            document
+            for document_id in document_ids
+            if (document := self.documents.get(document_id)) is not None
+            and document.owner_user_id == owner_user_id
+            and document.deleted_at is None
+        ]
+
     async def list_documents_by_owner(
         self,
         owner_user_id: UUID,
@@ -125,6 +139,18 @@ class FakeDocumentRepository:
             if d.owner_user_id == owner_user_id and (include_deleted or d.deleted_at is None)
         ]
         return docs[offset : offset + limit]
+
+    async def delete_document_for_owner(
+        self,
+        *,
+        document_id: UUID,
+        owner_user_id: UUID,
+    ) -> FakeDocument | None:
+        document = self.documents.get(document_id)
+        if document is None or document.owner_user_id != owner_user_id:
+            return None
+        del self.documents[document_id]
+        return document
 
     async def update_document_status(
         self,
@@ -214,6 +240,9 @@ class FakeDocumentRepository:
 
     async def commit(self) -> None:
         self.commit_count += 1
+
+    async def rollback(self) -> None:
+        return None
 
 
 class FakeStorage:
@@ -440,3 +469,107 @@ async def test_get_job_status_returns_current_job_state() -> None:
 
     assert result.id == uploaded.job.id
     assert result.status == JobStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_delete_document_removes_owner_document_and_storage_file() -> None:
+    service, repository, storage = build_document_service()
+    user_id = uuid4()
+    uploaded = await service.upload(
+        owner_user_id=user_id,
+        title="Delete Target",
+        file_name="delete.txt",
+        file_content=b"content",
+        format=DocumentFormat.TXT,
+        mime_type="text/plain",
+    )
+
+    storage_key = uploaded.document.storage_path
+    assert storage_key in storage.files
+
+    deleted = await service.delete_document(document_id=uploaded.document.id, owner_user_id=user_id)
+
+    assert deleted.id == uploaded.document.id
+    assert uploaded.document.id not in repository.documents
+    assert storage_key not in storage.files
+    assert repository.commit_count == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_document_raises_for_non_owner() -> None:
+    service, _, _ = build_document_service()
+    owner_id = uuid4()
+    other_user_id = uuid4()
+    uploaded = await service.upload(
+        owner_user_id=owner_id,
+        title="Owner Doc",
+        file_name="owner.txt",
+        file_content=b"content",
+        format=DocumentFormat.TXT,
+        mime_type="text/plain",
+    )
+
+    with pytest.raises(DocumentNotFoundError):
+        await service.delete_document(document_id=uploaded.document.id, owner_user_id=other_user_id)
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_removes_multiple_owner_documents() -> None:
+    service, repository, storage = build_document_service()
+    user_id = uuid4()
+    first = await service.upload(
+        owner_user_id=user_id,
+        title="First",
+        file_name="first.txt",
+        file_content=b"first",
+        format=DocumentFormat.TXT,
+        mime_type="text/plain",
+    )
+    second = await service.upload(
+        owner_user_id=user_id,
+        title="Second",
+        file_name="second.txt",
+        file_content=b"second",
+        format=DocumentFormat.TXT,
+        mime_type="text/plain",
+    )
+
+    deleted = await service.delete_documents(
+        document_ids=[first.document.id, second.document.id],
+        owner_user_id=user_id,
+    )
+
+    assert len(deleted) == 2
+    assert first.document.id not in repository.documents
+    assert second.document.id not in repository.documents
+    assert first.document.storage_path not in storage.files
+    assert second.document.storage_path not in storage.files
+
+
+@pytest.mark.asyncio
+async def test_delete_documents_raises_when_any_document_is_not_owned() -> None:
+    service, _, _ = build_document_service()
+    owner_id = uuid4()
+    other_id = uuid4()
+    first = await service.upload(
+        owner_user_id=owner_id,
+        title="Owned",
+        file_name="owned.txt",
+        file_content=b"owned",
+        format=DocumentFormat.TXT,
+        mime_type="text/plain",
+    )
+    foreign = await service.upload(
+        owner_user_id=other_id,
+        title="Foreign",
+        file_name="foreign.txt",
+        file_content=b"foreign",
+        format=DocumentFormat.TXT,
+        mime_type="text/plain",
+    )
+
+    with pytest.raises(DocumentNotFoundError):
+        await service.delete_documents(
+            document_ids=[first.document.id, foreign.document.id],
+            owner_user_id=owner_id,
+        )

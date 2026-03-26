@@ -33,7 +33,9 @@ class Settings(BaseSettings):
     storage_mode: str = "local"
     upload_dir: str = ".data/uploads"
     max_file_size_bytes: int = 50 * 1024 * 1024
-    allowed_extensions: list[str] = Field(default_factory=lambda: ["pdf", "docx", "txt", "md"])
+    allowed_extensions: list[str] = Field(
+        default_factory=lambda: ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md"]
+    )
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             "http://localhost:5173",

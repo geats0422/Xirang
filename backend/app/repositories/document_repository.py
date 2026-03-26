@@ -59,6 +59,49 @@ class DocumentRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def delete_document_for_owner(
+        self,
+        *,
+        document_id: UUID,
+        owner_user_id: UUID,
+    ) -> Document | None:
+        stmt = (
+            select(Document)
+            .where(
+                Document.id == document_id,
+                Document.owner_user_id == owner_user_id,
+                Document.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        document = result.scalar_one_or_none()
+        if document is None:
+            return None
+        await self._session.delete(document)
+        await self._session.flush()
+        return document
+
+    async def get_documents_for_owner(
+        self,
+        *,
+        document_ids: list[UUID],
+        owner_user_id: UUID,
+    ) -> list[Document]:
+        if not document_ids:
+            return []
+        stmt = (
+            select(Document)
+            .where(
+                Document.id.in_(document_ids),
+                Document.owner_user_id == owner_user_id,
+                Document.deleted_at.is_(None),
+            )
+            .order_by(Document.created_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def list_documents_by_owner(
         self,
         owner_user_id: UUID,

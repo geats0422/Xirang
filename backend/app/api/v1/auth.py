@@ -11,9 +11,11 @@ from app.api.dependencies.auth import parse_bearer_token
 from app.core.config import get_settings
 from app.db.session import get_db_session
 from app.repositories.auth_repository import AuthRepository
+from app.schemas.auth import LoginRequest, RegisterRequest
 from app.services.auth.passwords import PasswordService
 from app.services.auth.service import (
     AuthService,
+    AuthServiceError,
     DuplicateIdentityError,
     InvalidCredentialsError,
     InvalidTokenError,
@@ -61,17 +63,16 @@ async def get_auth_service(session: AsyncSession = Depends(get_db_session)) -> A
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(
-    request: dict[str, Any],
+    request: RegisterRequest,
     service: Any = Depends(get_auth_service),
     x_request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
 ) -> dict[str, Any]:
-    """Register a new user."""
     started_at = time.perf_counter()
     try:
         result = await service.register(
-            username=request.get("username", ""),
-            email=request.get("email", ""),
-            password=request.get("password", ""),
+            username=request.username,
+            email=request.email,
+            password=request.password,
         )
         log_auth_event(
             endpoint="/api/v1/auth/register",
@@ -102,20 +103,28 @@ async def register(
             failure_reason="duplicate_identity",
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    except AuthServiceError as e:
+        log_auth_event(
+            endpoint="/api/v1/auth/register",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            started_at=started_at,
+            request_id=x_request_id,
+            failure_reason="validation_error",
+        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
 
 @router.post("/login")
 async def login(
-    request: dict[str, Any],
+    request: LoginRequest,
     service: Any = Depends(get_auth_service),
     x_request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
 ) -> dict[str, Any]:
-    """Login user."""
     started_at = time.perf_counter()
     try:
         result = await service.login(
-            identity=request.get("identity", ""),
-            password=request.get("password", ""),
+            identity=request.identity,
+            password=request.password,
         )
         log_auth_event(
             endpoint="/api/v1/auth/login",

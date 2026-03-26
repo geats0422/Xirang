@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from inspect import isawaitable
 from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
@@ -60,6 +61,20 @@ class DocumentRepositoryProtocol(Protocol):
 
     async def get_document_by_id(self, document_id: UUID) -> Any | None: ...
 
+    async def delete_document_for_owner(
+        self,
+        *,
+        document_id: UUID,
+        owner_user_id: UUID,
+    ) -> Any | None: ...
+
+    async def get_documents_for_owner(
+        self,
+        *,
+        document_ids: list[UUID],
+        owner_user_id: UUID,
+    ) -> list[Any]: ...
+
     async def list_documents_by_owner(
         self,
         owner_user_id: UUID,
@@ -94,6 +109,8 @@ class DocumentRepositoryProtocol(Protocol):
     async def get_job_by_id(self, job_id: UUID) -> Any | None: ...
 
     async def commit(self) -> None: ...
+
+    async def rollback(self) -> None: ...
 
 
 class StorageProtocol(Protocol):
@@ -169,6 +186,58 @@ class DocumentService:
         if document is None or document.owner_user_id != owner_user_id:
             raise DocumentNotFoundError(f"Document not found: {document_id}")
         return document
+
+    async def delete_document(self, document_id: UUID, owner_user_id: UUID) -> Any:
+        document = await self.repository.get_document_by_id(document_id)
+        if document is None or document.owner_user_id != owner_user_id:
+            raise DocumentNotFoundError(f"Document not found: {document_id}")
+
+        try:
+            delete_result = self.storage.delete(document.storage_path)
+            if isawaitable(delete_result):
+                await cast("Awaitable[None]", delete_result)
+        except Exception as e:
+            raise StorageError(f"Failed to delete file from storage: {e}") from e
+
+        deleted_document = await self.repository.delete_document_for_owner(
+            document_id=document_id,
+            owner_user_id=owner_user_id,
+        )
+        if deleted_document is None:
+            await self.repository.rollback()
+            raise DocumentNotFoundError(f"Document not found: {document_id}")
+
+        await self.repository.commit()
+        return deleted_document
+
+    async def delete_documents(self, document_ids: list[UUID], owner_user_id: UUID) -> list[Any]:
+        unique_ids = list(dict.fromkeys(document_ids))
+        if not unique_ids:
+            return []
+
+        documents = await self.repository.get_documents_for_owner(
+            document_ids=unique_ids,
+            owner_user_id=owner_user_id,
+        )
+        if len(documents) != len(unique_ids):
+            await self.repository.rollback()
+            raise DocumentNotFoundError("One or more documents were not found")
+
+        try:
+            for document in documents:
+                delete_result = self.storage.delete(document.storage_path)
+                if isawaitable(delete_result):
+                    await cast("Awaitable[None]", delete_result)
+                await self.repository.delete_document_for_owner(
+                    document_id=document.id,
+                    owner_user_id=owner_user_id,
+                )
+        except Exception as e:
+            await self.repository.rollback()
+            raise StorageError(f"Failed to delete files from storage: {e}") from e
+
+        await self.repository.commit()
+        return documents
 
     async def list_documents(
         self,

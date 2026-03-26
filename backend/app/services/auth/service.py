@@ -113,6 +113,13 @@ class AuthService:
         if await self.repository.get_user_by_username(username_normalized):
             raise DuplicateIdentityError(f"Username already taken: {username}")
 
+        from app.services.auth.passwords import PasswordValidationError
+
+        try:
+            self.password_service.validate_password(password)
+        except PasswordValidationError as e:
+            raise AuthServiceError(str(e)) from e
+
         password_hash = self.password_service.hash_password(password)
         user = await self.repository.create_user(
             username=username,

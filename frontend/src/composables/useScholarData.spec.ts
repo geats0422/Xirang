@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   listDocuments: vi.fn(),
   listRuns: vi.fn(),
   getSettings: vi.fn(),
+  getAiConfig: vi.fn(),
   getLeaderboard: vi.fn(),
 }));
 
@@ -35,6 +36,7 @@ vi.mock("../api/runs", () => ({
 
 vi.mock("../api/settings", () => ({
   getSettings: mocks.getSettings,
+  getAiConfig: mocks.getAiConfig,
   updateSettings: vi.fn(),
 }));
 
@@ -75,6 +77,12 @@ describe("useScholarData profile name priority", () => {
       sound_enabled: true,
       haptic_enabled: true,
       daily_reminder_enabled: false,
+    });
+    mocks.getAiConfig.mockResolvedValue({
+      provider: "openai-compatible",
+      base_url: "https://integrate.api.nvidia.com/v1",
+      model: "nvidia/nemotron-3-nano-30b-a3b",
+      configured: true,
     });
     mocks.getLeaderboard.mockResolvedValue([]);
   });

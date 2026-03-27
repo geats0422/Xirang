@@ -145,12 +145,21 @@ const bootstrapRun = async () => {
   const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  const rawPathVersionId = route.query.pathVersionId;
+  const pathVersionId = typeof rawPathVersionId === "string" ? rawPathVersionId : undefined;
+  const rawLevelNodeId = route.query.levelNodeId;
+  const levelNodeId = typeof rawLevelNodeId === "string" ? rawLevelNodeId : undefined;
+
   if (!documentId) {
     return;
   }
 
   try {
-    const created = await createRun(documentId, "endless", 10, pathId);
+    const created = await createRun(documentId, "endless", 10, {
+      pathId,
+      pathVersionId,
+      levelNodeId,
+    });
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;

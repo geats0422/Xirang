@@ -2,9 +2,11 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { listDocuments } from "../api/documents";
 import { ROUTES } from "../constants/routes";
 
 type ModeFlow = "begin" | "review";
+type DocumentGateState = "ready" | "processing" | "failed" | "missing";
 
 type DungeonMode = {
   id: string;
@@ -18,13 +20,11 @@ type DungeonMode = {
 
 const { t, locale } = useI18n();
 
-onMounted(() => {
-  document.title = t("modeSelection.metaTitle");
-});
 
 watch(locale, () => {
   document.title = t("modeSelection.metaTitle");
 });
+
 const libraryRoute = ROUTES.library;
 
 const modeOptions = computed<DungeonMode[]>(() => [
@@ -60,6 +60,59 @@ const modeOptions = computed<DungeonMode[]>(() => [
 const router = useRouter();
 const route = useRoute();
 const selectedModeId = ref<string | null>(null);
+const documentGateState = ref<DocumentGateState>("ready");
+const documentGateMessage = ref("");
+
+const normalizeDocumentStatus = (status: string | undefined): DocumentGateState => {
+  if (status === "ready" || status === "failed") {
+    return status;
+  }
+  if (status === "processing") {
+    return "processing";
+  }
+  return "missing";
+};
+
+const ensureDocumentReady = async () => {
+  const rawDocumentId = route.query.documentId;
+  if (typeof rawDocumentId !== "string" || rawDocumentId.length === 0) {
+    documentGateState.value = "ready";
+    documentGateMessage.value = "";
+    return;
+  }
+
+  try {
+    const docs = await listDocuments();
+    const target = docs.find((doc) => doc.id === rawDocumentId);
+    const status = normalizeDocumentStatus(target?.status);
+    documentGateState.value = status;
+
+    if (status === "ready") {
+      documentGateMessage.value = "";
+    } else if (status === "processing") {
+      documentGateMessage.value = "This document is still processing. Please wait.";
+    } else if (status === "failed") {
+      documentGateMessage.value = "Document parsing failed. Retry it from Library first.";
+    } else {
+      documentGateMessage.value = "Document not found in your library.";
+    }
+  } catch {
+    documentGateState.value = "missing";
+    documentGateMessage.value = "Unable to verify document status right now.";
+  }
+};
+
+onMounted(async () => {
+  document.title = t("modeSelection.metaTitle");
+  await ensureDocumentReady();
+});
+
+watch(
+  () => route.query.documentId,
+  async () => {
+    await ensureDocumentReady();
+  },
+);
 
 const modeFlow = computed<ModeFlow>(() => (route.query.flow === "review" ? "review" : "begin"));
 
@@ -129,6 +182,8 @@ const selectedMode = computed(
   () => modeOptions.value.find((mode) => mode.id === selectedModeId.value) ?? null,
 );
 
+const canSelectMode = computed(() => documentGateState.value === "ready");
+
 const modeLabels = computed<Record<string, string>>(() => ({
   "endless-abyss": t("modeSelection.labels.endlessAbyss"),
   "speed-survival": t("modeSelection.labels.speedSurvival"),
@@ -136,7 +191,7 @@ const modeLabels = computed<Record<string, string>>(() => ({
 }));
 
 const enterDungeon = async () => {
-  if (!selectedModeId.value) {
+  if (!selectedModeId.value || !canSelectMode.value) {
     return;
   }
   await router.push({
@@ -196,15 +251,16 @@ const closeModal = async () => {
           </p>
         </header>
 
+        <p v-if="!canSelectMode" class="mode-content__warning">{{ documentGateMessage }}</p>
         <div class="mode-grid">
           <button
             v-for="mode in modeOptions"
             :key="mode.id"
             class="mode-card"
-            :class="{ 'mode-card--active': selectedMode?.id === mode.id }"
+            :class="{ 'mode-card--active': selectedMode?.id === mode.id, 'mode-card--disabled': !canSelectMode }"
             type="button"
             :aria-pressed="selectedMode?.id === mode.id"
-            @click="selectedModeId = mode.id"
+            @click="canSelectMode && (selectedModeId = mode.id)"
           >
             <span class="mode-card__icon" :class="mode.iconClass">{{ mode.icon }}</span>
             <h3>{{ mode.title }}</h3>
@@ -216,7 +272,7 @@ const closeModal = async () => {
         </div>
 
         <footer class="mode-actions">
-          <button class="mode-actions__primary" type="button" :disabled="!selectedModeId" @click="enterDungeon">
+          <button class="mode-actions__primary" type="button" :disabled="!selectedModeId || !canSelectMode" @click="enterDungeon">
             {{ t("modeSelection.actions.enterDungeon") }}
           </button>
           <button class="mode-actions__secondary" type="button" @click="closeModal">
@@ -437,6 +493,22 @@ const closeModal = async () => {
 .mode-content__header span {
   color: var(--color-primary-500);
   font-weight: 700;
+}
+
+
+.mode-content__warning {
+  background: var(--color-chip-gold-bg);
+  border: 1px solid var(--color-muted-gold);
+  border-radius: 10px;
+  color: var(--color-chip-gold-text);
+  font-size: 13px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+}
+
+.mode-card--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .mode-grid {

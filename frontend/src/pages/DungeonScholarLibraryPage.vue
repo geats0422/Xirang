@@ -6,9 +6,18 @@ import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
-import { batchDeleteDocuments, deleteDocument, listDocuments, type DocumentListItem } from "../api/documents";
+import {
+  batchDeleteDocuments,
+  deleteDocument,
+  listDocuments,
+  retryDocument,
+  type DocumentListItem,
+} from "../api/documents";
+import { ApiError } from "../api/http";
 
 const { t, locale } = useI18n();
+
+type ScrollCardStatus = "processing" | "ready" | "failed";
 
 type ScrollCard = {
   id: string;
@@ -24,6 +33,8 @@ type ScrollCard = {
   tone: "teal" | "gold" | "muted";
   accent?: "gold" | "selected";
   mastered?: boolean;
+  status: ScrollCardStatus;
+  actionLabel: string;
 };
 
 type UploadState = "idle" | "loading" | "success" | "failure";
@@ -68,19 +79,60 @@ const loadDocuments = async () => {
 };
 
 const getScrollCards = (): ScrollCard[] => {
-  return documents.value.map((doc) => ({
-    id: doc.id,
-    title: doc.title,
-    subtitle: t("library.awaitingSubtitle"),
-    icon: "📖",
-    format: "PDF",
-    size: "",
-    progressLabel: t("library.notStarted"),
-    progressValue: "0%",
-    progress: 0,
-    action: "begin" as const,
-    tone: "muted" as const,
-  }));
+  return documents.value.map((doc) => {
+    const status = normalizeCardStatus(doc.status);
+    if (status === "ready") {
+      return {
+        id: doc.id,
+        title: doc.title,
+        subtitle: t("library.awaitingSubtitle"),
+        icon: "📖",
+        format: "PDF",
+        size: "",
+        progressLabel: t("library.notStarted"),
+        progressValue: "0%",
+        progress: 0,
+        action: "begin" as const,
+        tone: "muted" as const,
+        status,
+        actionLabel: t("library.beginStudy"),
+      };
+    }
+
+    if (status === "failed") {
+      return {
+        id: doc.id,
+        title: doc.title,
+        subtitle: "Parsing failed. Retry to continue.",
+        icon: "📖",
+        format: "PDF",
+        size: "",
+        progressLabel: "Needs retry",
+        progressValue: "0%",
+        progress: 0,
+        action: "review" as const,
+        tone: "muted" as const,
+        status,
+        actionLabel: "Retry processing",
+      };
+    }
+
+    return {
+      id: doc.id,
+      title: doc.title,
+      subtitle: "Document is processing. Please wait.",
+      icon: "📖",
+      format: "PDF",
+      size: "",
+      progressLabel: "Processing",
+      progressValue: "--",
+      progress: 0,
+      action: "review" as const,
+      tone: "muted" as const,
+      status,
+      actionLabel: "Processing...",
+    };
+  });
 };
 
 const { currentPath, navigateTo, router, routingTarget } = useRouteNavigation();
@@ -94,12 +146,50 @@ const isBatchDeleteMode = ref(false);
 const selectedDocumentIds = ref<string[]>([]);
 
 const selectedCount = computed(() => selectedDocumentIds.value.length);
+const cardNotice = ref<string | null>(null);
+const retryingCardId = ref<string | null>(null);
+
+const normalizeCardStatus = (status: string | undefined): ScrollCardStatus => {
+  if (status === "ready" || status === "failed") {
+    return status;
+  }
+  return "processing";
+};
+
+const retryFailedDocument = async (card: ScrollCard) => {
+  retryingCardId.value = card.id;
+  cardNotice.value = null;
+  try {
+    await retryDocument(card.id);
+    cardNotice.value = "Retry accepted. Document is processing now.";
+    await loadDocuments();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      cardNotice.value = `Retry failed (${error.status}). Please try again later.`;
+    } else {
+      cardNotice.value = "Retry failed. Please try again later.";
+    }
+  } finally {
+    retryingCardId.value = null;
+  }
+};
 
 const openModeSelection = async (card: ScrollCard) => {
   if (card.action === "continue") {
     return;
   }
 
+  if (card.status === "processing") {
+    cardNotice.value = "This document is still processing. Please wait.";
+    return;
+  }
+
+  if (card.status === "failed") {
+    await retryFailedDocument(card);
+    return;
+  }
+
+  cardNotice.value = null;
   openingCard.value = card.title;
 
   await router.push({
@@ -295,6 +385,8 @@ defineExpose({
         <button class="upload-icon-btn" type="button" :aria-label="t('library.upload')">☁</button>
       </section>
 
+      <p v-if="cardNotice" class="library-notice">{{ cardNotice }}</p>
+
       <section
         v-if="isLoading"
         class="card-grid card-grid--loading"
@@ -370,20 +462,19 @@ defineExpose({
             class="scroll-card__action"
             :class="[
               `scroll-card__action--${card.action}`,
-              { 'scroll-card__action--routing': openingCard === card.title },
+              {
+                'scroll-card__action--routing': openingCard === card.title,
+                'scroll-card__action--disabled': card.status === 'processing',
+              },
             ]"
             type="button"
+            :disabled="retryingCardId === card.id"
+            :aria-disabled="card.status === 'processing'"
             @click="openModeSelection(card)"
           >
-            <span aria-hidden="true">{{ card.action === "review" ? "↻" : "▹" }}</span>
+            <span aria-hidden="true">{{ card.status === "failed" ? "↻" : card.action === "review" ? "↻" : "▹" }}</span>
             <span>
-              {{
-                card.action === "continue"
-                  ? t("library.continueJourney")
-                  : card.action === "begin"
-                    ? t("library.beginStudy")
-                    : t("library.review")
-              }}
+              {{ retryingCardId === card.id ? "Retrying..." : card.actionLabel }}
             </span>
           </button>
         </article>
@@ -582,6 +673,18 @@ defineExpose({
   height: 34px;
   justify-content: center;
   width: 34px;
+}
+
+
+
+.library-notice {
+  background: var(--color-chip-gold-bg);
+  border: 1px solid var(--color-muted-gold);
+  border-radius: 8px;
+  color: var(--color-chip-gold-text);
+  font-size: 13px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
 }
 
 .card-grid {
@@ -864,6 +967,14 @@ defineExpose({
   color: var(--color-text-muted);
 }
 
+
+
+.scroll-card__action:disabled,
+.scroll-card__action--disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .scroll-card--add {
   align-items: center;
   background: var(--color-surface-alt);
@@ -936,7 +1047,19 @@ defineExpose({
 }
 
 @media (max-width: 1360px) {
-  .card-grid {
+  
+
+.library-notice {
+  background: var(--color-chip-gold-bg);
+  border: 1px solid var(--color-muted-gold);
+  border-radius: 8px;
+  color: var(--color-chip-gold-text);
+  font-size: 13px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+}
+
+.card-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -1108,7 +1231,19 @@ defineExpose({
     grid-template-columns: 1fr;
   }
 
-  .card-grid {
+  
+
+.library-notice {
+  background: var(--color-chip-gold-bg);
+  border: 1px solid var(--color-muted-gold);
+  border-radius: 8px;
+  color: var(--color-chip-gold-text);
+  font-size: 13px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+}
+
+.card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1179,7 +1314,19 @@ defineExpose({
     justify-self: end;
   }
 
-  .card-grid {
+  
+
+.library-notice {
+  background: var(--color-chip-gold-bg);
+  border: 1px solid var(--color-muted-gold);
+  border-radius: 8px;
+  color: var(--color-chip-gold-text);
+  font-size: 13px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+}
+
+.card-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -10,6 +10,8 @@ import DungeonScholarModeSelectionPage from "./DungeonScholarModeSelectionPage.v
 const mocks = vi.hoisted(() => ({
   listDocuments: vi.fn(),
   deleteDocument: vi.fn(),
+  batchDeleteDocuments: vi.fn(),
+  retryDocument: vi.fn(),
   uploadAndRefresh: vi.fn(),
   hydrate: vi.fn(),
 }));
@@ -17,6 +19,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../api/documents", () => ({
   listDocuments: mocks.listDocuments,
   deleteDocument: mocks.deleteDocument,
+  batchDeleteDocuments: mocks.batchDeleteDocuments,
+  retryDocument: mocks.retryDocument,
 }));
 
 vi.mock("../composables/useScholarData", () => ({
@@ -44,8 +48,10 @@ describe("DungeonScholarLibraryPage", () => {
     mocks.hydrate.mockResolvedValue(undefined);
     mocks.uploadAndRefresh.mockResolvedValue(undefined);
     mocks.deleteDocument.mockResolvedValue({ id: "doc-1", deleted: true });
+    mocks.batchDeleteDocuments.mockResolvedValue({ deleted_ids: [], deleted_count: 0 });
+    mocks.retryDocument.mockResolvedValue({ id: "doc-1", status: "processing" });
     mocks.listDocuments.mockResolvedValue([
-      { id: "doc-1", title: "library-upload-test.pptx", status: "processing" },
+      { id: "doc-1", title: "library-upload-test.pptx", status: "ready" },
     ]);
   });
 
@@ -95,4 +101,49 @@ describe("DungeonScholarLibraryPage", () => {
 
     expect(router.currentRoute.value.path).toBe(ROUTES.gameModes);
   });
+  it("does not navigate for processing documents", async () => {
+    mocks.listDocuments.mockResolvedValueOnce([
+      { id: "doc-1", title: "library-upload-test.pptx", status: "processing" },
+    ]);
+
+    const router = createTestRouter();
+    await router.push(ROUTES.library);
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLibraryPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".scroll-card__action").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe(ROUTES.library);
+    expect(wrapper.find(".library-notice").text()).toContain("still processing");
+  });
+
+  it("retries failed document instead of navigating", async () => {
+    mocks.listDocuments.mockResolvedValueOnce([
+      { id: "doc-1", title: "library-upload-test.pptx", status: "failed" },
+    ]);
+    mocks.listDocuments.mockResolvedValueOnce([
+      { id: "doc-1", title: "library-upload-test.pptx", status: "processing" },
+    ]);
+
+    const router = createTestRouter();
+    await router.push(ROUTES.library);
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLibraryPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".scroll-card__action").trigger("click");
+    await flushPromises();
+
+    expect(mocks.retryDocument).toHaveBeenCalledWith("doc-1");
+    expect(router.currentRoute.value.path).toBe(ROUTES.library);
+  });
+
 });

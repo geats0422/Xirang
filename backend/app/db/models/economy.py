@@ -238,3 +238,28 @@ class LeaderboardSnapshot(UUIDPrimaryKeyMixin, Base):
     xp_total: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
     rank_position: Mapped[int | None] = mapped_column()
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+
+
+
+class DailyRewardCapUsage(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "daily_reward_cap_usage"
+    __table_args__ = (UniqueConstraint("user_id", "date_key"),)
+
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    date_key: Mapped[date] = mapped_column(Date, nullable=False)
+    xp_legend_earned: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    coin_legend_earned: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    timezone_policy: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="UTC+8", server_default="UTC+8"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
+    )

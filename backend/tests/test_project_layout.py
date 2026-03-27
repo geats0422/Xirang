@@ -45,6 +45,8 @@ def test_env_example_exists():
     assert "DATABASE_URL" in content
     assert "SECRET_KEY" in content
     assert "OPENAI_API_KEY" in content
+    assert "OPENAI_BASE_URL" in content
+    assert "OPENAI_MODEL" in content
 
 
 def test_phase1_scope_doc_exists():

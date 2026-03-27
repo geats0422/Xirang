@@ -27,6 +27,14 @@ def get_unique_index_columns(table_name: str) -> set[tuple[str, ...]]:
     }
 
 
+def get_unique_constraint_columns(table_name: str) -> set[tuple[str, ...]]:
+    return {
+        tuple(column.name for column in constraint.columns)
+        for constraint in get_table(table_name).constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+
+
 def assert_columns_present(table_name: str, expected_columns: Iterable[str]) -> None:
     assert set(expected_columns) <= get_column_names(table_name)
 
@@ -63,6 +71,13 @@ def test_phase1_tables_and_reserved_extension_tables_are_registered() -> None:
         "audit_logs",
         "payment_transactions",
         "seasons",
+        "subscriptions",
+        "learning_path_versions",
+        "learning_path_nodes",
+        "learning_path_progress",
+        "legend_review_progress",
+        "path_regeneration_records",
+        "daily_reward_cap_usage",
     }
 
     assert expected_tables <= set(Base.metadata.tables)
@@ -183,6 +198,124 @@ def test_document_and_question_models_cover_ingestion_and_generation_pipeline() 
         "questions"
     )
     assert ("question_id", "questions", "id") in get_foreign_key_targets("question_options")
+
+
+
+def test_learning_path_and_subscription_models_cover_versioned_progress_schema() -> None:
+    assert_columns_present(
+        "subscriptions",
+        {
+            "id",
+            "user_id",
+            "plan_type",
+            "status",
+            "current_period_start",
+            "current_period_end",
+            "provider_txn_id",
+        },
+    )
+    assert_columns_present(
+        "learning_path_versions",
+        {
+            "id",
+            "document_id",
+            "mode",
+            "version_no",
+            "status",
+            "trigger_type",
+            "generator_config_json",
+            "source_content_hash",
+            "generation_job_id",
+            "failed_cleanup_at",
+        },
+    )
+    assert_columns_present(
+        "learning_path_nodes",
+        {
+            "id",
+            "path_version_id",
+            "node_type",
+            "node_key",
+            "parent_node_id",
+            "is_mode_branch",
+            "title",
+            "sort_order",
+            "unlock_rule_json",
+            "question_selector_json",
+            "meta_json",
+        },
+    )
+    assert_columns_present(
+        "learning_path_progress",
+        {
+            "id",
+            "user_id",
+            "path_version_id",
+            "node_id",
+            "status",
+            "first_completed_run_id",
+            "completed_runs_count",
+            "last_completed_at",
+        },
+    )
+    assert_columns_present(
+        "legend_review_progress",
+        {
+            "id",
+            "user_id",
+            "path_version_id",
+            "unit_node_id",
+            "legend_round_count",
+            "last_legend_run_at",
+        },
+    )
+    assert_columns_present(
+        "path_regeneration_records",
+        {
+            "id",
+            "document_id",
+            "mode",
+            "user_id",
+            "path_version_id",
+            "created_at",
+        },
+    )
+    assert_columns_present(
+        "daily_reward_cap_usage",
+        {
+            "id",
+            "user_id",
+            "date_key",
+            "xp_legend_earned",
+            "coin_legend_earned",
+            "timezone_policy",
+        },
+    )
+
+    assert ("user_id", "users", "id") in get_foreign_key_targets("subscriptions")
+    assert ("document_id", "documents", "id") in get_foreign_key_targets("learning_path_versions")
+    assert ("generation_job_id", "jobs", "id") in get_foreign_key_targets("learning_path_versions")
+    assert ("path_version_id", "learning_path_versions", "id") in get_foreign_key_targets("learning_path_nodes")
+    assert ("parent_node_id", "learning_path_nodes", "id") in get_foreign_key_targets("learning_path_nodes")
+    assert ("user_id", "users", "id") in get_foreign_key_targets("learning_path_progress")
+    assert ("path_version_id", "learning_path_versions", "id") in get_foreign_key_targets("learning_path_progress")
+    assert ("node_id", "learning_path_nodes", "id") in get_foreign_key_targets("learning_path_progress")
+    assert ("first_completed_run_id", "runs", "id") in get_foreign_key_targets("learning_path_progress")
+    assert ("unit_node_id", "learning_path_nodes", "id") in get_foreign_key_targets("legend_review_progress")
+    assert ("user_id", "users", "id") in get_foreign_key_targets("daily_reward_cap_usage")
+
+    assert ("document_id", "mode", "version_no") in get_unique_constraint_columns(
+        "learning_path_versions"
+    )
+    assert ("path_version_id", "node_key") in get_unique_constraint_columns("learning_path_nodes")
+    assert ("user_id", "path_version_id", "node_id") in get_unique_constraint_columns(
+        "learning_path_progress"
+    )
+    assert ("user_id", "path_version_id", "unit_node_id") in get_unique_constraint_columns(
+        "legend_review_progress"
+    )
+    assert ("user_id", "date_key") in get_unique_constraint_columns("daily_reward_cap_usage")
+
 
 
 def test_run_and_review_models_cover_settlement_and_feedback_loop() -> None:

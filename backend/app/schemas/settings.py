@@ -26,3 +26,10 @@ class SettingsUpdateRequest(BaseModel):
     haptic_enabled: bool | None = None
     daily_reminder_enabled: bool | None = None
     leaderboard_scope_default: LeaderboardScope | None = None
+
+
+class AiConfigResponse(BaseModel):
+    provider: str
+    base_url: str | None
+    model: str
+    configured: bool

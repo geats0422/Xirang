@@ -25,12 +25,12 @@ const route = useRoute();
 const router = useRouter();
 const shopRoute = ROUTES.shop;
 
-const maxHp = ref(3);
-const hpLevel = ref(3);
-const floor = ref(1);
-const floorTotal = ref(10);
-const timeLeftSec = ref(900);
-const coins = ref(0);
+const maxHp = ref<number | null>(null);
+const hpLevel = ref<number | null>(null);
+const floor = ref<number | null>(null);
+const floorTotal = ref<number | null>(null);
+const timeLeftSec = ref<number | null>(null);
+const coins = ref<number | null>(null);
 
 const runId = ref<string | null>(null);
 const questions = ref<RunQuestion[]>([]);
@@ -54,9 +54,12 @@ const materialTitle = computed(() => {
   return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Ancient Wisdom";
 });
 
-const chapterTitle = computed(() => `Chapter ${floor.value}: ${materialTitle.value}`);
+const chapterTitle = computed(() => `Chapter ${floor.value ?? "--"}: ${materialTitle.value}`);
 
 const time = computed(() => {
+  if (timeLeftSec.value === null) {
+    return "--:--";
+  }
   const minutes = Math.floor(timeLeftSec.value / 60)
     .toString()
     .padStart(2, "0");
@@ -72,29 +75,39 @@ const questionTitle = computed(() => {
   if (currentQuestion.value?.text) {
     return currentQuestion.value.text;
   }
-  return "The philosophical concept of ____ emphasizes living in harmony with the Dao.";
+  return "Loading question...";
 });
 
 const questionHint = computed(() => {
   const firstOption = currentQuestion.value?.options[0];
   if (!firstOption?.text) {
-    return "HINT: THINK ABOUT DAOISM";
+    return "HINT: --";
   }
   const firstChar = firstOption.text.trim().charAt(0).toUpperCase();
-  return firstChar ? `HINT: STARTS WITH ${firstChar}` : "HINT: THINK ABOUT DAOISM";
+  return firstChar ? `HINT: STARTS WITH ${firstChar}` : "HINT: --";
 });
 
-const floorProgress = computed(() => (floor.value / Math.max(1, floorTotal.value)) * 100);
+const floorProgress = computed(() => {
+  if (floor.value === null || floorTotal.value === null) {
+    return 0;
+  }
+  return (floor.value / Math.max(1, floorTotal.value)) * 100;
+});
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
     return;
   }
-  hpLevel.value = Number(state.hp ?? hpLevel.value);
-  maxHp.value = Number(state.max_hp ?? maxHp.value);
-  floor.value = Number(state.floor ?? floor.value);
-  floorTotal.value = Number(state.floor_total ?? floorTotal.value);
-  timeLeftSec.value = Number(state.time_left_sec ?? timeLeftSec.value);
+  const hp = Number(state.hp);
+  const maxHpValue = Number(state.max_hp);
+  const floorValue = Number(state.floor);
+  const floorTotalValue = Number(state.floor_total);
+  const timeValue = Number(state.time_left_sec);
+  hpLevel.value = Number.isFinite(hp) ? hp : hpLevel.value;
+  maxHp.value = Number.isFinite(maxHpValue) ? maxHpValue : maxHp.value;
+  floor.value = Number.isFinite(floorValue) ? floorValue : floor.value;
+  floorTotal.value = Number.isFinite(floorTotalValue) ? floorTotalValue : floorTotal.value;
+  timeLeftSec.value = Number.isFinite(timeValue) ? timeValue : timeLeftSec.value;
 };
 
 const startTicker = () => {
@@ -102,7 +115,7 @@ const startTicker = () => {
     window.clearInterval(tickerId);
   }
   tickerId = window.setInterval(() => {
-    if (showSettlement.value || timeLeftSec.value <= 0) {
+    if (showSettlement.value || timeLeftSec.value === null || timeLeftSec.value <= 0) {
       return;
     }
     timeLeftSec.value = Math.max(0, timeLeftSec.value - 1);
@@ -121,7 +134,7 @@ const refreshBalance = async () => {
     const balance = await getShopBalance();
     coins.value = balance.balance;
   } catch {
-    coins.value = 0;
+    coins.value = null;
   }
 };
 
@@ -260,23 +273,23 @@ onUnmounted(() => {
     <section class="abyss-shell" aria-label="Endless Abyss gameplay">
       <header class="abyss-status">
         <div class="hp-block" aria-label="Health points">
-          <span v-for="index in maxHp" :key="index" class="hp-heart" :class="{ 'hp-heart--empty': index > hpLevel }">
+          <span v-for="index in maxHp" :key="index" class="hp-heart" :class="{ 'hp-heart--empty': index > (hpLevel ?? 0) }">
             ♥
           </span>
-          <span class="hp-label">HP LEVEL {{ hpLevel }}</span>
+          <span class="hp-label">HP LEVEL {{ hpLevel ?? "--" }}</span>
         </div>
 
         <div class="floor-block" aria-label="Floor progress">
-          <p>FLOOR {{ floor }}</p>
+          <p>FLOOR {{ floor ?? "--" }}</p>
           <div class="floor-track" role="presentation">
             <span class="floor-fill" :style="{ width: `${floorProgress}%` }" />
           </div>
-          <span>{{ floorTotal }}</span>
+          <span>{{ floorTotal ?? "--" }}</span>
         </div>
 
         <div class="meta-block" aria-label="Session info">
           <span>🕒 {{ time }}</span>
-          <button class="meta-coin" type="button" @click="goShop">🪙 {{ coins }}</button>
+          <button class="meta-coin" type="button" @click="goShop">🪙 {{ coins ?? "--" }}</button>
         </div>
       </header>
 

@@ -24,9 +24,9 @@ const router = useRouter();
 
 const progressCurrent = ref(0);
 const progressTotal = ref(1);
-const coins = ref(0);
-const timeLeftSec = ref(600);
-const maxRunTime = ref(600);
+const coins = ref<number | null>(null);
+const timeLeftSec = ref<number | null>(null);
+const maxRunTime = ref<number | null>(null);
 
 const runId = ref<string | null>(null);
 const questions = ref<RunQuestion[]>([]);
@@ -46,12 +46,16 @@ const settlementGoalTotal = ref(10);
 const showNotice = ref(false);
 
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
+const materialTitle = computed(() => {
+  const rawTitle = route.query.title;
+  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Study Material";
+});
 
 const questionText = computed(() => {
   if (currentQuestion.value?.text) {
     return currentQuestion.value.text;
   }
-  return "To understand the Way, choose the word that best completes the meaning.";
+  return "Loading question...";
 });
 
 const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
@@ -63,15 +67,22 @@ const optionChips = computed(() =>
   })),
 );
 
-const timerLabel = computed(() => `${Math.max(0, timeLeftSec.value)}s`);
+const timerLabel = computed(() => {
+  if (timeLeftSec.value === null) {
+    return "--";
+  }
+  return `${Math.max(0, timeLeftSec.value)}s`;
+});
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
     return;
   }
-  const nextTime = Number(state.time_left_sec ?? timeLeftSec.value);
-  timeLeftSec.value = Number.isFinite(nextTime) ? nextTime : timeLeftSec.value;
-  if (maxRunTime.value < timeLeftSec.value) {
+  const nextTime = Number(state.time_left_sec);
+  if (Number.isFinite(nextTime)) {
+    timeLeftSec.value = nextTime;
+  }
+  if (timeLeftSec.value !== null && (maxRunTime.value === null || maxRunTime.value < timeLeftSec.value)) {
     maxRunTime.value = timeLeftSec.value;
   }
 };
@@ -86,7 +97,7 @@ const stopTicker = () => {
 const startTicker = () => {
   stopTicker();
   tickerId = window.setInterval(() => {
-    if (showSettlement.value || timeLeftSec.value <= 0) {
+    if (showSettlement.value || timeLeftSec.value === null || timeLeftSec.value <= 0) {
       return;
     }
     timeLeftSec.value = Math.max(0, timeLeftSec.value - 1);
@@ -98,7 +109,7 @@ const refreshBalance = async () => {
     const balance = await getShopBalance();
     coins.value = balance.balance;
   } catch {
-    coins.value = 0;
+    coins.value = null;
   }
 };
 
@@ -237,9 +248,6 @@ defineExpose({
 
 onMounted(async () => {
   await bootstrapRun();
-  if (!runId.value) {
-    startTicker();
-  }
 });
 
 watch(showSettlement, (visible) => {
@@ -281,7 +289,7 @@ onUnmounted(() => {
         </div>
 
         <div class="draft-actions">
-          <span class="draft-reward">🪙 {{ coins }}</span>
+          <span class="draft-reward">🪙 {{ coins ?? "--" }}</span>
           <span class="draft-timer">🕒 {{ timerLabel }}</span>
           <button class="draft-settings" type="button" aria-label="Settings">⚙</button>
         </div>
@@ -298,8 +306,8 @@ onUnmounted(() => {
           </div>
 
           <div class="scroll-paper">
-            <p class="scroll-paper__tag">ANCIENT PHILOSOPHY</p>
-            <h2>The Flow of Nature</h2>
+            <p class="scroll-paper__tag">QUESTION CARD</p>
+            <h2>{{ materialTitle }}</h2>
             <div class="scroll-paper__accent" />
 
             <p class="scroll-paper__body">

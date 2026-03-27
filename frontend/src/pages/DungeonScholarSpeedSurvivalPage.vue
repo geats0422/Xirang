@@ -24,10 +24,10 @@ type RunStatus = "normal" | "fast-answer" | "reduced-reward";
 const route = useRoute();
 const router = useRouter();
 
-const timeRemaining = ref(120);
-const combo = ref(0);
-const coins = ref(0);
-const maxRunTime = ref(120);
+const timeRemaining = ref<number | null>(null);
+const combo = ref<number | null>(null);
+const coins = ref<number | null>(null);
+const maxRunTime = ref<number | null>(null);
 const runId = ref<string | null>(null);
 const questions = ref<RunQuestion[]>([]);
 const questionIndex = ref(0);
@@ -43,22 +43,17 @@ const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(8);
 
 
-const materialTitle = computed(() => {
-  const rawTitle = route.query.title;
-  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Ancient Scrolls";
-});
-
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 
 const questionText = computed(() => {
   if (currentQuestion.value?.text) {
     return currentQuestion.value.text;
   }
-  return `Taotie monsters are known for their greed and gluttony in ${materialTitle.value.toLowerCase()}.`;
+  return "Loading question...";
 });
 
 const progressPercent = computed(() => {
-  if (maxRunTime.value <= 0) {
+  if (maxRunTime.value === null || timeRemaining.value === null || maxRunTime.value <= 0) {
     return 0;
   }
   return Math.max(0, Math.min(100, (timeRemaining.value / maxRunTime.value) * 100));
@@ -66,23 +61,32 @@ const progressPercent = computed(() => {
 
 const answerPrompt = computed(() => {
   if (!currentQuestion.value) {
-    return "Is this statement True or False?";
+    return "Loading options...";
   }
   return currentQuestion.value.options.length === 2
     ? "Choose the best option"
     : "Tap the option that matches the statement";
 });
 
-const falseOptionLabel = computed(() => currentQuestion.value?.options[0]?.text || "False");
-const trueOptionLabel = computed(() => currentQuestion.value?.options[1]?.text || "True");
+const falseOptionLabel = computed(() => currentQuestion.value?.options[0]?.text || "--");
+const trueOptionLabel = computed(() => currentQuestion.value?.options[1]?.text || "--");
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
     return;
   }
-  const nextTime = Number(state.time_left_sec ?? timeRemaining.value);
-  timeRemaining.value = Number.isFinite(nextTime) ? nextTime : timeRemaining.value;
-  if (maxRunTime.value < timeRemaining.value) {
+  const nextTime = Number(state.time_left_sec);
+  const nextCombo = Number(state.combo_count);
+
+  if (Number.isFinite(nextTime)) {
+    timeRemaining.value = nextTime;
+  }
+
+  if (Number.isFinite(nextCombo)) {
+    combo.value = nextCombo;
+  }
+
+  if (timeRemaining.value !== null && (maxRunTime.value === null || maxRunTime.value < timeRemaining.value)) {
     maxRunTime.value = timeRemaining.value;
   }
 };
@@ -97,7 +101,7 @@ const stopTicker = () => {
 const startTicker = () => {
   stopTicker();
   tickerId = window.setInterval(() => {
-    if (showSettlement.value || timeRemaining.value <= 0) {
+    if (showSettlement.value || timeRemaining.value === null || timeRemaining.value <= 0) {
       return;
     }
     timeRemaining.value = Math.max(0, timeRemaining.value - 1);
@@ -109,7 +113,7 @@ const refreshBalance = async () => {
     const balance = await getShopBalance();
     coins.value = balance.balance;
   } catch {
-    coins.value = 0;
+    coins.value = null;
   }
 };
 
@@ -128,6 +132,7 @@ const bootstrapRun = async () => {
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
+    combo.value = 0;
     applyRunState(created.run_state);
     questionStartAt.value = Date.now();
     startTicker();
@@ -167,7 +172,7 @@ const chooseAnswer = async (answer: "false" | "true") => {
     applyRunState(result.run.state);
 
     if (result.is_correct) {
-      combo.value += 1;
+      combo.value = (combo.value ?? 0) + 1;
       runStatus.value = elapsedMs <= 1500 ? "fast-answer" : "normal";
     } else {
       combo.value = 0;
@@ -229,12 +234,6 @@ onMounted(async () => {
   await bootstrapRun();
 });
 
-onMounted(() => {
-  if (!runId.value) {
-    startTicker();
-  }
-});
-
 watch(showSettlement, (visible) => {
   if (visible) {
     stopTicker();
@@ -256,7 +255,7 @@ onUnmounted(() => {
         </div>
 
         <div class="speed-topbar__actions">
-          <button class="coin-badge" type="button">🪙 {{ coins }}</button>
+          <button class="coin-badge" type="button">🪙 {{ coins ?? "--" }}</button>
           <button class="exit-btn" type="button" @click="goBack">Exit Game</button>
           <button class="settings-btn" type="button" aria-label="Settings">⚙</button>
         </div>
@@ -266,14 +265,14 @@ onUnmounted(() => {
         <header class="countdown-strip">
           <div class="countdown-strip__meta">
             <p>TIME REMAINING</p>
-            <span>{{ timeRemaining }}s</span>
+            <span>{{ timeRemaining === null ? "--" : `${timeRemaining}s` }}</span>
           </div>
 
           <div class="countdown-strip__bar" role="presentation">
             <span class="countdown-strip__fill" :style="{ width: `${progressPercent}%` }" />
           </div>
 
-          <div class="combo-badge">⚡ Combo x{{ combo }}</div>
+          <div class="combo-badge">⚡ Combo x{{ combo ?? "--" }}</div>
         </header>
 
         <article class="survival-card" aria-label="True false card">

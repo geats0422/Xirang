@@ -357,11 +357,17 @@ class DocumentRepository:
         return option
 
     async def claim_pending_job(self, *, queue_name: str) -> Job | None:
+        now = datetime.now(UTC)
         stmt = (
             select(Job)
-            .where(Job.queue_name == queue_name, Job.status == JobStatus.PENDING)
+            .where(
+                Job.queue_name == queue_name,
+                Job.status == JobStatus.PENDING,
+                Job.available_at <= now,
+            )
             .order_by(Job.created_at.asc())
             .limit(1)
+            .with_for_update(skip_locked=True)
         )
         result = await self._session.execute(stmt)
         job = result.scalar_one_or_none()

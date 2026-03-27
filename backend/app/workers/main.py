@@ -176,10 +176,14 @@ class WorkerJobRepository:
         self._repo = document_repository
 
     async def claim_pending_job(self, *, queue_name: str) -> Job | None:
-        return await self._repo.claim_pending_job(queue_name=queue_name)
+        job = await self._repo.claim_pending_job(queue_name=queue_name)
+        if job is not None:
+            await self._repo.commit()
+        return job
 
     async def mark_completed(self, *, job_id: str) -> None:
         await self._repo.mark_job_completed(job_id=job_id)
+        await self._repo.commit()
 
     async def mark_failed(
         self,
@@ -193,9 +197,11 @@ class WorkerJobRepository:
             error_code=error_code,
             error_message=error_message,
         )
+        await self._repo.commit()
 
     async def increment_attempt(self, *, job_id: str) -> None:
         await self._repo.increment_job_attempt(job_id=job_id)
+        await self._repo.commit()
 
 
 def build_job_registry() -> JobRegistry:

@@ -167,11 +167,11 @@ async def test_register_creates_user_and_session_tokens() -> None:
     service, repository = build_auth_service()
 
     result = await service.register(
-        username="Hero", email="Hero@example.com", password="secret-pass"
+        username="Hero", email="hero@example.com", password="Secret-pass1"
     )
 
     assert result.user.username == "Hero"
-    assert result.user.email == "Hero@example.com"
+    assert result.user.email == "hero@example.com"
     assert result.tokens.access_token
     assert result.tokens.refresh_token
     assert repository.commit_count == 1
@@ -182,20 +182,20 @@ async def test_register_creates_user_and_session_tokens() -> None:
 async def test_register_rejects_duplicate_email() -> None:
     service, _ = build_auth_service()
 
-    await service.register(username="Hero", email="hero@example.com", password="secret-pass")
+    await service.register(username="Hero", email="hero@example.com", password="Secret-pass1")
 
     with pytest.raises(DuplicateIdentityError):
-        await service.register(username="Mage", email="hero@example.com", password="another-pass")
+        await service.register(username="Mage", email="hero@example.com", password="Another-pass1")
 
 
 @pytest.mark.asyncio
 async def test_login_accepts_email_identity_and_updates_last_login() -> None:
     service, repository = build_auth_service()
     registered = await service.register(
-        username="Hero", email="hero@example.com", password="secret-pass"
+        username="Hero", email="hero@example.com", password="Secret-pass1"
     )
 
-    result = await service.login(identity="hero@example.com", password="secret-pass")
+    result = await service.login(identity="hero@example.com", password="Secret-pass1")
 
     assert result.user.id == registered.user.id
     assert repository.users[result.user.id].last_login_at is not None
@@ -204,17 +204,17 @@ async def test_login_accepts_email_identity_and_updates_last_login() -> None:
 @pytest.mark.asyncio
 async def test_login_rejects_invalid_password() -> None:
     service, _ = build_auth_service()
-    await service.register(username="Hero", email="hero@example.com", password="secret-pass")
+    await service.register(username="Hero", email="hero@example.com", password="Secret-pass1")
 
     with pytest.raises(InvalidCredentialsError):
-        await service.login(identity="hero@example.com", password="bad-pass")
+        await service.login(identity="hero@example.com", password="Bad-pass1")
 
 
 @pytest.mark.asyncio
 async def test_refresh_rotates_session_and_invalidates_previous_refresh_token() -> None:
     service, repository = build_auth_service()
     registered = await service.register(
-        username="Hero", email="hero@example.com", password="secret-pass"
+        username="Hero", email="hero@example.com", password="Secret-pass1"
     )
     initial_session = next(iter(repository.sessions.values()))
     initial_refresh = registered.tokens.refresh_token
@@ -233,7 +233,7 @@ async def test_refresh_rotates_session_and_invalidates_previous_refresh_token() 
 async def test_logout_revokes_current_session_and_me_rejects_old_access_token() -> None:
     service, repository = build_auth_service()
     registered = await service.register(
-        username="Hero", email="hero@example.com", password="secret-pass"
+        username="Hero", email="hero@example.com", password="Secret-pass1"
     )
     session = next(iter(repository.sessions.values()))
 
@@ -249,7 +249,7 @@ async def test_logout_revokes_current_session_and_me_rejects_old_access_token() 
 async def test_get_current_user_returns_user_for_valid_access_token() -> None:
     service, _ = build_auth_service()
     registered = await service.register(
-        username="Hero", email="hero@example.com", password="secret-pass"
+        username="Hero", email="hero@example.com", password="Secret-pass1"
     )
 
     user = await service.get_current_user(access_token=registered.tokens.access_token)

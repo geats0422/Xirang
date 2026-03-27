@@ -1,4 +1,8 @@
-from __future__ import annotations
+"""Auth API contract tests with FAKE service (dependency_overrides).
+
+NOTE: These tests use FakeApiAuthService to verify HTTP layer behavior.
+For real database integration tests without overrides, see test_auth_wiring_integration.py.
+"""
 
 from dataclasses import dataclass
 from uuid import uuid4

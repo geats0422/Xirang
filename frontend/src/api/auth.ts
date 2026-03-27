@@ -1,5 +1,5 @@
 import { getAuthHeaders } from "./authHeaders";
-import { apiRequest, type ApiError } from "./http";
+import { ApiError, NetworkError, apiRequest } from "./http";
 
 export type AuthUser = {
   id: string;
@@ -44,7 +44,7 @@ export type AuthApiError = {
 };
 
 export const isAuthApiError = (error: unknown): error is ApiError => {
-  return error instanceof Error && error.name === "ApiError";
+  return error instanceof ApiError;
 };
 
 export const getAuthErrorMessage = (error: unknown): string => {
@@ -73,6 +73,9 @@ export const getAuthErrorMessage = (error: unknown): string => {
     if (apiError.status === 422) {
       return "Invalid input. Please check your information and try again.";
     }
+  }
+  if (error instanceof NetworkError) {
+    return "Cannot reach backend service. Please check your network or dev proxy.";
   }
   if (error instanceof Error) {
     return error.message;

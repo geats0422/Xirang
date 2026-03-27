@@ -259,6 +259,10 @@ class AuthService:
             session = await self.repository.get_auth_session(payload.session_id)
             if not session:
                 raise InvalidTokenError("Invalid refresh token")
+            if session.revoked_at is not None:
+                raise InvalidTokenError("Session has been revoked")
+            if session.expires_at < datetime.now(UTC):
+                raise InvalidTokenError("Session has expired")
             if session.session_token_hash != self.token_service.hash_token(payload.session_token):
                 raise InvalidTokenError("Invalid refresh token")
 

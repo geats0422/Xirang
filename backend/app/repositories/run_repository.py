@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import Select, func, select
 
-from app.db.models.documents import DocumentQuestionSet, QuestionSetStatus
-from app.db.models.questions import Question, QuestionOption, QuestionType
+from app.db.models.economy import DailyRewardCapUsage
+from app.db.models.learning_paths import (
+    LearningPathNode,
+    LearningPathNodeType,
+    LearningPathProgress,
+    LearningPathProgressStatus,
+    LearningPathStatus,
+    LearningPathVersion,
+    LegendReviewProgress,
+)
+from app.db.models.questions import Question, QuestionOption
 from app.db.models.runs import Run, RunAnswer, RunMode, RunQuestion, RunStatus, Settlement
+from app.db.models.subscriptions import Subscription, SubscriptionStatus
 from app.services.runs.schemas import AnswerResult, QuestionData
 
 if TYPE_CHECKING:
@@ -28,6 +38,9 @@ class RunRepository:
         mode: RunMode,
         total_questions: int,
         mode_state: dict[str, object] | None = None,
+        source_path_version_id: UUID | None = None,
+        source_level_node_id: UUID | None = None,
+        is_legend_review: bool = False,
     ) -> Run:
         run = Run(
             user_id=user_id,
@@ -39,6 +52,9 @@ class RunRepository:
             correct_answers=0,
             combo_count=0,
             mode_state=mode_state or {},
+            source_path_version_id=source_path_version_id,
+            source_level_node_id=source_level_node_id,
+            is_legend_review=is_legend_review,
         )
         self._session.add(run)
         await self._session.flush()
@@ -65,6 +81,8 @@ class RunRepository:
         combo_count: int | None = None,
         mode_state: dict[str, object] | None = None,
         ended_at: datetime | None = None,
+        legend_reward_rate: float | None = None,
+        version_reward_discount: float | None = None,
     ) -> None:
         run = await self.get_run(run_id)
         if run is None:
@@ -84,6 +102,10 @@ class RunRepository:
             run.mode_state = mode_state
         if ended_at is not None:
             run.ended_at = ended_at
+        if legend_reward_rate is not None:
+            run.legend_reward_rate = legend_reward_rate
+        if version_reward_discount is not None:
+            run.version_reward_discount = version_reward_discount
 
         await self._session.flush()
 
@@ -121,18 +143,6 @@ class RunRepository:
 
         result = await self._session.execute(stmt)
         question_rows = list(result.scalars().all())
-
-        if not question_rows:
-            fallback_stmt: Select[tuple[Question]] = select(Question).order_by(
-                Question.created_at.asc()
-            )
-            fallback_stmt = fallback_stmt.limit(fetch_limit)
-            fallback_result = await self._session.execute(fallback_stmt)
-            question_rows = list(fallback_result.scalars().all())
-
-        if not question_rows:
-            generated_question = await self._ensure_fallback_question(document_id=document_id)
-            question_rows = [generated_question]
 
         if mode == RunMode.DRAFT:
             hard = [q for q in question_rows if q.difficulty >= 3]
@@ -365,6 +375,195 @@ class RunRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+
+    async def get_path_version_meta(self, *, path_version_id: UUID) -> tuple[UUID, str, int] | None:
+        stmt = select(LearningPathVersion).where(LearningPathVersion.id == path_version_id).limit(1)
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return row.document_id, row.mode, int(row.version_no)
+
+    async def get_latest_ready_path_version_no(self, *, document_id: UUID, mode: str) -> int | None:
+        stmt = (
+            select(func.max(LearningPathVersion.version_no))
+            .where(
+                LearningPathVersion.document_id == document_id,
+                LearningPathVersion.mode == mode,
+                LearningPathVersion.status == LearningPathStatus.READY,
+            )
+        )
+        result = await self._session.execute(stmt)
+        value = result.scalar_one_or_none()
+        if value is None:
+            return None
+        return int(value)
+
+    async def get_legend_round_count(
+        self,
+        *,
+        user_id: UUID,
+        path_version_id: UUID,
+        unit_node_id: UUID,
+    ) -> int:
+        stmt = (
+            select(LegendReviewProgress.legend_round_count)
+            .where(
+                LegendReviewProgress.user_id == user_id,
+                LegendReviewProgress.path_version_id == path_version_id,
+                LegendReviewProgress.unit_node_id == unit_node_id,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        value = result.scalar_one_or_none()
+        return int(value or 0)
+
+    async def is_subscription_active(self, *, user_id: UUID, at: datetime) -> bool:
+        stmt = (
+            select(Subscription.id)
+            .where(
+                Subscription.user_id == user_id,
+                Subscription.status == SubscriptionStatus.ACTIVE,
+                Subscription.current_period_start <= at,
+                Subscription.current_period_end >= at,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def get_daily_reward_cap_usage(self, *, user_id: UUID, date_key: date) -> DailyRewardCapUsage | None:
+        stmt = (
+            select(DailyRewardCapUsage)
+            .where(
+                DailyRewardCapUsage.user_id == user_id,
+                DailyRewardCapUsage.date_key == date_key,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def upsert_daily_reward_cap_usage(
+        self,
+        *,
+        user_id: UUID,
+        date_key: date,
+        xp_delta: int,
+        coin_delta: int,
+    ) -> DailyRewardCapUsage:
+        row = await self.get_daily_reward_cap_usage(user_id=user_id, date_key=date_key)
+        if row is None:
+            row = DailyRewardCapUsage(
+                user_id=user_id,
+                date_key=date_key,
+                xp_legend_earned=max(0, xp_delta),
+                coin_legend_earned=max(0, coin_delta),
+            )
+            self._session.add(row)
+            await self._session.flush()
+            return row
+
+        row.xp_legend_earned = int(row.xp_legend_earned) + max(0, xp_delta)
+        row.coin_legend_earned = int(row.coin_legend_earned) + max(0, coin_delta)
+        await self._session.flush()
+        return row
+
+    async def upsert_learning_path_progress(
+        self,
+        *,
+        user_id: UUID,
+        path_version_id: UUID,
+        node_id: UUID,
+        completed_run_id: UUID,
+        completed_at: datetime,
+    ) -> None:
+        stmt = (
+            select(LearningPathProgress)
+            .where(
+                LearningPathProgress.user_id == user_id,
+                LearningPathProgress.path_version_id == path_version_id,
+                LearningPathProgress.node_id == node_id,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            row = LearningPathProgress(
+                user_id=user_id,
+                path_version_id=path_version_id,
+                node_id=node_id,
+                status=LearningPathProgressStatus.COMPLETED,
+                first_completed_run_id=completed_run_id,
+                completed_runs_count=1,
+                last_completed_at=completed_at,
+            )
+            self._session.add(row)
+        else:
+            row.status = LearningPathProgressStatus.COMPLETED
+            if row.first_completed_run_id is None:
+                row.first_completed_run_id = completed_run_id
+            row.completed_runs_count = int(row.completed_runs_count) + 1
+            row.last_completed_at = completed_at
+        await self._session.flush()
+
+    async def resolve_unit_node_id(self, *, node_id: UUID) -> UUID | None:
+        stmt = select(LearningPathNode).where(LearningPathNode.id == node_id).limit(1)
+        result = await self._session.execute(stmt)
+        node = result.scalar_one_or_none()
+        if node is None:
+            return None
+        if node.node_type == LearningPathNodeType.UNIT:
+            return node.id
+
+        parent_node_id = node.parent_node_id
+        while parent_node_id is not None:
+            parent_stmt = select(LearningPathNode).where(LearningPathNode.id == parent_node_id).limit(1)
+            parent_result = await self._session.execute(parent_stmt)
+            parent = parent_result.scalar_one_or_none()
+            if parent is None:
+                return None
+            if parent.node_type == LearningPathNodeType.UNIT:
+                return parent.id
+            parent_node_id = parent.parent_node_id
+
+        return None
+
+    async def increment_legend_review_progress(
+        self,
+        *,
+        user_id: UUID,
+        path_version_id: UUID,
+        unit_node_id: UUID,
+        completed_at: datetime,
+    ) -> None:
+        stmt = (
+            select(LegendReviewProgress)
+            .where(
+                LegendReviewProgress.user_id == user_id,
+                LegendReviewProgress.path_version_id == path_version_id,
+                LegendReviewProgress.unit_node_id == unit_node_id,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            row = LegendReviewProgress(
+                user_id=user_id,
+                path_version_id=path_version_id,
+                unit_node_id=unit_node_id,
+                legend_round_count=1,
+                last_legend_run_at=completed_at,
+            )
+            self._session.add(row)
+        else:
+            row.legend_round_count = int(row.legend_round_count) + 1
+            row.last_legend_run_at = completed_at
+        await self._session.flush()
+
     async def commit(self) -> None:
         await self._session.commit()
 
@@ -385,59 +584,3 @@ class RunRepository:
         for option in options:
             option_map[option.question_id].append(option)
         return option_map
-
-    async def _ensure_fallback_question(self, *, document_id: UUID) -> Question:
-        question_set_stmt = (
-            select(DocumentQuestionSet)
-            .where(DocumentQuestionSet.document_id == document_id)
-            .order_by(DocumentQuestionSet.generation_version.desc())
-            .limit(1)
-        )
-        question_set_result = await self._session.execute(question_set_stmt)
-        question_set = question_set_result.scalar_one_or_none()
-
-        if question_set is None:
-            question_set = DocumentQuestionSet(
-                document_id=document_id,
-                generation_version=1,
-                status=QuestionSetStatus.READY,
-                question_count=1,
-                generated_at=datetime.now(UTC),
-            )
-            self._session.add(question_set)
-            await self._session.flush()
-
-        question = Question(
-            question_set_id=question_set.id,
-            document_id=document_id,
-            question_type=QuestionType.SINGLE_CHOICE,
-            prompt="In Daoist thought, which concept emphasizes flowing in harmony with nature?",
-            explanation="Wu wei highlights effortless alignment with the natural order.",
-            source_locator={"kind": "fallback"},
-            difficulty=1,
-            question_metadata={"source": "runtime_fallback"},
-        )
-        self._session.add(question)
-        await self._session.flush()
-
-        self._session.add_all(
-            [
-                QuestionOption(
-                    question_id=question.id,
-                    option_key="A",
-                    content="Wu wei",
-                    is_correct=True,
-                    sort_order=1,
-                ),
-                QuestionOption(
-                    question_id=question.id,
-                    option_key="B",
-                    content="Legalism",
-                    is_correct=False,
-                    sort_order=2,
-                ),
-            ]
-        )
-        await self._session.flush()
-
-        return question

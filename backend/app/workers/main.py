@@ -222,8 +222,12 @@ def build_job_registry() -> JobRegistry:
         config=PageIndexConfig(base_url=settings.pageindex_url),
     )
 
-    if settings.openai_api_key:
-        agents_client = AgentsClient(api_key=settings.openai_api_key)
+    if settings.llm_api_key:
+        agents_client = AgentsClient(
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,
+        )
         provider = agents_client.registry.get_default()
         question_generator: IngestionQuestionGeneratorProtocol
         if provider is None:

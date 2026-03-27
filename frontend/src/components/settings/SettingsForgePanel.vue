@@ -46,7 +46,10 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 
+import { useScholarData } from "../../composables/useScholarData";
+
 const { t } = useI18n();
+const { activeModel: selectedModel, modelOptions, setActiveModel } = useScholarData();
 
 type Model = {
   id: string;
@@ -55,93 +58,78 @@ type Model = {
   tags: string[];
 };
 
-const MODELS_KEY = "xirang-forge-model";
-
-const defaultModels: Model[] = [
-  {
-    id: "gemini-2.5-flash",
+const modelCatalog: Record<string, Omit<Model, "id">> = {
+  "gemini-2.5-flash": {
     name: "Gemini 2.5 Flash",
     description: "Fast and efficient. Ideal for quick storytelling and standard quests.",
     tags: ["High Speed", "Low Latency"],
   },
-  {
-    id: "gemini-3.1-pro",
+  "gemini-3.1-pro": {
     name: "Gemini 3.1 Pro",
     description: "Advanced reasoning for complex campaigns and deep lore generation.",
     tags: ["PRO", "Deep Logic", "Creative"],
   },
-  {
-    id: "claude-3.5-sonnet",
+  "claude-3.5-sonnet": {
     name: "Claude 3.5 Sonnet",
     description: "Balanced performance for educational content generation.",
     tags: ["Balanced", "Education"],
   },
-  {
-    id: "gpt-4o",
+  "gpt-4o": {
     name: "GPT-4o",
     description: "Strong all-around capabilities for diverse content needs.",
     tags: ["Versatile", "Adaptive"],
   },
-];
-
-const parseAvailableModels = (): Model[] => {
-  const envModels = import.meta.env.VITE_AVAILABLE_MODELS;
-  if (typeof envModels !== "string") {
-    return defaultModels;
-  }
-
-  const parsedIds = envModels
-    .split(",")
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0);
-
-  if (parsedIds.length === 0) {
-    return defaultModels;
-  }
-
-  return parsedIds.map((id) => {
-    const matchedModel = defaultModels.find((model) => model.id === id);
-    if (matchedModel) {
-      return matchedModel;
-    }
-
-    return {
-      id,
-      name: id,
-      description: "",
-      tags: [],
-    };
-  });
+  "gpt-4o-mini": {
+    name: "GPT-4o Mini",
+    description: "Lightweight and cost-effective model for everyday generation tasks.",
+    tags: ["Fast", "Efficient"],
+  },
+  "nvidia/nemotron-3-nano-30b-a3b": {
+    name: "Nemotron 3 Nano 30B",
+    description: "NVIDIA Build model optimized for responsive OpenAI-compatible inference.",
+    tags: ["NVIDIA", "Fast"],
+  },
 };
 
-const availableModels = computed<Model[]>(() => parseAvailableModels());
-const showModelDropdown = ref(false);
-const activeModelId = ref<string>(defaultModels[0].id);
-const modelSelectRef = ref<HTMLElement | null>(null);
+const toModelMeta = (id: string): Model => {
+  const normalized = id.trim();
+  const known = modelCatalog[normalized];
+  if (known) {
+    return { id: normalized, ...known };
+  }
 
-const activeModel = computed<Model>(() => {
-  return availableModels.value.find((model) => model.id === activeModelId.value) ?? availableModels.value[0];
+  return {
+    id: normalized,
+    name: normalized,
+    description: "Configured model from runtime settings.",
+    tags: [],
+  };
+};
+
+const availableModels = computed<Model[]>(() => {
+  const candidates = modelOptions.value
+    .map((item) => item.trim())
+    .filter((item, index, arr) => item.length > 0 && arr.indexOf(item) === index);
+
+  if (candidates.length === 0) {
+    return [toModelMeta("gpt-4o-mini")];
+  }
+
+  return candidates.map(toModelMeta);
 });
 
-const loadActiveModel = () => {
-  if (typeof window === "undefined") {
-    return;
-  }
+const showModelDropdown = ref(false);
+const modelSelectRef = ref<HTMLElement | null>(null);
 
-  const savedModel = window.localStorage.getItem(MODELS_KEY);
-  if (savedModel && availableModels.value.some((model) => model.id === savedModel)) {
-    activeModelId.value = savedModel;
-    return;
-  }
+const activeModelId = computed(() => selectedModel.value);
 
-  activeModelId.value = availableModels.value[0]?.id ?? defaultModels[0].id;
-};
+const activeModel = computed<Model>(() => {
+  const found = availableModels.value.find((model) => model.id === selectedModel.value);
+  return found ?? availableModels.value[0];
+});
 
 const selectModel = (modelId: string) => {
-  activeModelId.value = modelId;
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(MODELS_KEY, modelId);
-  }
+  setActiveModel(modelId);
   showModelDropdown.value = false;
 };
 
@@ -161,7 +149,6 @@ const closeDropdown = (event: MouseEvent) => {
 };
 
 onMounted(() => {
-  loadActiveModel();
   document.addEventListener("click", closeDropdown);
 });
 

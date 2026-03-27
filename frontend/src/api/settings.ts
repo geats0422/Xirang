@@ -27,8 +27,21 @@ export type SettingsUpdateRequest = Partial<
   >
 >;
 
+export type AiConfigResponse = {
+  provider: string;
+  base_url: string | null;
+  model: string;
+  configured: boolean;
+};
+
 export const getSettings = async (): Promise<SettingsResponse> => {
   return apiRequest<SettingsResponse>("/api/v1/settings", {
+    headers: getAuthHeaders(),
+  });
+};
+
+export const getAiConfig = async (): Promise<AiConfigResponse> => {
+  return apiRequest<AiConfigResponse>("/api/v1/settings/ai-config", {
     headers: getAuthHeaders(),
   });
 };

@@ -16,6 +16,7 @@ from app.integrations.pageindex.client import PageIndexClient
 from app.repositories.document_repository import DocumentRepository
 from app.services.documents.storage import StorageMode
 from app.services.documents.storage import build_storage as build_document_storage
+from app.services.documents.text import strip_markdown
 from app.services.questions.generator import GeneratedQuestion, QuestionGenerator
 from app.services.retrieval.pageindex_backend import (
     IndexDocumentResult,
@@ -321,7 +322,7 @@ async def _process_document_ingestion(
             await repository.clear_questions_for_set(question_set.id)
 
         questions = await question_generator.generate(
-            context=content[:12000],
+            context=strip_markdown(content[:12000]),
             question_types=[
                 QuestionType.SINGLE_CHOICE,
                 QuestionType.MULTIPLE_CHOICE,

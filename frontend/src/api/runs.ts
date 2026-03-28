@@ -10,6 +10,8 @@ export type RunQuestion = {
   id: string;
   text: string;
   options: RunQuestionOption[];
+  source_locator?: string | null;
+  supporting_excerpt?: string | null;
 };
 
 export type CreateRunResponse = {

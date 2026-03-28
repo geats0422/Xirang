@@ -158,6 +158,8 @@ class RunRepository:
         questions: list[QuestionData] = []
         for question in question_rows:
             options = option_map.get(question.id, [])
+            source_locator = self._extract_source_locator(question.source_locator)
+            supporting_excerpt = self._extract_supporting_excerpt(question.question_metadata)
             questions.append(
                 QuestionData(
                     id=question.id,
@@ -168,6 +170,8 @@ class RunRepository:
                     correct_option_ids=[option.id for option in options if option.is_correct],
                     difficulty=question.difficulty,
                     chapter_reference=None,
+                    source_locator=source_locator,
+                    supporting_excerpt=supporting_excerpt,
                 )
             )
 
@@ -192,6 +196,8 @@ class RunRepository:
                 "correct_option_ids": [str(v) for v in question.correct_option_ids],
                 "difficulty": question.difficulty,
                 "chapter_reference": question.chapter_reference,
+                "source_locator": question.source_locator,
+                "supporting_excerpt": question.supporting_excerpt,
             }
             run_question = RunQuestion(
                 run_id=run_id,
@@ -235,9 +241,25 @@ class RunRepository:
                     "options": snapshot.get("options", []),
                     "correct_option_ids": snapshot.get("correct_option_ids", []),
                     "difficulty": difficulty,
+                    "source_locator": snapshot.get("source_locator"),
+                    "supporting_excerpt": snapshot.get("supporting_excerpt"),
                 }
             )
         return payload
+
+    @staticmethod
+    def _extract_source_locator(source_locator: dict[str, object] | None) -> str | None:
+        if not isinstance(source_locator, dict):
+            return None
+        raw_value = source_locator.get("source")
+        return raw_value.strip() if isinstance(raw_value, str) and raw_value.strip() else None
+
+    @staticmethod
+    def _extract_supporting_excerpt(metadata: dict[str, object] | None) -> str | None:
+        if not isinstance(metadata, dict):
+            return None
+        raw_value = metadata.get("supporting_excerpt")
+        return raw_value.strip() if isinstance(raw_value, str) and raw_value.strip() else None
 
     async def has_question_answer(self, run_id: UUID, question_id: UUID) -> bool:
         stmt = (
@@ -375,7 +397,6 @@ class RunRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-
     async def get_path_version_meta(self, *, path_version_id: UUID) -> tuple[UUID, str, int] | None:
         stmt = select(LearningPathVersion).where(LearningPathVersion.id == path_version_id).limit(1)
         result = await self._session.execute(stmt)
@@ -385,13 +406,10 @@ class RunRepository:
         return row.document_id, row.mode, int(row.version_no)
 
     async def get_latest_ready_path_version_no(self, *, document_id: UUID, mode: str) -> int | None:
-        stmt = (
-            select(func.max(LearningPathVersion.version_no))
-            .where(
-                LearningPathVersion.document_id == document_id,
-                LearningPathVersion.mode == mode,
-                LearningPathVersion.status == LearningPathStatus.READY,
-            )
+        stmt = select(func.max(LearningPathVersion.version_no)).where(
+            LearningPathVersion.document_id == document_id,
+            LearningPathVersion.mode == mode,
+            LearningPathVersion.status == LearningPathStatus.READY,
         )
         result = await self._session.execute(stmt)
         value = result.scalar_one_or_none()
@@ -433,7 +451,9 @@ class RunRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
-    async def get_daily_reward_cap_usage(self, *, user_id: UUID, date_key: date) -> DailyRewardCapUsage | None:
+    async def get_daily_reward_cap_usage(
+        self, *, user_id: UUID, date_key: date
+    ) -> DailyRewardCapUsage | None:
         stmt = (
             select(DailyRewardCapUsage)
             .where(
@@ -520,7 +540,9 @@ class RunRepository:
 
         parent_node_id = node.parent_node_id
         while parent_node_id is not None:
-            parent_stmt = select(LearningPathNode).where(LearningPathNode.id == parent_node_id).limit(1)
+            parent_stmt = (
+                select(LearningPathNode).where(LearningPathNode.id == parent_node_id).limit(1)
+            )
             parent_result = await self._session.execute(parent_stmt)
             parent = parent_result.scalar_one_or_none()
             if parent is None:

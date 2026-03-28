@@ -20,6 +20,8 @@ class QuestionData:
     correct_option_ids: list[UUID]
     difficulty: int
     chapter_reference: str | None = None
+    source_locator: str | None = None
+    supporting_excerpt: str | None = None
 
 
 @dataclass(slots=True)

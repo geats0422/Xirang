@@ -88,6 +88,19 @@ const questionHint = computed(() => {
   return firstChar ? `HINT: STARTS WITH ${firstChar}` : "HINT: --";
 });
 
+const questionSourceLocator = computed(() => {
+  const locator = currentQuestion.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const questionSupportingExcerpt = computed(() => {
+  const excerpt = currentQuestion.value?.supporting_excerpt;
+  if (typeof excerpt !== "string" || !excerpt.trim()) {
+    return null;
+  }
+  return stripQuestionFormatting(excerpt).trim();
+});
+
 const floorProgress = computed(() => {
   if (floor.value === null || floorTotal.value === null) {
     return 0;
@@ -314,7 +327,15 @@ onUnmounted(() => {
           <h1>{{ questionTitle }}</h1>
 
           <footer class="question-card__footer">
-            <span>{{ chapterTitle }}</span>
+            <div class="question-card__meta">
+              <span>{{ chapterTitle }}</span>
+              <span v-if="questionSourceLocator" class="question-card__source">
+                来源：{{ questionSourceLocator }}
+              </span>
+              <span v-if="questionSupportingExcerpt" class="question-card__excerpt">
+                摘录：{{ questionSupportingExcerpt }}
+              </span>
+            </div>
             <span class="question-card__hint">{{ questionHint }}</span>
           </footer>
         </article>
@@ -578,9 +599,10 @@ onUnmounted(() => {
 }
 
 .question-card__footer {
-  align-items: center;
+  align-items: flex-start;
   border-top: 1px solid var(--color-border-soft);
   display: flex;
+  gap: 12px;
   justify-content: space-between;
   margin-top: 14px;
   padding-top: 10px;
@@ -589,6 +611,26 @@ onUnmounted(() => {
 .question-card__footer span {
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.question-card__meta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.question-card__source,
+.question-card__excerpt {
+  line-height: 1.4;
+}
+
+.question-card__excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .question-card__hint {

@@ -58,7 +58,11 @@ async def ensure_document_ready_for_run(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="document_not_ready")
 
     question_set = await repository.get_question_set_for_document(document_id)
-    if question_set is None or question_set.status != QuestionSetStatus.READY or question_set.question_count < 1:
+    if (
+        question_set is None
+        or question_set.status != QuestionSetStatus.READY
+        or question_set.question_count < 1
+    ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="question_set_not_ready")
 
 
@@ -80,7 +84,9 @@ async def create_run(
     try:
         run_mode = RunMode(str(mode))
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="mode") from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="mode"
+        ) from exc
 
     document_id_raw = request.get("document_id")
     if not isinstance(document_id_raw, str):
@@ -88,12 +94,16 @@ async def create_run(
     try:
         document_id = UUID(document_id_raw)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id") from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
+        ) from exc
 
     path_version_id_raw = request.get("path_version_id")
     level_node_id_raw = request.get("level_node_id")
     try:
-        path_version_id = UUID(path_version_id_raw) if isinstance(path_version_id_raw, str) else None
+        path_version_id = (
+            UUID(path_version_id_raw) if isinstance(path_version_id_raw, str) else None
+        )
         level_node_id = UUID(level_node_id_raw) if isinstance(level_node_id_raw, str) else None
     except ValueError as exc:
         raise HTTPException(
@@ -127,6 +137,8 @@ async def create_run(
                 "id": str(q.id),
                 "text": q.question_text,
                 "options": [{"id": str(o["id"]), "text": o["text"]} for o in q.options],
+                "source_locator": q.source_locator,
+                "supporting_excerpt": q.supporting_excerpt,
             }
             for q in questions
         ],
@@ -144,7 +156,9 @@ async def list_path_options(
     try:
         document_uuid = UUID(document_id)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id") from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
+        ) from exc
 
     await ensure_document_ready_for_run(
         document_id=document_uuid,
@@ -172,12 +186,16 @@ async def trigger_path_regeneration(
     document_id_raw = request.get("document_id")
     mode = request.get("mode")
     if not isinstance(document_id_raw, str) or not isinstance(mode, str):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id/mode")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id/mode"
+        )
 
     try:
         document_id = UUID(document_id_raw)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id") from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
+        ) from exc
 
     await ensure_document_ready_for_run(
         document_id=document_id,

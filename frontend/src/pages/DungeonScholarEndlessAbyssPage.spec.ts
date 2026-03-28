@@ -39,7 +39,15 @@ describe("DungeonScholarEndlessAbyssPage", () => {
       mode: "endless",
       status: "running",
       run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 10, time_left_sec: 900, pending_coins: 0 },
-      questions: [{ id: "q-1", text: "Question", options: [{ id: "o-1", text: "water" }] }],
+      questions: [
+        {
+          id: "q-1",
+          text: "Question",
+          options: [{ id: "o-1", text: "water" }],
+          source_locator: "一、Python简介",
+          supporting_excerpt: "Python语法和动态类型，以及解释型语言的本质",
+        },
+      ],
     });
     mocks.submitAnswer.mockResolvedValue({
       is_correct: true,
@@ -106,6 +114,20 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     });
 
     expect(wrapper.find(".feedback-action").exists()).toBe(true);
+  });
+
+  it("renders question provenance details when available", async () => {
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.endlessAbyss, query: { documentId: "doc-1", title: "Python" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarEndlessAbyssPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("来源：一、Python简介");
+    expect(wrapper.text()).toContain("摘录：Python语法和动态类型，以及解释型语言的本质");
   });
 
   it("renders run status notice for reduced reward", async () => {

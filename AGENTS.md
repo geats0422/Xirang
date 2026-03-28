@@ -150,6 +150,11 @@ Ignored: E501 (line length), B008 (function call in argument), TC003 (runtime ty
 
 ## Required Verification Before Finishing
 
+## Test Port Preflight (Mandatory)
+
+- Before running tests, always check whether dev ports are already in use: frontend `5173`, backend `8000`.
+- If either port is already enabled before test execution, stop the running service first, then re-enable it to ensure a clean test environment.
+
 ### Frontend
 - Small UI change: `lint` + `typecheck`
 - Behavior change: `lint` + `typecheck` + targeted test(s)

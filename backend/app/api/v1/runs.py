@@ -4,13 +4,23 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies.auth import get_current_user_id
+from app.db.models.documents import DocumentStatus, QuestionSetStatus
 from app.db.models.runs import RunMode
 from app.db.session import get_db_session
+from app.repositories.document_repository import DocumentRepository
+from app.repositories.learning_path_repository import LearningPathRepository
 from app.repositories.run_repository import RunRepository
 from app.repositories.wallet_repository import WalletRepository
+from app.services.learning_paths.service import (
+    LearningPathService,
+    PathGenerationFailedError,
+    PathGenerationInProgressError,
+    RegenerationLimitExceededError,
+)
 from app.services.runs.service import RunService
 from app.services.wallet.service import WalletService
 
@@ -22,11 +32,46 @@ async def get_run_service(session: AsyncSession = Depends(get_db_session)) -> Ru
     return RunService(repository=RunRepository(session), wallet_service=wallet_service)
 
 
+async def get_learning_path_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> LearningPathService:
+    return LearningPathService(repository=LearningPathRepository(session))
+
+
+async def get_document_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> DocumentRepository:
+    return DocumentRepository(session)
+
+
+async def ensure_document_ready_for_run(
+    *,
+    document_id: UUID,
+    user_id: UUID,
+    repository: DocumentRepository,
+) -> None:
+    document = await repository.get_document_by_id(document_id)
+    if document is None or document.owner_user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document_not_found")
+
+    if document.ingest_status != DocumentStatus.READY:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="document_not_ready")
+
+    question_set = await repository.get_question_set_for_document(document_id)
+    if (
+        question_set is None
+        or question_set.status != QuestionSetStatus.READY
+        or question_set.question_count < 1
+    ):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="question_set_not_ready")
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_run(
     request: dict[str, Any],
     user_id: UUID = Depends(get_current_user_id),
     service: Any = Depends(get_run_service),
+    document_repository: DocumentRepository = Depends(get_document_repository),
 ) -> dict[str, Any]:
     """Create a new run."""
     question_count = request.get("question_count", 5)
@@ -36,18 +81,51 @@ async def create_run(
         )
 
     mode = request.get("mode", RunMode.ENDLESS.value)
-    run_mode = RunMode(mode)
+    try:
+        run_mode = RunMode(str(mode))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="mode"
+        ) from exc
 
-    document_id = request.get("document_id")
-    if not isinstance(document_id, str):
+    document_id_raw = request.get("document_id")
+    if not isinstance(document_id_raw, str):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id")
+    try:
+        document_id = UUID(document_id_raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
+        ) from exc
+
+    path_version_id_raw = request.get("path_version_id")
+    level_node_id_raw = request.get("level_node_id")
+    try:
+        path_version_id = (
+            UUID(path_version_id_raw) if isinstance(path_version_id_raw, str) else None
+        )
+        level_node_id = UUID(level_node_id_raw) if isinstance(level_node_id_raw, str) else None
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="path_version_id/level_node_id",
+        ) from exc
+
+    await ensure_document_ready_for_run(
+        document_id=document_id,
+        user_id=user_id,
+        repository=document_repository,
+    )
 
     result, questions = await service.create_run(
         user_id=user_id,
-        document_id=UUID(document_id),
+        document_id=document_id,
         mode=run_mode,
         question_count=question_count,
         path_id=request.get("path_id"),
+        path_version_id=path_version_id,
+        level_node_id=level_node_id,
+        is_legend_review=bool(request.get("is_legend_review", False)),
     )
     return {
         "run_id": str(result.id),
@@ -59,6 +137,8 @@ async def create_run(
                 "id": str(q.id),
                 "text": q.question_text,
                 "options": [{"id": str(o["id"]), "text": o["text"]} for o in q.options],
+                "source_locator": q.source_locator,
+                "supporting_excerpt": q.supporting_excerpt,
             }
             for q in questions
         ],
@@ -69,16 +149,68 @@ async def create_run(
 async def list_path_options(
     mode: str,
     document_id: str,
-    _user_id: UUID = Depends(get_current_user_id),
-    service: Any = Depends(get_run_service),
-) -> dict[str, Any]:
-    _ = document_id
-    run_mode = RunMode(mode)
-    options = service.list_path_options(mode=run_mode)
-    return {
-        "mode": run_mode.value,
-        "options": options,
-    }
+    user_id: UUID = Depends(get_current_user_id),
+    service: LearningPathService = Depends(get_learning_path_service),
+    document_repository: DocumentRepository = Depends(get_document_repository),
+) -> Any:
+    try:
+        document_uuid = UUID(document_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
+        ) from exc
+
+    await ensure_document_ready_for_run(
+        document_id=document_uuid,
+        user_id=user_id,
+        repository=document_repository,
+    )
+
+    try:
+        payload = await service.get_path_options(document_id=document_uuid, mode=mode)
+    except PathGenerationFailedError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    if payload.get("generation_status") == "generating":
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=payload)
+    return payload
+
+
+@router.post("/path-regenerations")
+async def trigger_path_regeneration(
+    request: dict[str, Any],
+    user_id: UUID = Depends(get_current_user_id),
+    service: LearningPathService = Depends(get_learning_path_service),
+    document_repository: DocumentRepository = Depends(get_document_repository),
+) -> JSONResponse:
+    document_id_raw = request.get("document_id")
+    mode = request.get("mode")
+    if not isinstance(document_id_raw, str) or not isinstance(mode, str):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id/mode"
+        )
+
+    try:
+        document_id = UUID(document_id_raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
+        ) from exc
+
+    await ensure_document_ready_for_run(
+        document_id=document_id,
+        user_id=user_id,
+        repository=document_repository,
+    )
+
+    try:
+        payload = await service.regenerate_path(document_id=document_id, mode=mode, user_id=user_id)
+    except RegenerationLimitExceededError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    except PathGenerationInProgressError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=payload)
 
 
 @router.get("")
@@ -129,6 +261,16 @@ async def submit_answer(
             "status": str(result.run.status),
             "score": result.run.score,
             "state": result.run.mode_state,
+        },
+        "feedback": None
+        if result.feedback is None
+        else {
+            "correct_options": [
+                {"id": option.id, "text": option.text} for option in result.feedback.correct_options
+            ],
+            "explanation": result.feedback.explanation,
+            "source_locator": result.feedback.source_locator,
+            "supporting_excerpt": result.feedback.supporting_excerpt,
         },
         "settlement": None
         if result.settlement is None

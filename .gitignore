@@ -35,3 +35,6 @@ nul
 package-lock.json
 auth-test-home-after-login.png
 tmp_uploads/
+
+# Local design drafts
+Design Document/

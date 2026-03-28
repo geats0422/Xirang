@@ -25,11 +25,26 @@ _PROMPT_TEMPLATE = """Context:
 
 Question types to generate: {type_names_str}
 
+Generate exactly {count} questions.
+
+You are writing comprehension questions for this specific document only.
+Rules:
+- ONLY use facts that are explicitly stated in the context.
+- Do not use outside knowledge, common Python trivia, or facts that are merely generally true.
+- Every question must be answerable using the context alone.
+- Prefer details, definitions, comparisons, examples, constraints, and workflow steps that appear in the text.
+- If the context is insufficient for a high-quality question, generate fewer questions instead of inventing facts.
+- Avoid generic questions that could apply to any Python tutorial.
+- Keep option wording grounded in the document's wording whenever possible.
+- Each explanation must cite the document-supported reason briefly.
+
 For each question, provide:
 - question_type: one of "single_choice", "multiple_choice", "true_false"
 - prompt: the question text
 - options: array of options with option_key (A, B, C, D), content, and is_correct
 - explanation: why the correct answer is correct
+- source_locator: a short chapter/section/heading locator from the context
+- metadata: object containing at least "supporting_excerpt" with a short exact quote from the context
 - difficulty: 1-5 scale
 
 Return as JSON with a "questions" array."""
@@ -83,6 +98,7 @@ class QuestionGenerator:
         prompt = _PROMPT_TEMPLATE.format(
             context=context,
             type_names_str=type_names_str,
+            count=count,
         )
 
         try:
@@ -111,6 +127,8 @@ class QuestionGenerator:
                     q.prompt,
                     q.options,
                 )
+                if not self._is_grounded_in_context(q, context):
+                    continue
                 valid_questions.append(q)
             except ValidationError:
                 continue
@@ -150,3 +168,17 @@ class QuestionGenerator:
             difficulty=data.get("difficulty", 1),
             metadata=data.get("metadata", {}),
         )
+
+    def _is_grounded_in_context(self, question: GeneratedQuestion, context: str) -> bool:
+        if not question.source_locator or not question.source_locator.strip():
+            return False
+
+        supporting_excerpt = question.metadata.get("supporting_excerpt")
+        if not isinstance(supporting_excerpt, str):
+            return False
+
+        normalized_excerpt = supporting_excerpt.strip()
+        if not normalized_excerpt:
+            return False
+
+        return normalized_excerpt in context

@@ -13,9 +13,11 @@ from app.db.models.questions import QuestionType
 from app.db.session import get_session_factory
 from app.integrations.agents.client import AgentsClient
 from app.integrations.pageindex.client import PageIndexClient
+from app.integrations.pageindex.runtime import ensure_pageindex_ready_with_launch
 from app.repositories.document_repository import DocumentRepository
 from app.services.documents.storage import StorageMode
 from app.services.documents.storage import build_storage as build_document_storage
+from app.services.documents.text import strip_markdown
 from app.services.questions.generator import GeneratedQuestion, QuestionGenerator
 from app.services.retrieval.pageindex_backend import (
     IndexDocumentResult,
@@ -222,8 +224,12 @@ def build_job_registry() -> JobRegistry:
         config=PageIndexConfig(base_url=settings.pageindex_url),
     )
 
-    if settings.openai_api_key:
-        agents_client = AgentsClient(api_key=settings.openai_api_key)
+    if settings.llm_api_key:
+        agents_client = AgentsClient(
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,
+        )
         provider = agents_client.registry.get_default()
         question_generator: IngestionQuestionGeneratorProtocol
         if provider is None:
@@ -317,7 +323,7 @@ async def _process_document_ingestion(
             await repository.clear_questions_for_set(question_set.id)
 
         questions = await question_generator.generate(
-            context=content[:12000],
+            context=strip_markdown(content[:12000]),
             question_types=[
                 QuestionType.SINGLE_CHOICE,
                 QuestionType.MULTIPLE_CHOICE,
@@ -426,27 +432,40 @@ def _estimate_word_count(content: str) -> int:
 
 
 async def run_worker(*, queue_name: str = "default", poll_interval: float = 1.0) -> None:
+    settings = get_settings()
+    pageindex_ready, managed_pageindex_process = await ensure_pageindex_ready_with_launch(settings)
+    if not pageindex_ready:
+        raise RuntimeError(f"PageIndex is not ready at {settings.pageindex_url}")
+
     registry = build_job_registry()
     session_factory = get_session_factory()
 
-    async with session_factory() as session:
-        document_repo = DocumentRepository(session)
-        repository = WorkerJobRepository(document_repo)
-        runner = JobRunner(repository=repository, registry=registry)
+    try:
+        async with session_factory() as session:
+            document_repo = DocumentRepository(session)
+            repository = WorkerJobRepository(document_repo)
+            runner = JobRunner(repository=repository, registry=registry)
 
-        shutdown = False
+            shutdown = False
 
-        def handle_signal(signum: int, frame: object) -> None:
-            nonlocal shutdown
-            shutdown = True
+            def handle_signal(signum: int, frame: object) -> None:
+                nonlocal shutdown
+                shutdown = True
 
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
+            signal.signal(signal.SIGINT, handle_signal)
+            signal.signal(signal.SIGTERM, handle_signal)
 
-        while not shutdown:
-            processed = await runner.run_one(queue_name=queue_name)
-            if not processed:
-                await asyncio.sleep(poll_interval)
+            while not shutdown:
+                processed = await runner.run_one(queue_name=queue_name)
+                if not processed:
+                    await asyncio.sleep(poll_interval)
+    finally:
+        if managed_pageindex_process is not None and managed_pageindex_process.poll() is None:
+            managed_pageindex_process.terminate()
+            try:
+                managed_pageindex_process.wait(timeout=5)
+            except Exception:
+                managed_pageindex_process.kill()
 
 
 def main() -> None:

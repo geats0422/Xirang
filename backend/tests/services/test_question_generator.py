@@ -31,9 +31,9 @@ class FakeLLMProvider:
     async def generate(
         self,
         prompt: str,
-        *,
-        response_format: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
+        _ = kwargs
         self.call_count += 1
         self.last_prompt = prompt
         if self.call_count <= len(self.responses):
@@ -240,6 +240,8 @@ class TestQuestionGenerator:
                     {"option_key": "D", "content": "4", "is_correct": False},
                 ],
                 "explanation": "1 + 1 = 2",
+                "source_locator": "Math Basics",
+                "metadata": {"supporting_excerpt": "1 + 1 = 2"},
                 "difficulty": 1,
             }
         ]
@@ -248,7 +250,7 @@ class TestQuestionGenerator:
 
         result = await generator.generate(
             document_id=uuid4(),
-            context="Basic math",
+            context="Math Basics: 1 + 1 = 2.",
             question_types=[QuestionType.SINGLE_CHOICE],
             count=1,
         )
@@ -268,6 +270,8 @@ class TestQuestionGenerator:
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
                 "explanation": "Valid",
+                "source_locator": "Test context",
+                "metadata": {"supporting_excerpt": "Valid question"},
                 "difficulty": 1,
             },
             {
@@ -285,7 +289,7 @@ class TestQuestionGenerator:
 
         result = await generator.generate(
             document_id=uuid4(),
-            context="Test context",
+            context="Test context. Valid question",
             question_types=[QuestionType.SINGLE_CHOICE],
             count=2,
         )
@@ -299,9 +303,10 @@ class TestQuestionGenerator:
             async def generate(
                 self,
                 prompt: str,
-                *,
-                response_format: dict[str, Any] | None = None,
+                **kwargs: Any,
             ) -> dict[str, Any]:
+                _ = prompt
+                _ = kwargs
                 raise RuntimeError("LLM service unavailable")
 
         generator = QuestionGenerator(llm_client=FailingProvider())
@@ -329,6 +334,8 @@ class TestQuestionGenerator:
                                 {"option_key": "B", "content": "No", "is_correct": False},
                             ],
                             "explanation": "Test",
+                            "source_locator": "Plant Notes",
+                            "metadata": {"supporting_excerpt": "photosynthesis in plants"},
                             "difficulty": 1,
                         }
                     ]
@@ -346,6 +353,11 @@ class TestQuestionGenerator:
 
         assert provider.last_prompt is not None
         assert "photosynthesis" in provider.last_prompt
+        assert "ONLY use facts that are explicitly stated in the context" in provider.last_prompt
+        assert "Do not use outside knowledge" in provider.last_prompt
+        assert "source_locator" in provider.last_prompt
+        assert '"supporting_excerpt"' in provider.last_prompt
+        assert "Generate exactly 1 questions" in provider.last_prompt
 
     @pytest.mark.asyncio
     async def test_generate_supports_multiple_question_types(self) -> None:
@@ -358,6 +370,8 @@ class TestQuestionGenerator:
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
                 "explanation": "Single",
+                "source_locator": "Mixed types",
+                "metadata": {"supporting_excerpt": "Single choice question"},
                 "difficulty": 1,
             },
             {
@@ -368,6 +382,8 @@ class TestQuestionGenerator:
                     {"option_key": "B", "content": "False", "is_correct": False},
                 ],
                 "explanation": "TF",
+                "source_locator": "Mixed types",
+                "metadata": {"supporting_excerpt": "True false question"},
                 "difficulty": 1,
             },
         ]
@@ -376,7 +392,7 @@ class TestQuestionGenerator:
 
         result = await generator.generate(
             document_id=uuid4(),
-            context="Mixed types",
+            context="Mixed types. Single choice question. True false question.",
             question_types=[QuestionType.SINGLE_CHOICE, QuestionType.TRUE_FALSE],
             count=2,
         )
@@ -396,6 +412,8 @@ class TestQuestionGenerator:
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
                 "explanation": f"Exp {i}",
+                "source_locator": "Count Test",
+                "metadata": {"supporting_excerpt": f"Question {i}"},
                 "difficulty": 1,
             }
             for i in range(5)
@@ -405,10 +423,38 @@ class TestQuestionGenerator:
 
         result = await generator.generate(
             document_id=uuid4(),
-            context="Test",
+            context="Question 0. Question 1. Question 2. Question 3. Question 4.",
             question_types=[QuestionType.SINGLE_CHOICE],
             count=3,
         )
 
         assert len(result) == 5
         assert all(q.question_type == QuestionType.SINGLE_CHOICE for q in result)
+
+    @pytest.mark.asyncio
+    async def test_generate_filters_questions_without_context_grounding(self) -> None:
+        questions_data = [
+            {
+                "question_type": "single_choice",
+                "prompt": "Which year was Python created?",
+                "options": [
+                    {"option_key": "A", "content": "1989", "is_correct": False},
+                    {"option_key": "B", "content": "1991", "is_correct": True},
+                ],
+                "explanation": "External trivia",
+                "source_locator": "Python History",
+                "metadata": {"supporting_excerpt": "This quote is absent from the source"},
+                "difficulty": 1,
+            }
+        ]
+        provider = self.make_fake_provider([self.build_structured_response(questions_data)])
+        generator = QuestionGenerator(llm_client=provider)
+
+        result = await generator.generate(
+            document_id=uuid4(),
+            context="Python supports multiple programming paradigms.",
+            question_types=[QuestionType.SINGLE_CHOICE],
+            count=1,
+        )
+
+        assert result == []

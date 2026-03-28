@@ -3,10 +3,12 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion, type RunQuestionOption } from '../api/runs';
+import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion, type RunQuestionOption } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
+import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
 
@@ -18,6 +20,8 @@ onMounted(() => {
 watch(locale, () => {
   document.title = t("knowledgeDraft.metaTitle");
 });
+
+type RunStatus = "normal" | "reduced-reward";
 
 const route = useRoute();
 const router = useRouter();
@@ -37,6 +41,7 @@ let tickerId: number | null = null;
 const progressWidth = computed(() => `${(progressCurrent.value / progressTotal.value) * 100}%`);
 const backNavigating = ref(false);
 const showSettlement = ref(false);
+const runStatus = ref<RunStatus>("normal");
 const settlementXp = ref(0);
 const settlementCoins = ref(0);
 const settlementCombo = ref(0);
@@ -44,6 +49,7 @@ const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(10);
 
 const showNotice = ref(false);
+const wrongFeedback = ref<RunAnswerFeedback | null>(null);
 
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 const materialTitle = computed(() => {
@@ -53,9 +59,50 @@ const materialTitle = computed(() => {
 
 const questionText = computed(() => {
   if (currentQuestion.value?.text) {
-    return currentQuestion.value.text;
+    return stripQuestionFormatting(currentQuestion.value.text);
   }
   return "Loading question...";
+});
+
+const questionSourceLocator = computed(() => {
+  const locator = currentQuestion.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const questionSupportingExcerpt = computed(() => {
+  const excerpt = currentQuestion.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
+});
+
+const wrongFeedbackAnswerText = computed(() => {
+  if (!wrongFeedback.value?.correct_options?.length) {
+    return null;
+  }
+  return wrongFeedback.value.correct_options
+    .map((option) => stripQuestionFormatting(option.text).trim())
+    .filter(Boolean)
+    .join(" / ");
+});
+
+const wrongFeedbackExplanation = computed(() => {
+  const explanation = wrongFeedback.value?.explanation;
+  return typeof explanation === "string" && explanation.trim()
+    ? stripQuestionFormatting(explanation).trim()
+    : null;
+});
+
+const wrongFeedbackSourceLocator = computed(() => {
+  const locator = wrongFeedback.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const wrongFeedbackExcerpt = computed(() => {
+  const excerpt = wrongFeedback.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
 });
 
 const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
@@ -63,6 +110,7 @@ const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
 const optionChips = computed(() =>
   (currentQuestion.value?.options ?? []).map((option, index) => ({
     ...option,
+    text: stripQuestionFormatting(option.text),
     tone: chipTones[index % chipTones.length],
   })),
 );
@@ -125,12 +173,21 @@ const bootstrapRun = async () => {
   const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  const rawPathVersionId = route.query.pathVersionId;
+  const pathVersionId = typeof rawPathVersionId === "string" ? rawPathVersionId : undefined;
+  const rawLevelNodeId = route.query.levelNodeId;
+  const levelNodeId = typeof rawLevelNodeId === "string" ? rawLevelNodeId : undefined;
+
   if (!documentId) {
     return;
   }
 
   try {
-    const created = await createRun(documentId, "draft", 8, pathId);
+    const created = await createRun(documentId, "draft", 8, {
+      pathId,
+      pathVersionId,
+      levelNodeId,
+    });
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
@@ -139,7 +196,7 @@ const bootstrapRun = async () => {
     questionStartAt.value = Date.now();
     startTicker();
   } catch {
-    showNotice.value = true;
+    runStatus.value = "reduced-reward";
   }
 };
 
@@ -188,9 +245,8 @@ const chooseOption = async (option: RunQuestionOption) => {
     );
 
     applyRunState(result.run.state);
-    if (!result.is_correct) {
-      showNotice.value = true;
-    }
+    wrongFeedback.value = result.is_correct ? null : result.feedback;
+    showNotice.value = !result.is_correct;
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
@@ -208,7 +264,7 @@ const chooseOption = async (option: RunQuestionOption) => {
     syncProgress();
     questionStartAt.value = Date.now();
   } catch {
-    showNotice.value = true;
+    runStatus.value = "reduced-reward";
   }
 };
 
@@ -314,6 +370,11 @@ onUnmounted(() => {
               {{ questionText }}
             </p>
 
+            <div v-if="questionSourceLocator || questionSupportingExcerpt" class="question-provenance">
+              <p v-if="questionSourceLocator" class="question-provenance__line">来源：{{ questionSourceLocator }}</p>
+              <p v-if="questionSupportingExcerpt" class="question-provenance__line">摘录：{{ questionSupportingExcerpt }}</p>
+            </div>
+
             <div class="scroll-watermark" aria-hidden="true">✎</div>
           </div>
 
@@ -342,8 +403,17 @@ onUnmounted(() => {
           这题有误
         </button>
 
-        <div v-if="showNotice" class="run-status-notice">
-          ⚠ Answer quickly to avoid reduced XP/coins!
+        <div v-if="showNotice" class="run-status-notice run-status-notice--danger wrong-feedback">
+          <WrongAnswerFeedbackCard
+            title="回答错误，已显示正确答案。"
+            :correct-answer-text="wrongFeedbackAnswerText"
+            :explanation="wrongFeedbackExplanation"
+            :source-locator="wrongFeedbackSourceLocator"
+            :supporting-excerpt="wrongFeedbackExcerpt"
+          />
+        </div>
+        <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
+          ⚠ Reduced rewards: -50% XP/coins
         </div>
       </section>
     </section>
@@ -649,6 +719,20 @@ onUnmounted(() => {
   text-align: left;
 }
 
+.question-provenance {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.question-provenance__line {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+
 .drop-slot {
   border: 1px dashed color-mix(in srgb, var(--color-border) 60%, var(--color-badge-blue-bg) 40%);
   border-radius: 999px;
@@ -747,6 +831,13 @@ onUnmounted(() => {
   padding: 8px 12px;
   text-align: center;
 }
+
+.run-status-notice--danger {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-title);
+}
+
 
 @media (max-width: 900px) {
   .draft-page {

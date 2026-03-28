@@ -3,10 +3,12 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
+import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
+import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
 
@@ -36,6 +38,7 @@ let tickerId: number | null = null;
 
 const showSettlement = ref(false);
 const runStatus = ref<RunStatus>("normal");
+const wrongFeedback = ref<RunAnswerFeedback | null>(null);
 const settlementXp = ref(0);
 const settlementCoins = ref(0);
 const settlementCombo = ref(0);
@@ -47,9 +50,50 @@ const currentQuestion = computed(() => questions.value[questionIndex.value] ?? n
 
 const questionText = computed(() => {
   if (currentQuestion.value?.text) {
-    return currentQuestion.value.text;
+    return stripQuestionFormatting(currentQuestion.value.text);
   }
   return "Loading question...";
+});
+
+const questionSourceLocator = computed(() => {
+  const locator = currentQuestion.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const questionSupportingExcerpt = computed(() => {
+  const excerpt = currentQuestion.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
+});
+
+const wrongFeedbackAnswerText = computed(() => {
+  if (!wrongFeedback.value?.correct_options?.length) {
+    return null;
+  }
+  return wrongFeedback.value.correct_options
+    .map((option) => stripQuestionFormatting(option.text).trim())
+    .filter(Boolean)
+    .join(" / ");
+});
+
+const wrongFeedbackExplanation = computed(() => {
+  const explanation = wrongFeedback.value?.explanation;
+  return typeof explanation === "string" && explanation.trim()
+    ? stripQuestionFormatting(explanation).trim()
+    : null;
+});
+
+const wrongFeedbackSourceLocator = computed(() => {
+  const locator = wrongFeedback.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const wrongFeedbackExcerpt = computed(() => {
+  const excerpt = wrongFeedback.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
 });
 
 const progressPercent = computed(() => {
@@ -68,8 +112,16 @@ const answerPrompt = computed(() => {
     : "Tap the option that matches the statement";
 });
 
-const falseOptionLabel = computed(() => currentQuestion.value?.options[0]?.text || "--");
-const trueOptionLabel = computed(() => currentQuestion.value?.options[1]?.text || "--");
+const falseOptionLabel = computed(() =>
+  currentQuestion.value?.options[0]?.text
+    ? stripQuestionFormatting(currentQuestion.value.options[0].text)
+    : "--",
+);
+const trueOptionLabel = computed(() =>
+  currentQuestion.value?.options[1]?.text
+    ? stripQuestionFormatting(currentQuestion.value.options[1].text)
+    : "--",
+);
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
@@ -123,12 +175,21 @@ const bootstrapRun = async () => {
   const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  const rawPathVersionId = route.query.pathVersionId;
+  const pathVersionId = typeof rawPathVersionId === "string" ? rawPathVersionId : undefined;
+  const rawLevelNodeId = route.query.levelNodeId;
+  const levelNodeId = typeof rawLevelNodeId === "string" ? rawLevelNodeId : undefined;
+
   if (!documentId) {
     return;
   }
 
   try {
-    const created = await createRun(documentId, "speed", 8, pathId);
+    const created = await createRun(documentId, "speed", 8, {
+      pathId,
+      pathVersionId,
+      levelNodeId,
+    });
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
@@ -170,6 +231,7 @@ const chooseAnswer = async (answer: "false" | "true") => {
       elapsedMs,
     );
     applyRunState(result.run.state);
+    wrongFeedback.value = result.is_correct ? null : result.feedback;
 
     if (result.is_correct) {
       combo.value = (combo.value ?? 0) + 1;
@@ -283,6 +345,10 @@ onUnmounted(() => {
           <div class="survival-card__body">
             <p class="survival-card__eyebrow">✦ MYTHOLOGY</p>
             <h2>{{ questionText }}</h2>
+            <div v-if="questionSourceLocator || questionSupportingExcerpt" class="question-provenance">
+              <p v-if="questionSourceLocator" class="question-provenance__line">来源：{{ questionSourceLocator }}</p>
+              <p v-if="questionSupportingExcerpt" class="question-provenance__line">摘录：{{ questionSupportingExcerpt }}</p>
+            </div>
             <p class="survival-card__prompt">{{ answerPrompt }}</p>
           </div>
         </article>
@@ -307,6 +373,15 @@ onUnmounted(() => {
 
         <div v-if="runStatus === 'fast-answer'" class="run-status-notice">
           ⚡ Fast answer! +50% XP bonus
+        </div>
+        <div v-if="wrongFeedback" class="run-status-notice run-status-notice--danger wrong-feedback">
+          <WrongAnswerFeedbackCard
+            title="回答错误，已显示正确答案。"
+            :correct-answer-text="wrongFeedbackAnswerText"
+            :explanation="wrongFeedbackExplanation"
+            :source-locator="wrongFeedbackSourceLocator"
+            :supporting-excerpt="wrongFeedbackExcerpt"
+          />
         </div>
       </section>
     </section>
@@ -562,6 +637,20 @@ onUnmounted(() => {
   margin: 22px 0 0;
 }
 
+.question-provenance {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.question-provenance__line {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+
 .answer-pad {
   display: flex;
   gap: 42px;
@@ -638,6 +727,13 @@ onUnmounted(() => {
   padding: 8px 12px;
   text-align: center;
 }
+
+.run-status-notice--danger {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-title);
+}
+
 
 @media (max-width: 900px) {
   .speed-page {

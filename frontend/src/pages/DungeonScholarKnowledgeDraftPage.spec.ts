@@ -40,10 +40,11 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
       mode: "draft",
       status: "running",
       run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 600, pending_coins: 0 },
-      questions: [{ id: "q-1", text: "Draft question", options: [{ id: "o-1", text: "Wu wei" }, { id: "o-2", text: "Legalism" }] }],
+      questions: [{ id: "q-1", text: "Draft question", options: [{ id: "o-1", text: "Wu wei" }, { id: "o-2", text: "Legalism" }], source_locator: "保留字", supporting_excerpt: "保留字即关键字，我们不能把它们用作任何标识符名称。" }],
     });
     mocks.submitAnswer.mockResolvedValue({
       is_correct: true,
+      feedback: null,
       run: {
         id: "run-draft-1",
         status: "running",
@@ -68,6 +69,31 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     expect(wrapper.find(".scroll-paper h2").exists()).toBe(true);
   });
 
+
+  it("strips markdown formatting in draft question and chips", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-draft-1",
+      mode: "draft",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 600, pending_coins: 0 },
+      questions: [{ id: "q-1", text: "**Draft** question", options: [{ id: "o-1", text: "_Wu wei_" }, { id: "o-2", text: "**Legalism**" }] }],
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.knowledgeDraft, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarKnowledgeDraftPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".scroll-paper__body").text()).toContain("Draft question");
+    expect(wrapper.find(".scroll-paper__body").text()).not.toContain("**");
+    expect(wrapper.findAll(".draft-chip")[0].text()).toBe("Wu wei");
+    expect(wrapper.findAll(".draft-chip")[1].text()).toBe("Legalism");
+  });
+
   it("renders feedback action for reporting errors", async () => {
     const router = createTestRouter();
     await router.push({ path: ROUTES.knowledgeDraft, query: { documentId: "doc-1" } });
@@ -78,6 +104,55 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     });
 
     expect(wrapper.find(".feedback-action").exists()).toBe(true);
+  });
+
+  it("renders question provenance details when available", async () => {
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.knowledgeDraft, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarKnowledgeDraftPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("来源：保留字");
+    expect(wrapper.text()).toContain("摘录：保留字即关键字，我们不能把它们用作任何标识符名称。");
+  });
+
+  it("renders wrong answer feedback with correct answer and explanation", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_options: [{ id: "o-1", text: "Wu wei" }],
+        explanation: "The selected chip does not match the stored correct option.",
+        source_locator: "保留字",
+        supporting_excerpt: "保留字即关键字，我们不能把它们用作任何标识符名称。",
+      },
+      run: {
+        id: "run-draft-1",
+        status: "running",
+        score: 0,
+        state: { hp: 2, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 595, pending_coins: 0 },
+      },
+      settlement: null,
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.knowledgeDraft, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarKnowledgeDraftPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".draft-chip").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("正确答案：Wu wei");
+    expect(wrapper.text()).toContain("解析：The selected chip does not match the stored correct option.");
+    expect(wrapper.text()).toContain("来源：保留字");
   });
 
   it("renders run status notice", async () => {

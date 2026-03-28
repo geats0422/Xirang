@@ -3,10 +3,12 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
+import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
+import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
 
@@ -48,6 +50,7 @@ const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(10);
 
 const showNotice = ref(false);
+const wrongFeedback = ref<RunAnswerFeedback | null>(null);
 
 const materialTitle = computed(() => {
   const rawTitle = route.query.title;
@@ -73,7 +76,7 @@ const currentQuestion = computed(() => questions.value[questionIndex.value] ?? n
 
 const questionTitle = computed(() => {
   if (currentQuestion.value?.text) {
-    return currentQuestion.value.text;
+    return stripQuestionFormatting(currentQuestion.value.text);
   }
   return "Loading question...";
 });
@@ -83,8 +86,50 @@ const questionHint = computed(() => {
   if (!firstOption?.text) {
     return "HINT: --";
   }
-  const firstChar = firstOption.text.trim().charAt(0).toUpperCase();
+  const firstChar = stripQuestionFormatting(firstOption.text).trim().charAt(0).toUpperCase();
   return firstChar ? `HINT: STARTS WITH ${firstChar}` : "HINT: --";
+});
+
+const questionSourceLocator = computed(() => {
+  const locator = currentQuestion.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const questionSupportingExcerpt = computed(() => {
+  const excerpt = currentQuestion.value?.supporting_excerpt;
+  if (typeof excerpt !== "string" || !excerpt.trim()) {
+    return null;
+  }
+  return stripQuestionFormatting(excerpt).trim();
+});
+
+const wrongFeedbackAnswerText = computed(() => {
+  if (!wrongFeedback.value?.correct_options?.length) {
+    return null;
+  }
+  return wrongFeedback.value.correct_options
+    .map((option) => stripQuestionFormatting(option.text).trim())
+    .filter(Boolean)
+    .join(" / ");
+});
+
+const wrongFeedbackExplanation = computed(() => {
+  const explanation = wrongFeedback.value?.explanation;
+  return typeof explanation === "string" && explanation.trim()
+    ? stripQuestionFormatting(explanation).trim()
+    : null;
+});
+
+const wrongFeedbackSourceLocator = computed(() => {
+  const locator = wrongFeedback.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const wrongFeedbackExcerpt = computed(() => {
+  const excerpt = wrongFeedback.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
 });
 
 const floorProgress = computed(() => {
@@ -145,12 +190,21 @@ const bootstrapRun = async () => {
   const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  const rawPathVersionId = route.query.pathVersionId;
+  const pathVersionId = typeof rawPathVersionId === "string" ? rawPathVersionId : undefined;
+  const rawLevelNodeId = route.query.levelNodeId;
+  const levelNodeId = typeof rawLevelNodeId === "string" ? rawLevelNodeId : undefined;
+
   if (!documentId) {
     return;
   }
 
   try {
-    const created = await createRun(documentId, "endless", 10, pathId);
+    const created = await createRun(documentId, "endless", 10, {
+      pathId,
+      pathVersionId,
+      levelNodeId,
+    });
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
@@ -179,9 +233,9 @@ const castSpell = async () => {
   }
 
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
-  const normalizedAnswer = answer.value.trim().toLowerCase();
+  const normalizedAnswer = stripQuestionFormatting(answer.value).trim().toLowerCase();
   const matchedOption = currentQuestion.value.options.find(
-    (option) => option.text.trim().toLowerCase() === normalizedAnswer,
+    (option) => stripQuestionFormatting(option.text).trim().toLowerCase() === normalizedAnswer,
   );
 
   try {
@@ -192,10 +246,8 @@ const castSpell = async () => {
       elapsedMs,
     );
     applyRunState(result.run.state);
-
-    if (!result.is_correct) {
-      showNotice.value = true;
-    }
+    wrongFeedback.value = result.is_correct ? null : result.feedback;
+    showNotice.value = !result.is_correct;
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
@@ -304,7 +356,15 @@ onUnmounted(() => {
           <h1>{{ questionTitle }}</h1>
 
           <footer class="question-card__footer">
-            <span>{{ chapterTitle }}</span>
+            <div class="question-card__meta">
+              <span>{{ chapterTitle }}</span>
+              <span v-if="questionSourceLocator" class="question-card__source">
+                来源：{{ questionSourceLocator }}
+              </span>
+              <span v-if="questionSupportingExcerpt" class="question-card__excerpt">
+                摘录：{{ questionSupportingExcerpt }}
+              </span>
+            </div>
             <span class="question-card__hint">{{ questionHint }}</span>
           </footer>
         </article>
@@ -323,8 +383,14 @@ onUnmounted(() => {
           这题有误
         </button>
 
-        <div v-if="showNotice" class="run-status-notice run-status-notice--danger">
-          ⚠ Wrong answer. HP decreased.
+        <div v-if="showNotice" class="run-status-notice run-status-notice--danger wrong-feedback">
+          <WrongAnswerFeedbackCard
+            title="⚠ Wrong answer. HP decreased."
+            :correct-answer-text="wrongFeedbackAnswerText"
+            :explanation="wrongFeedbackExplanation"
+            :source-locator="wrongFeedbackSourceLocator"
+            :supporting-excerpt="wrongFeedbackExcerpt"
+          />
         </div>
 
         <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
@@ -568,9 +634,10 @@ onUnmounted(() => {
 }
 
 .question-card__footer {
-  align-items: center;
+  align-items: flex-start;
   border-top: 1px solid var(--color-border-soft);
   display: flex;
+  gap: 12px;
   justify-content: space-between;
   margin-top: 14px;
   padding-top: 10px;
@@ -579,6 +646,26 @@ onUnmounted(() => {
 .question-card__footer span {
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.question-card__meta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.question-card__source,
+.question-card__excerpt {
+  line-height: 1.4;
+}
+
+.question-card__excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .question-card__hint {
@@ -682,6 +769,7 @@ onUnmounted(() => {
   border-color: var(--color-danger-border);
   color: var(--color-danger-title);
 }
+
 
 @media (max-width: 900px) {
   .abyss-page {

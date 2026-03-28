@@ -40,10 +40,11 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
       mode: "speed",
       status: "running",
       run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 120, pending_coins: 0 },
-      questions: [{ id: "q-1", text: "Speed question", options: [{ id: "o-1", text: "False" }, { id: "o-2", text: "True" }] }],
+      questions: [{ id: "q-1", text: "Speed question", options: [{ id: "o-1", text: "False" }, { id: "o-2", text: "True" }], source_locator: "快捷键", supporting_excerpt: "Ctrl + / # 注释" }],
     });
     mocks.submitAnswer.mockResolvedValue({
       is_correct: true,
+      feedback: null,
       run: {
         id: "run-speed-1",
         status: "running",
@@ -68,6 +69,30 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
     expect(wrapper.find(".survival-card__body h2").exists()).toBe(true);
   });
 
+
+  it("strips markdown formatting in speed question and options", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-speed-1",
+      mode: "speed",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 120, pending_coins: 0 },
+      questions: [{ id: "q-1", text: "**Speed** question", options: [{ id: "o-1", text: "**False**" }, { id: "o-2", text: "_True_" }] }],
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.speedSurvival, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarSpeedSurvivalPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".survival-card__body h2").text()).toBe("Speed question");
+    expect(wrapper.find(".answer-pill--false .answer-pill__label").text()).toBe("False");
+    expect(wrapper.find(".answer-pill--true .answer-pill__label").text()).toBe("True");
+  });
+
   it("renders feedback action for reporting errors", async () => {
     const router = createTestRouter();
     await router.push({ path: ROUTES.speedSurvival, query: { documentId: "doc-1" } });
@@ -78,6 +103,55 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
     });
 
     expect(wrapper.find(".feedback-action").exists()).toBe(true);
+  });
+
+  it("renders question provenance details when available", async () => {
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.speedSurvival, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarSpeedSurvivalPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("来源：快捷键");
+    expect(wrapper.text()).toContain("摘录：Ctrl + / # 注释");
+  });
+
+  it("renders wrong answer feedback with correct answer and explanation", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_options: [{ id: "o-2", text: "True" }],
+        explanation: "The source material marks this statement as true.",
+        source_locator: "快捷键",
+        supporting_excerpt: "Ctrl + / # 注释",
+      },
+      run: {
+        id: "run-speed-1",
+        status: "running",
+        score: 0,
+        state: { hp: 2, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 118, pending_coins: 0 },
+      },
+      settlement: null,
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.speedSurvival, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarSpeedSurvivalPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".answer-pill--false").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("正确答案：True");
+    expect(wrapper.text()).toContain("解析：The source material marks this statement as true.");
+    expect(wrapper.text()).toContain("来源：快捷键");
   });
 
   it("renders run status notice for fast answers", async () => {

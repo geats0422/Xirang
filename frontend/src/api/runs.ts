@@ -6,10 +6,19 @@ export type RunQuestionOption = {
   text: string;
 };
 
+export type RunAnswerFeedback = {
+  correct_options: RunQuestionOption[];
+  explanation?: string | null;
+  source_locator?: string | null;
+  supporting_excerpt?: string | null;
+};
+
 export type RunQuestion = {
   id: string;
   text: string;
   options: RunQuestionOption[];
+  source_locator?: string | null;
+  supporting_excerpt?: string | null;
 };
 
 export type CreateRunResponse = {
@@ -39,15 +48,37 @@ export type RunPathOption = {
   kind: string;
   description: string;
   goal_total: number;
+  path_version_id?: string;
+  level_node_id?: string;
 };
 
 export type RunPathOptionsResponse = {
   mode: "endless" | "speed" | "draft";
+  generation_status?: "ready" | "generating" | "failed";
+  path_version_id?: string;
+  version_no?: number;
+  job_id?: string | null;
   options: RunPathOption[];
+};
+
+export type RunPathRegenerationResponse = {
+  generation_status: "generating" | "ready" | "failed";
+  mode: "endless" | "speed" | "draft";
+  path_version_id?: string;
+  next_version_no?: number;
+  job_id?: string | null;
+};
+
+export type CreateRunOptions = {
+  pathId?: string;
+  pathVersionId?: string;
+  levelNodeId?: string;
+  isLegendReview?: boolean;
 };
 
 export type SubmitAnswerResponse = {
   is_correct: boolean;
+  feedback: RunAnswerFeedback | null;
   run: {
     id: string;
     status: string;
@@ -71,7 +102,7 @@ export const createRun = async (
   documentId: string,
   mode: "endless" | "speed" | "draft",
   questionCount = 1,
-  pathId?: string,
+  options: CreateRunOptions = {},
 ): Promise<CreateRunResponse> => {
   return apiRequest<CreateRunResponse>("/api/v1/runs", {
     method: "POST",
@@ -80,7 +111,10 @@ export const createRun = async (
       document_id: documentId,
       mode,
       question_count: questionCount,
-      path_id: pathId,
+      path_id: options.pathId,
+      path_version_id: options.pathVersionId,
+      level_node_id: options.levelNodeId,
+      is_legend_review: options.isLegendReview ?? false,
     },
   });
 };
@@ -119,5 +153,20 @@ export const submitAnswer = async (
 export const listRuns = async (): Promise<RunListItem[]> => {
   return apiRequest<RunListItem[]>("/api/v1/runs", {
     headers: getAuthHeaders(),
+  });
+};
+
+
+export const regenerateRunPath = async (
+  documentId: string,
+  mode: "endless" | "speed" | "draft",
+): Promise<RunPathRegenerationResponse> => {
+  return apiRequest<RunPathRegenerationResponse>("/api/v1/runs/path-regenerations", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: {
+      document_id: documentId,
+      mode,
+    },
   });
 };

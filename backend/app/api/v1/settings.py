@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies.auth import get_current_user_id
+from app.core.config import get_settings as get_app_settings
 from app.db.models.profile import LeaderboardScope, ThemeKey
 from app.db.session import get_db_session
 from app.repositories.settings_repository import SettingsRepository
-from app.schemas.settings import SettingsResponse, SettingsUpdateRequest
+from app.schemas.settings import AiConfigResponse, SettingsResponse, SettingsUpdateRequest
 from app.services.settings.service import SettingsNotFoundError, SettingsService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -50,6 +51,44 @@ async def update_settings(
         return await service.update_settings(user_id=user_id, payload=payload)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.get("/ai-config", response_model=AiConfigResponse)
+async def get_ai_config(
+    _user_id: UUID = Depends(get_current_user_id),
+) -> AiConfigResponse:
+    settings = get_app_settings()
+    return AiConfigResponse(
+        provider="openai-compatible",
+        base_url=settings.llm_base_url,
+        model=settings.llm_model,
+        configured=bool(settings.llm_api_key),
+    )
+
+
+@router.get("/ai-models", response_model=AiConfigResponse)
+async def get_ai_models() -> AiConfigResponse:
+    from app.integrations.agents.client import OpenAIClient
+
+    settings = get_app_settings()
+    available_models: list[str] = []
+    if settings.llm_api_key and settings.llm_base_url:
+        try:
+            client = OpenAIClient(
+                api_key=settings.llm_api_key,
+                model=settings.llm_model,
+                base_url=settings.llm_base_url,
+            )
+            available_models = await client.list_models()
+        except Exception:
+            available_models = [settings.llm_model]
+    return AiConfigResponse(
+        provider="openai-compatible",
+        base_url=settings.llm_base_url,
+        model=settings.llm_model,
+        configured=bool(settings.llm_api_key),
+        available_models=available_models,
+    )
 
 
 @router.get("/health")

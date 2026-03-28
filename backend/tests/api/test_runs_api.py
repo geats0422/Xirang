@@ -8,9 +8,17 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 
 from app.api.v1 import runs as runs_router
+from app.db.models.documents import DocumentStatus, QuestionSetStatus
 from app.db.models.runs import RunMode, RunStatus
 from app.main import create_app
-from app.services.runs.schemas import AnswerResult, QuestionData, Settlement, SubmitAnswerResult
+from app.services.runs.schemas import (
+    AnswerFeedback,
+    AnswerFeedbackOption,
+    AnswerResult,
+    QuestionData,
+    Settlement,
+    SubmitAnswerResult,
+)
 
 if TYPE_CHECKING:
     from app.db.models.runs import Run
@@ -32,6 +40,46 @@ class FakeRun:
     ended_at: datetime | None = None
 
 
+@dataclass
+class FakeDocument:
+    id: UUID
+    owner_user_id: UUID
+    ingest_status: DocumentStatus
+
+
+@dataclass
+class FakeQuestionSet:
+    status: QuestionSetStatus
+    question_count: int
+
+
+class FakeDocumentRepository:
+    def __init__(
+        self,
+        *,
+        owner_user_id: UUID,
+        ingest_status: DocumentStatus = DocumentStatus.READY,
+        question_set_status: QuestionSetStatus = QuestionSetStatus.READY,
+        question_count: int = 10,
+    ) -> None:
+        self._owner_user_id = owner_user_id
+        self._ingest_status = ingest_status
+        self._question_set_status = question_set_status
+        self._question_count = question_count
+
+    async def get_document_by_id(self, document_id: UUID) -> FakeDocument | None:
+        return FakeDocument(
+            id=document_id,
+            owner_user_id=self._owner_user_id,
+            ingest_status=self._ingest_status,
+        )
+
+    async def get_question_set_for_document(self, document_id: UUID) -> FakeQuestionSet | None:
+        return FakeQuestionSet(
+            status=self._question_set_status, question_count=self._question_count
+        )
+
+
 class FakeRunService:
     def __init__(self) -> None:
         self.runs: dict[UUID, FakeRun] = {}
@@ -47,6 +95,9 @@ class FakeRunService:
         mode: RunMode,
         question_count: int,
         path_id: str | None = None,
+        path_version_id: UUID | None = None,
+        level_node_id: UUID | None = None,
+        is_legend_review: bool = False,
     ) -> tuple[FakeRun, list[QuestionData]]:
         run_id = uuid4()
         questions = [
@@ -63,6 +114,9 @@ class FakeRunService:
                 ],
                 correct_option_ids=[uuid4()],
                 difficulty=1,
+                explanation=f"Explanation {i + 1}",
+                source_locator=f"Section {i + 1}",
+                supporting_excerpt=f"Excerpt {i + 1}",
             )
             for i in range(question_count)
         ]
@@ -155,6 +209,18 @@ class FakeRunService:
             "goal_current": goal_current,
         }
         settlement = None
+        feedback = None
+        if not is_correct:
+            feedback = AnswerFeedback(
+                correct_options=[
+                    AnswerFeedbackOption(
+                        id=str(question.correct_option_ids[0]), text=question.options[0]["text"]
+                    )
+                ],
+                explanation=question.explanation,
+                source_locator=question.source_locator,
+                supporting_excerpt=question.supporting_excerpt,
+            )
         if len(self.answers[run_id]) >= run.total_questions:
             run.status = RunStatus.COMPLETED
             run.ended_at = datetime.now(UTC)
@@ -173,6 +239,7 @@ class FakeRunService:
             is_correct=is_correct,
             run=cast("Run", run),
             settlement=settlement,
+            feedback=feedback,
         )
 
     async def get_settlement(self, run_id: UUID) -> Settlement:
@@ -216,11 +283,53 @@ class FakeRunService:
         ]
 
 
-def create_test_client(user_id: UUID) -> TestClient:
+class FakeLearningPathService:
+    async def get_path_options(self, *, document_id: UUID, mode: str) -> dict[str, object]:
+        return {
+            "generation_status": "ready",
+            "mode": mode,
+            "path_version_id": str(uuid4()),
+            "version_no": 1,
+            "options": [
+                {
+                    "path_id": "F1",
+                    "label": "F1",
+                    "kind": "floor",
+                    "description": "Warm-up",
+                    "goal_total": 10,
+                    "path_version_id": str(uuid4()),
+                    "level_node_id": str(uuid4()),
+                }
+            ],
+        }
+
+    async def regenerate_path(
+        self, *, document_id: UUID, mode: str, user_id: UUID
+    ) -> dict[str, object]:
+        return {
+            "generation_status": "generating",
+            "mode": mode,
+            "path_version_id": str(uuid4()),
+            "next_version_no": 2,
+            "job_id": None,
+        }
+
+
+def create_test_client(
+    user_id: UUID,
+    *,
+    fake_document_repository: FakeDocumentRepository | None = None,
+) -> TestClient:
     app = create_app()
     fake_service = FakeRunService()
+    fake_learning_path_service = FakeLearningPathService()
+    document_repository = fake_document_repository or FakeDocumentRepository(owner_user_id=user_id)
     app.dependency_overrides[runs_router.get_current_user_id] = lambda: user_id
     app.dependency_overrides[runs_router.get_run_service] = lambda: fake_service
+    app.dependency_overrides[runs_router.get_learning_path_service] = (
+        lambda: fake_learning_path_service
+    )
+    app.dependency_overrides[runs_router.get_document_repository] = lambda: document_repository
     return TestClient(app)
 
 
@@ -258,6 +367,29 @@ class TestRunsAPI:
         )
         assert response.status_code == 422
 
+    def test_create_run_rejects_when_document_not_ready(self) -> None:
+        user_id = uuid4()
+        doc_id = uuid4()
+        client = create_test_client(
+            user_id,
+            fake_document_repository=FakeDocumentRepository(
+                owner_user_id=user_id,
+                ingest_status=DocumentStatus.PROCESSING,
+            ),
+        )
+
+        response = client.post(
+            "/api/v1/runs",
+            json={
+                "document_id": str(doc_id),
+                "mode": "endless",
+                "question_count": 5,
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "document_not_ready"
+
     def test_submit_answer_returns_result(self) -> None:
         user_id = uuid4()
         doc_id = uuid4()
@@ -285,6 +417,11 @@ class TestRunsAPI:
         assert "is_correct" in body
         assert "answer" in body
         assert "run" in body
+        assert body["feedback"] is not None
+        assert body["feedback"]["correct_options"]
+        assert body["feedback"]["explanation"] == "Explanation 1"
+        assert body["feedback"]["source_locator"] == "Section 1"
+        assert body["feedback"]["supporting_excerpt"] == "Excerpt 1"
 
     def test_submit_answer_returns_settlement_on_completion(self) -> None:
         user_id = uuid4()

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Protocol, cast
 from uuid import UUID
 
 from app.db.models.runs import RunMode, RunStatus
+from app.services.learning_paths.reward_policy import DailyCapUsage, RewardComputation, RewardPolicy
 from app.services.runs.exceptions import (
     DuplicateAnswerError,
     InvalidRunStateError,
@@ -14,7 +15,14 @@ from app.services.runs.exceptions import (
     RunNotCompletedError,
     RunNotFoundError,
 )
-from app.services.runs.schemas import AnswerResult, QuestionData, Settlement, SubmitAnswerResult
+from app.services.runs.schemas import (
+    AnswerFeedback,
+    AnswerFeedbackOption,
+    AnswerResult,
+    QuestionData,
+    Settlement,
+    SubmitAnswerResult,
+)
 
 
 class RunRepositoryProtocol(Protocol):
@@ -26,6 +34,9 @@ class RunRepositoryProtocol(Protocol):
         mode: RunMode,
         total_questions: int,
         mode_state: Mapping[str, object] | None = None,
+        source_path_version_id: UUID | None = None,
+        source_level_node_id: UUID | None = None,
+        is_legend_review: bool = False,
     ) -> Any: ...
 
     async def get_run(self, run_id: UUID) -> Any: ...
@@ -42,6 +53,8 @@ class RunRepositoryProtocol(Protocol):
         combo_count: int | None = None,
         mode_state: Mapping[str, object] | None = None,
         ended_at: datetime | None = None,
+        legend_reward_rate: float | None = None,
+        version_reward_discount: float | None = None,
     ) -> None: ...
 
     async def list_document_questions(
@@ -84,6 +97,56 @@ class RunRepositoryProtocol(Protocol):
 
     async def get_settlement(self, run_id: UUID) -> Any | None: ...
 
+    async def upsert_learning_path_progress(
+        self,
+        *,
+        user_id: UUID,
+        path_version_id: UUID,
+        node_id: UUID,
+        completed_run_id: UUID,
+        completed_at: datetime,
+    ) -> None: ...
+
+    async def resolve_unit_node_id(self, *, node_id: UUID) -> UUID | None: ...
+
+    async def increment_legend_review_progress(
+        self,
+        *,
+        user_id: UUID,
+        path_version_id: UUID,
+        unit_node_id: UUID,
+        completed_at: datetime,
+    ) -> None: ...
+
+    async def get_path_version_meta(
+        self, *, path_version_id: UUID
+    ) -> tuple[UUID, str, int] | None: ...
+
+    async def get_latest_ready_path_version_no(
+        self, *, document_id: UUID, mode: str
+    ) -> int | None: ...
+
+    async def get_legend_round_count(
+        self,
+        *,
+        user_id: UUID,
+        path_version_id: UUID,
+        unit_node_id: UUID,
+    ) -> int: ...
+
+    async def is_subscription_active(self, *, user_id: UUID, at: datetime) -> bool: ...
+
+    async def get_daily_reward_cap_usage(self, *, user_id: UUID, date_key: date) -> Any | None: ...
+
+    async def upsert_daily_reward_cap_usage(
+        self,
+        *,
+        user_id: UUID,
+        date_key: date,
+        xp_delta: int,
+        coin_delta: int,
+    ) -> Any: ...
+
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...
 
@@ -101,6 +164,9 @@ class RunService:
         mode: RunMode,
         question_count: int,
         path_id: str | None = None,
+        path_version_id: UUID | None = None,
+        level_node_id: UUID | None = None,
+        is_legend_review: bool = False,
     ) -> tuple[Any, list[QuestionData]]:
         strategy = self._resolve_path_strategy(mode=mode, path_id=path_id)
         strategy_path_id = str(strategy.get("path_id") or "")
@@ -140,6 +206,9 @@ class RunService:
                 goal_total=strategy_goal_total,
                 time_left_sec=strategy_time_left,
             ),
+            source_path_version_id=path_version_id,
+            source_level_node_id=level_node_id,
+            is_legend_review=is_legend_review,
         )
         await self._repository.add_run_questions(run.id, questions)
         await self._repository.commit()
@@ -201,6 +270,7 @@ class RunService:
         provided_ids = {str(v) for v in selected_option_ids}
         correct_ids = {str(v) for v in target_question.get("correct_option_ids", [])}
         is_correct = provided_ids == correct_ids
+        feedback = None if is_correct else self._build_wrong_answer_feedback(target_question)
 
         answer = await self._repository.record_answer(
             run_id,
@@ -221,6 +291,13 @@ class RunService:
         )
 
         settlement: Settlement | None = None
+        reward_meta = RewardComputation(
+            xp=0,
+            coins=0,
+            legend_rate=1.0,
+            version_discount=1.0,
+            free_cap_applied=False,
+        )
         run_status: RunStatus = RunStatus.RUNNING
         ended_at: datetime | None = None
         mode_state = self._normalize_mode_state(
@@ -263,7 +340,8 @@ class RunService:
         if answered_count >= run.total_questions:
             run_status = RunStatus.COMPLETED
             ended_at = datetime.now(UTC)
-            settlement = await self._build_settlement(
+            settlement, reward_meta = await self._build_settlement(
+                run=run,
                 run_id=run.id,
                 user_id=run.user_id,
                 mode=run.mode,
@@ -275,6 +353,7 @@ class RunService:
                 goal_total=goal_total,
             )
             mode_state["pending_coins"] = 0
+            await self._record_learning_path_progress(run=run, completed_at=ended_at)
 
         await self._repository.update_run(
             run_id,
@@ -285,6 +364,12 @@ class RunService:
             combo_count=combo_count,
             mode_state=mode_state,
             ended_at=ended_at,
+            legend_reward_rate=reward_meta.legend_rate
+            if run_status == RunStatus.COMPLETED
+            else None,
+            version_reward_discount=reward_meta.version_discount
+            if run_status == RunStatus.COMPLETED
+            else None,
         )
 
         await self._repository.commit()
@@ -294,6 +379,28 @@ class RunService:
             is_correct=is_correct,
             run=refreshed_run,
             settlement=settlement,
+            feedback=feedback,
+        )
+
+    @staticmethod
+    def _build_wrong_answer_feedback(target_question: dict[str, Any]) -> AnswerFeedback:
+        correct_ids = {str(v) for v in target_question.get("correct_option_ids", [])}
+        raw_options = target_question.get("options", [])
+        correct_options = [
+            AnswerFeedbackOption(id=str(option.get("id", "")), text=str(option.get("text", "")))
+            for option in raw_options
+            if isinstance(option, dict) and str(option.get("id", "")) in correct_ids
+        ]
+
+        explanation = target_question.get("explanation")
+        source_locator = target_question.get("source_locator")
+        supporting_excerpt = target_question.get("supporting_excerpt")
+
+        return AnswerFeedback(
+            correct_options=correct_options,
+            explanation=explanation if isinstance(explanation, str) else None,
+            source_locator=source_locator if isinstance(source_locator, str) else None,
+            supporting_excerpt=supporting_excerpt if isinstance(supporting_excerpt, str) else None,
         )
 
     async def get_settlement(self, run_id: UUID) -> Settlement:
@@ -305,13 +412,15 @@ class RunService:
 
         stored = await self._repository.get_settlement(run_id)
         if stored is None:
-            return await self._build_settlement(
+            settlement, _ = await self._build_settlement(
+                run=run,
                 run_id=run.id,
                 user_id=run.user_id,
                 mode=run.mode,
                 correct_count=run.correct_answers,
                 total_count=run.total_questions,
             )
+            return settlement
 
         return Settlement(
             run_id=stored.run_id,
@@ -323,9 +432,115 @@ class RunService:
             total_count=run.total_questions,
         )
 
+    async def _record_learning_path_progress(self, *, run: Any, completed_at: datetime) -> None:
+        path_version_id = getattr(run, "source_path_version_id", None)
+        level_node_id = getattr(run, "source_level_node_id", None)
+
+        if not isinstance(path_version_id, UUID) or not isinstance(level_node_id, UUID):
+            return
+
+        await self._repository.upsert_learning_path_progress(
+            user_id=run.user_id,
+            path_version_id=path_version_id,
+            node_id=level_node_id,
+            completed_run_id=run.id,
+            completed_at=completed_at,
+        )
+
+        if not bool(getattr(run, "is_legend_review", False)):
+            return
+
+        unit_node_id = await self._repository.resolve_unit_node_id(node_id=level_node_id)
+        if unit_node_id is None:
+            return
+
+        await self._repository.increment_legend_review_progress(
+            user_id=run.user_id,
+            path_version_id=path_version_id,
+            unit_node_id=unit_node_id,
+            completed_at=completed_at,
+        )
+
+    async def _compute_reward(
+        self,
+        *,
+        run: Any,
+        base_xp: int,
+        base_coins: int,
+    ) -> RewardComputation:
+        now = datetime.now(UTC)
+
+        path_version_id = getattr(run, "source_path_version_id", None)
+        level_node_id = getattr(run, "source_level_node_id", None)
+        is_latest_ready_version: bool | None = None
+
+        if isinstance(path_version_id, UUID):
+            path_meta = await self._repository.get_path_version_meta(
+                path_version_id=path_version_id
+            )
+            if path_meta is not None:
+                document_id, mode_value, version_no = path_meta
+                latest_ready_version_no = await self._repository.get_latest_ready_path_version_no(
+                    document_id=document_id,
+                    mode=mode_value,
+                )
+                if latest_ready_version_no is not None:
+                    is_latest_ready_version = version_no >= latest_ready_version_no
+
+        legend_round_count = 0
+        if (
+            bool(getattr(run, "is_legend_review", False))
+            and isinstance(path_version_id, UUID)
+            and isinstance(level_node_id, UUID)
+        ):
+            unit_node_id = await self._repository.resolve_unit_node_id(node_id=level_node_id)
+            if unit_node_id is not None:
+                legend_round_count = await self._repository.get_legend_round_count(
+                    user_id=run.user_id,
+                    path_version_id=path_version_id,
+                    unit_node_id=unit_node_id,
+                )
+
+        subscription_active = await self._repository.is_subscription_active(
+            user_id=run.user_id, at=now
+        )
+        usage = DailyCapUsage(xp_earned=0, coin_earned=0)
+        usage_date_key = RewardPolicy.utc8_date_key(now)
+        if not subscription_active:
+            usage_row = await self._repository.get_daily_reward_cap_usage(
+                user_id=run.user_id,
+                date_key=usage_date_key,
+            )
+            if usage_row is not None:
+                usage = DailyCapUsage(
+                    xp_earned=int(usage_row.xp_legend_earned),
+                    coin_earned=int(usage_row.coin_legend_earned),
+                )
+
+        reward = RewardPolicy.build_reward(
+            base_xp=base_xp,
+            base_coins=base_coins,
+            is_legend_review=bool(getattr(run, "is_legend_review", False)),
+            historical_legend_round_count=legend_round_count,
+            is_latest_ready_version=is_latest_ready_version,
+            subscription_active=subscription_active,
+            daily_usage=usage,
+        )
+
+        if not subscription_active and (reward.xp > 0 or reward.coins > 0):
+            await self._repository.upsert_daily_reward_cap_usage(
+                user_id=run.user_id,
+                date_key=usage_date_key,
+                xp_delta=reward.xp,
+                coin_delta=reward.coins,
+            )
+
+        return reward
+
     async def _build_settlement(
         self,
         *,
+        run: Any,
         run_id: UUID,
         user_id: UUID,
         mode: RunMode,
@@ -335,7 +550,7 @@ class RunService:
         path_id: str | None = None,
         goal_current: int | None = None,
         goal_total: int | None = None,
-    ) -> Settlement:
+    ) -> tuple[Settlement, RewardComputation]:
         combo_max = await self._repository.get_combo_max(run_id)
         score = self._calculate_score(
             mode=mode,
@@ -344,15 +559,21 @@ class RunService:
             combo_count=combo_max,
         )
         accuracy = (correct_count / total_count) if total_count > 0 else 0.0
-        coins = max(0, score // 10)
+        base_coins = max(0, score // 10)
         if mode == RunMode.ENDLESS and pending_coins is not None:
-            coins = max(0, pending_coins)
+            base_coins = max(0, pending_coins)
+
+        reward_meta = await self._compute_reward(
+            run=run,
+            base_xp=score,
+            base_coins=base_coins,
+        )
 
         await self._repository.upsert_settlement(
             run_id=run_id,
             user_id=user_id,
-            xp_gained=score,
-            coin_reward=coins,
+            xp_gained=reward_meta.xp,
+            coin_reward=reward_meta.coins,
             combo_count=combo_max,
             accuracy_pct=accuracy,
             payload={
@@ -362,36 +583,46 @@ class RunService:
                 "path_id": path_id,
                 "goal_current": goal_current,
                 "goal_total": goal_total,
+                "base_xp": score,
+                "base_coins": base_coins,
+                "legend_rate": reward_meta.legend_rate,
+                "version_discount": reward_meta.version_discount,
+                "free_cap_applied": reward_meta.free_cap_applied,
             },
         )
 
         if self._wallet_service is not None:
-            await self._wallet_service.credit(
-                user_id=user_id,
-                amount=coins,
-                asset_code="COIN",
-                reason_code="run_settlement",
-                source_type="run",
-                source_id=run_id,
-                idempotency_key=f"run:{run_id}:coins",
-            )
-            await self._wallet_service.credit(
-                user_id=user_id,
-                amount=score,
-                asset_code="XP",
-                reason_code="run_settlement",
-                source_type="run",
-                source_id=run_id,
-                idempotency_key=f"run:{run_id}:xp",
-            )
-        return Settlement(
-            run_id=run_id,
-            xp_earned=score,
-            coins_earned=coins,
-            combo_max=combo_max,
-            accuracy=accuracy,
-            correct_count=correct_count,
-            total_count=total_count,
+            if reward_meta.coins > 0:
+                await self._wallet_service.credit(
+                    user_id=user_id,
+                    amount=reward_meta.coins,
+                    asset_code="COIN",
+                    reason_code="run_settlement",
+                    source_type="run",
+                    source_id=run_id,
+                    idempotency_key=f"run:{run_id}:coins",
+                )
+            if reward_meta.xp > 0:
+                await self._wallet_service.credit(
+                    user_id=user_id,
+                    amount=reward_meta.xp,
+                    asset_code="XP",
+                    reason_code="run_settlement",
+                    source_type="run",
+                    source_id=run_id,
+                    idempotency_key=f"run:{run_id}:xp",
+                )
+        return (
+            Settlement(
+                run_id=run_id,
+                xp_earned=reward_meta.xp,
+                coins_earned=reward_meta.coins,
+                combo_max=combo_max,
+                accuracy=accuracy,
+                correct_count=correct_count,
+                total_count=total_count,
+            ),
+            reward_meta,
         )
 
     @staticmethod

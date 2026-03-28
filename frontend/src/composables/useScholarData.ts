@@ -11,7 +11,14 @@ import { ApiError } from "../api/http";
 import { getLeaderboard, type LeaderboardEntry } from "../api/leaderboard";
 import { getMyProfile } from "../api/profile";
 import { listRuns, type RunListItem } from "../api/runs";
-import { getSettings, updateSettings, type ThemeKey } from "../api/settings";
+import {
+  getAiConfig,
+  getAiModels,
+  getSettings,
+  updateSettings,
+  type AiConfigResponse,
+  type ThemeKey,
+} from "../api/settings";
 import { getShopBalance } from "../api/shop";
 import { i18n, SUPPORTED_LOCALES, type SupportedLocale } from "../i18n";
 
@@ -87,6 +94,7 @@ const dailyReminderEnabled = ref(false);
 
 const modelOptions = ref<string[]>([]);
 const activeModel = ref(import.meta.env.VITE_DEFAULT_MODEL || "gpt-4o-mini");
+const aiConfig = ref<AiConfigResponse | null>(null);
 const LANGUAGE_STORAGE_KEY = "xirang:language";
 const ACTIVE_MODEL_KEY = "xirang:activeModel";
 
@@ -172,14 +180,21 @@ const isProviderConfigured = (provider: ProviderConfig): boolean => {
   return provider.baseUrl.trim().length > 0 && provider.models.length > 0;
 };
 
-const refreshModelOptions = () => {
+const refreshModelOptions = (serverModel?: string | null) => {
   const providers = parseProviderConfig();
   const options = providers
     .filter(isProviderConfigured)
     .flatMap((provider) => provider.models)
     .filter((model, index, array) => model && array.indexOf(model) === index);
 
-  modelOptions.value = options.length > 0 ? options : [import.meta.env.VITE_DEFAULT_MODEL || "gpt-4o-mini"];
+  const merged = [...options];
+  const normalizedServerModel = typeof serverModel === "string" ? serverModel.trim() : "";
+  if (normalizedServerModel.length > 0 && !merged.includes(normalizedServerModel)) {
+    merged.unshift(normalizedServerModel);
+  }
+
+  modelOptions.value =
+    merged.length > 0 ? merged : [import.meta.env.VITE_DEFAULT_MODEL || "gpt-4o-mini"];
 
   if (!modelOptions.value.includes(activeModel.value)) {
     activeModel.value = modelOptions.value[0];
@@ -263,14 +278,23 @@ const hydrate = async () => {
     }
   };
 
-  const [profileResult, authUserResult, balanceResult, docsResult, runsResult, settingsResult, leaderboardResult] =
-    await Promise.allSettled([
+  const [
+    profileResult,
+    authUserResult,
+    balanceResult,
+    docsResult,
+    runsResult,
+    settingsResult,
+    aiConfigResult,
+    leaderboardResult,
+  ] = await Promise.allSettled([
       invoke(() => getMyProfile()),
       invoke(() => getCurrentAuthUser()),
       invoke(() => getShopBalance()),
       invoke(() => listDocuments()),
       invoke(() => listRuns()),
       invoke(() => getSettings()),
+      invoke(() => getAiConfig()),
       invoke(() => getLeaderboard(20)),
     ]);
 
@@ -346,6 +370,19 @@ const hydrate = async () => {
       }
     }
   }
+
+  if (aiConfigResult.status === "fulfilled") {
+    aiConfig.value = aiConfigResult.value;
+    refreshModelOptions(aiConfigResult.value.model);
+  } else {
+    aiConfig.value = null;
+  }
+
+  const [aiModelsResult] = await Promise.allSettled([invoke(() => getAiModels())]);
+  if (aiModelsResult.status === "fulfilled" && aiModelsResult.value.available_models?.length > 0) {
+    modelOptions.value = aiModelsResult.value.available_models;
+  }
+
 
   if (leaderboardResult.status === "fulfilled") {
     leaderboard.value = Array.isArray(leaderboardResult.value) ? leaderboardResult.value : [];
@@ -438,6 +475,7 @@ const completedRuns = computed(() =>
 export const useScholarData = () => {
   return {
     activeModel,
+    aiConfig,
     applyLanguage,
     applyTheme,
     coins,

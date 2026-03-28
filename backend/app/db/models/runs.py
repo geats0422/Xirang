@@ -46,6 +46,31 @@ class Run(UUIDPrimaryKeyMixin, Base):
         PGUUID(as_uuid=True),
         ForeignKey("document_question_sets.id", ondelete="SET NULL"),
     )
+    source_path_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("learning_path_versions.id", ondelete="SET NULL"),
+    )
+    source_level_node_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("learning_path_nodes.id", ondelete="SET NULL"),
+    )
+    is_legend_review: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+    legend_reward_rate: Mapped[float] = mapped_column(
+        Numeric(4, 2),
+        nullable=False,
+        default=1.0,
+        server_default="1.0",
+    )
+    version_reward_discount: Mapped[float] = mapped_column(
+        Numeric(4, 2),
+        nullable=False,
+        default=1.0,
+        server_default="1.0",
+    )
     mode: Mapped[RunMode] = mapped_column(
         Enum(RunMode, native_enum=False, create_constraint=True, values_callable=enum_values),
         nullable=False,

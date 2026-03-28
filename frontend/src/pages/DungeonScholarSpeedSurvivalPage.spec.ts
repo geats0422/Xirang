@@ -68,6 +68,30 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
     expect(wrapper.find(".survival-card__body h2").exists()).toBe(true);
   });
 
+
+  it("strips markdown formatting in speed question and options", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-speed-1",
+      mode: "speed",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 120, pending_coins: 0 },
+      questions: [{ id: "q-1", text: "**Speed** question", options: [{ id: "o-1", text: "**False**" }, { id: "o-2", text: "_True_" }] }],
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.speedSurvival, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarSpeedSurvivalPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".survival-card__body h2").text()).toBe("Speed question");
+    expect(wrapper.find(".answer-pill--false .answer-pill__label").text()).toBe("False");
+    expect(wrapper.find(".answer-pill--true .answer-pill__label").text()).toBe("True");
+  });
+
   it("renders feedback action for reporting errors", async () => {
     const router = createTestRouter();
     await router.push({ path: ROUTES.speedSurvival, query: { documentId: "doc-1" } });

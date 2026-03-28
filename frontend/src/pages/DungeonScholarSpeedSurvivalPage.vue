@@ -7,6 +7,7 @@ import { ROUTES } from "../constants/routes";
 import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
+import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
 
@@ -47,7 +48,7 @@ const currentQuestion = computed(() => questions.value[questionIndex.value] ?? n
 
 const questionText = computed(() => {
   if (currentQuestion.value?.text) {
-    return currentQuestion.value.text;
+    return stripQuestionFormatting(currentQuestion.value.text);
   }
   return "Loading question...";
 });
@@ -68,8 +69,16 @@ const answerPrompt = computed(() => {
     : "Tap the option that matches the statement";
 });
 
-const falseOptionLabel = computed(() => currentQuestion.value?.options[0]?.text || "--");
-const trueOptionLabel = computed(() => currentQuestion.value?.options[1]?.text || "--");
+const falseOptionLabel = computed(() =>
+  currentQuestion.value?.options[0]?.text
+    ? stripQuestionFormatting(currentQuestion.value.options[0].text)
+    : "--",
+);
+const trueOptionLabel = computed(() =>
+  currentQuestion.value?.options[1]?.text
+    ? stripQuestionFormatting(currentQuestion.value.options[1].text)
+    : "--",
+);
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {

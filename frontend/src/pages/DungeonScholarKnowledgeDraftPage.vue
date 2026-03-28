@@ -7,6 +7,7 @@ import { ROUTES } from "../constants/routes";
 import { createRun, submitAnswer, type RunQuestion, type RunQuestionOption } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
+import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
 
@@ -53,7 +54,7 @@ const materialTitle = computed(() => {
 
 const questionText = computed(() => {
   if (currentQuestion.value?.text) {
-    return currentQuestion.value.text;
+    return stripQuestionFormatting(currentQuestion.value.text);
   }
   return "Loading question...";
 });
@@ -63,6 +64,7 @@ const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
 const optionChips = computed(() =>
   (currentQuestion.value?.options ?? []).map((option, index) => ({
     ...option,
+    text: stripQuestionFormatting(option.text),
     tone: chipTones[index % chipTones.length],
   })),
 );

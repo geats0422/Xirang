@@ -66,6 +66,36 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     expect(wrapper.find(".question-card h1").exists()).toBe(true);
   });
 
+
+  it("strips markdown formatting in question card and answer matching", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-1",
+      mode: "endless",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 10, time_left_sec: 900, pending_coins: 0 },
+      questions: [{ id: "q-1", text: "**核心转变**是什么?", options: [{ id: "o-1", text: "**Water**" }] }],
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.endlessAbyss, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarEndlessAbyssPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".question-card h1").text()).toContain("核心转变是什么?");
+    expect(wrapper.find(".question-card h1").text()).not.toContain("**");
+
+    const answerInput = wrapper.find('input[placeholder="Type the answer keyword"]');
+    await answerInput.setValue("water");
+    await answerInput.trigger("keydown.enter");
+    await flushPromises();
+
+    expect(mocks.submitAnswer).toHaveBeenCalledWith("run-1", "q-1", ["o-1"], expect.any(Number));
+  });
+
   it("renders feedback action for reporting errors", async () => {
     const router = createTestRouter();
     await router.push(ROUTES.endlessAbyss);

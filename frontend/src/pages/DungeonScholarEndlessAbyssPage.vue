@@ -7,6 +7,7 @@ import { ROUTES } from "../constants/routes";
 import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
+import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
 
@@ -73,7 +74,7 @@ const currentQuestion = computed(() => questions.value[questionIndex.value] ?? n
 
 const questionTitle = computed(() => {
   if (currentQuestion.value?.text) {
-    return currentQuestion.value.text;
+    return stripQuestionFormatting(currentQuestion.value.text);
   }
   return "Loading question...";
 });
@@ -83,7 +84,7 @@ const questionHint = computed(() => {
   if (!firstOption?.text) {
     return "HINT: --";
   }
-  const firstChar = firstOption.text.trim().charAt(0).toUpperCase();
+  const firstChar = stripQuestionFormatting(firstOption.text).trim().charAt(0).toUpperCase();
   return firstChar ? `HINT: STARTS WITH ${firstChar}` : "HINT: --";
 });
 
@@ -188,9 +189,9 @@ const castSpell = async () => {
   }
 
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
-  const normalizedAnswer = answer.value.trim().toLowerCase();
+  const normalizedAnswer = stripQuestionFormatting(answer.value).trim().toLowerCase();
   const matchedOption = currentQuestion.value.options.find(
-    (option) => option.text.trim().toLowerCase() === normalizedAnswer,
+    (option) => stripQuestionFormatting(option.text).trim().toLowerCase() === normalizedAnswer,
   );
 
   try {

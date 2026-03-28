@@ -68,6 +68,31 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     expect(wrapper.find(".scroll-paper h2").exists()).toBe(true);
   });
 
+
+  it("strips markdown formatting in draft question and chips", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-draft-1",
+      mode: "draft",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 600, pending_coins: 0 },
+      questions: [{ id: "q-1", text: "**Draft** question", options: [{ id: "o-1", text: "_Wu wei_" }, { id: "o-2", text: "**Legalism**" }] }],
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.knowledgeDraft, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarKnowledgeDraftPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".scroll-paper__body").text()).toContain("Draft question");
+    expect(wrapper.find(".scroll-paper__body").text()).not.toContain("**");
+    expect(wrapper.findAll(".draft-chip")[0].text()).toBe("Wu wei");
+    expect(wrapper.findAll(".draft-chip")[1].text()).toBe("Legalism");
+  });
+
   it("renders feedback action for reporting errors", async () => {
     const router = createTestRouter();
     await router.push({ path: ROUTES.knowledgeDraft, query: { documentId: "doc-1" } });

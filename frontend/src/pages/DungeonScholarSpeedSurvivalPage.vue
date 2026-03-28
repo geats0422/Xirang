@@ -3,11 +3,13 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import MistakeReviewPanel from "../components/MistakeReviewPanel.vue";
 import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion } from '../api/runs';
+import { createRun, submitAnswer, type MistakeReviewItem, type RunAnswerFeedback, type RunQuestion } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
+import { buildMistakeReviewItem } from "../utils/mistakeReview";
 import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
@@ -39,6 +41,8 @@ let tickerId: number | null = null;
 const showSettlement = ref(false);
 const runStatus = ref<RunStatus>("normal");
 const wrongFeedback = ref<RunAnswerFeedback | null>(null);
+const showMistakeReview = ref(false);
+const mistakeReviewItems = ref<MistakeReviewItem[]>([]);
 const settlementXp = ref(0);
 const settlementCoins = ref(0);
 const settlementCombo = ref(0);
@@ -95,6 +99,23 @@ const wrongFeedbackExcerpt = computed(() => {
     ? stripQuestionFormatting(excerpt).trim()
     : null;
 });
+
+const reviewLabel = computed(() => (mistakeReviewItems.value.length > 0 ? "Review Mistakes" : "No mistakes this run"));
+
+const appendMistakeReviewItem = (
+  question: RunQuestion,
+  feedback: RunAnswerFeedback | null,
+  selectedAnswerText?: string | null,
+) => {
+  const item = buildMistakeReviewItem(question, feedback, selectedAnswerText);
+  if (!item) {
+    return;
+  }
+  if (mistakeReviewItems.value.some((entry) => entry.question_id === item.question_id)) {
+    return;
+  }
+  mistakeReviewItems.value = [...mistakeReviewItems.value, item];
+};
 
 const progressPercent = computed(() => {
   if (maxRunTime.value === null || timeRemaining.value === null || maxRunTime.value <= 0) {
@@ -221,6 +242,7 @@ const chooseAnswer = async (answer: "false" | "true") => {
   const selectedOption = answer === "false"
     ? currentQuestion.value.options[0]
     : currentQuestion.value.options[1] || currentQuestion.value.options[0];
+  const selectedAnswerText = selectedOption?.text ?? answer;
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
 
   try {
@@ -232,6 +254,9 @@ const chooseAnswer = async (answer: "false" | "true") => {
     );
     applyRunState(result.run.state);
     wrongFeedback.value = result.is_correct ? null : result.feedback;
+    if (!result.is_correct) {
+      appendMistakeReviewItem(currentQuestion.value, result.feedback, selectedAnswerText);
+    }
 
     if (result.is_correct) {
       combo.value = (combo.value ?? 0) + 1;
@@ -261,6 +286,18 @@ const chooseAnswer = async (answer: "false" | "true") => {
 
 const closeSettlement = () => {
   showSettlement.value = false;
+};
+
+const openMistakeReview = () => {
+  if (mistakeReviewItems.value.length === 0) {
+    return;
+  }
+  showSettlement.value = false;
+  showMistakeReview.value = true;
+};
+
+const closeMistakeReview = () => {
+  showMistakeReview.value = false;
 };
 
 const toggleFeedbackForm = async () => {
@@ -394,9 +431,18 @@ onUnmounted(() => {
       :combo-count="settlementCombo"
       :goal-current="settlementGoalCurrent"
       :goal-total="settlementGoalTotal"
+      :review-enabled="mistakeReviewItems.length > 0"
+      :review-label="reviewLabel"
       goal-text="Keep sharpening your reflexes to reach enlightenment through speed." 
       @close="closeSettlement"
       @confirm="goLibrary"
+      @review="openMistakeReview"
+    />
+
+    <MistakeReviewPanel
+      :visible="showMistakeReview"
+      :items="mistakeReviewItems"
+      @close="closeMistakeReview"
     />
   </main>
 </template>

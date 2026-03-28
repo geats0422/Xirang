@@ -395,13 +395,38 @@ class RunService:
         explanation = target_question.get("explanation")
         source_locator = target_question.get("source_locator")
         supporting_excerpt = target_question.get("supporting_excerpt")
+        explanation_text = explanation if isinstance(explanation, str) else None
+        source_locator_text = source_locator if isinstance(source_locator, str) else None
+        supporting_excerpt_text = (
+            supporting_excerpt if isinstance(supporting_excerpt, str) else None
+        )
+        if explanation_text is None or len(explanation_text.strip()) < 12:
+            explanation_text = RunService._build_fallback_explanation(
+                correct_options=correct_options,
+                supporting_excerpt=supporting_excerpt_text,
+            )
 
         return AnswerFeedback(
             correct_options=correct_options,
-            explanation=explanation if isinstance(explanation, str) else None,
-            source_locator=source_locator if isinstance(source_locator, str) else None,
-            supporting_excerpt=supporting_excerpt if isinstance(supporting_excerpt, str) else None,
+            explanation=explanation_text,
+            source_locator=source_locator_text,
+            supporting_excerpt=supporting_excerpt_text,
         )
+
+    @staticmethod
+    def _build_fallback_explanation(
+        *,
+        correct_options: list[AnswerFeedbackOption],
+        supporting_excerpt: str | None,
+    ) -> str | None:
+        correct_answer_text = "/".join(option.text for option in correct_options if option.text)
+        if supporting_excerpt and correct_answer_text:
+            return f"The document excerpt supports the correct answer ({correct_answer_text}): {supporting_excerpt}"
+        if supporting_excerpt:
+            return f"The document excerpt explains the correct answer: {supporting_excerpt}"
+        if correct_answer_text:
+            return f"The correct answer is {correct_answer_text}."
+        return None
 
     async def get_settlement(self, run_id: UUID) -> Settlement:
         run = await self._repository.get_run(run_id)

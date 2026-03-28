@@ -201,4 +201,50 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
 
     expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
   });
+
+  it("opens mistake review panel from settlement", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_options: [{ id: "o-1", text: "Wu wei" }],
+        explanation: "The selected chip does not match the stored correct option.",
+        source_locator: "保留字",
+        supporting_excerpt: "保留字即关键字，我们不能把它们用作任何标识符名称。",
+      },
+      run: {
+        id: "run-draft-1",
+        status: "completed",
+        score: 0,
+        state: { hp: 2, max_hp: 3, floor: 8, floor_total: 8, time_left_sec: 0, pending_coins: 0 },
+      },
+      settlement: {
+        run_id: "run-draft-1",
+        xp_earned: 10,
+        coins_earned: 1,
+        combo_max: 1,
+        accuracy: 0.5,
+        correct_count: 0,
+        total_count: 1,
+      },
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.knowledgeDraft, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarKnowledgeDraftPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".draft-chip").trigger("click");
+    await flushPromises();
+
+    await wrapper.get(".settlement-secondary").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Review Mistakes");
+    expect(wrapper.text()).toContain("Draft question");
+    expect(wrapper.text()).toContain("正确答案：Wu wei");
+  });
 });

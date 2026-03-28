@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -70,6 +71,54 @@ class QuestionValidator:
         if not correct:
             raise ValidationError("exactly one correct option must be marked")
         return True
+
+    def validate_explanation(
+        self,
+        explanation: str | None,
+        supporting_excerpt: str | None,
+        prompt: str,
+    ) -> bool:
+        normalized_explanation = (explanation or "").strip()
+        normalized_excerpt = (supporting_excerpt or "").strip()
+
+        if len(normalized_explanation) < 12:
+            raise ValidationError("explanation is too short")
+
+        if normalized_explanation.lower() == prompt.strip().lower():
+            raise ValidationError("explanation must add reasoning beyond the prompt")
+
+        if not normalized_excerpt:
+            raise ValidationError("supporting excerpt is required for explanation validation")
+
+        if not self._has_meaningful_overlap(normalized_explanation, normalized_excerpt):
+            raise ValidationError("explanation must stay close to supporting excerpt")
+
+        return True
+
+    @staticmethod
+    def _has_meaningful_overlap(explanation: str, excerpt: str) -> bool:
+        compact_explanation = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff]", "", explanation).lower()
+        compact_excerpt = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff]", "", excerpt).lower()
+        if compact_explanation and compact_excerpt:
+            if compact_excerpt in compact_explanation or compact_explanation in compact_excerpt:
+                return True
+
+        def tokenize(text: str) -> set[str]:
+            latin_tokens = {token.lower() for token in re.findall(r"[A-Za-z0-9_]{3,}", text)}
+            cjk_tokens: set[str] = set()
+            for token in re.findall(r"[\u4e00-\u9fff]{2,}", text):
+                if len(token) == 2:
+                    cjk_tokens.add(token)
+                    continue
+                cjk_tokens.update(token[index : index + 2] for index in range(len(token) - 1))
+            return latin_tokens | cjk_tokens
+
+        explanation_tokens = tokenize(explanation)
+        excerpt_tokens = tokenize(excerpt)
+        if explanation_tokens and excerpt_tokens:
+            return bool(explanation_tokens & excerpt_tokens)
+
+        return excerpt in explanation or explanation in excerpt
 
     def validate_single_choice(self, question: Any) -> bool:
         self.validate(question)

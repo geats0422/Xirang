@@ -13,6 +13,16 @@ export type RunAnswerFeedback = {
   supporting_excerpt?: string | null;
 };
 
+export type MistakeReviewItem = {
+  question_id: string;
+  question_text: string;
+  selected_answer_text?: string | null;
+  correct_answer_text?: string | null;
+  explanation?: string | null;
+  source_locator?: string | null;
+  supporting_excerpt?: string | null;
+};
+
 export type RunQuestion = {
   id: string;
   text: string;

@@ -12,18 +12,23 @@ const props = withDefaults(
     goalCurrent?: number;
     goalTotal?: number;
     xpGainPercent?: number;
+    reviewEnabled?: boolean;
+    reviewLabel?: string;
   }>(),
   {
     comboCount: 12,
     goalCurrent: 5,
     goalTotal: 10,
     xpGainPercent: 15,
+    reviewEnabled: true,
+    reviewLabel: "Review Mistakes",
   }
 );
 
 const emit = defineEmits<{
   close: [];
   confirm: [];
+  review: [];
 }>();
 
 const goalProgressPercent = computed(() => {
@@ -99,7 +104,14 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
 
         <footer class="settlement-actions">
           <button class="settlement-cta" type="button" @click="emit('confirm')">Continue to Library →</button>
-          <button class="settlement-secondary" type="button" @click="emit('close')">Review Mistakes</button>
+          <button
+            class="settlement-secondary"
+            type="button"
+            :disabled="!reviewEnabled"
+            @click="emit('review')"
+          >
+            {{ reviewLabel }}
+          </button>
         </footer>
       </section>
     </div>
@@ -358,6 +370,11 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
   font-weight: 700;
   height: 54px;
   padding: 0 16px;
+}
+
+.settlement-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 @media (max-width: 760px) {

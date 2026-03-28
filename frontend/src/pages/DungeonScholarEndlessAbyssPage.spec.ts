@@ -198,4 +198,52 @@ describe("DungeonScholarEndlessAbyssPage", () => {
 
     expect(router.currentRoute.value.path).toBe(ROUTES.gameModes);
   });
+
+  it("opens mistake review panel from settlement", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_options: [{ id: "o-1", text: "Water" }],
+        explanation: "Water is identified as the correct answer in the material.",
+        source_locator: "一、Python简介",
+        supporting_excerpt: "Python语法和动态类型，以及解释型语言的本质",
+      },
+      run: {
+        id: "run-1",
+        status: "completed",
+        score: 10,
+        state: { hp: 2, max_hp: 3, floor: 10, floor_total: 10, time_left_sec: 0, pending_coins: 0 },
+      },
+      settlement: {
+        run_id: "run-1",
+        xp_earned: 10,
+        coins_earned: 1,
+        combo_max: 1,
+        accuracy: 0.5,
+        correct_count: 0,
+        total_count: 1,
+      },
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.endlessAbyss, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarEndlessAbyssPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    const answerInput = wrapper.find('input[placeholder="Type the answer keyword"]');
+    await answerInput.setValue("wrong");
+    await answerInput.trigger("keydown.enter");
+    await flushPromises();
+
+    await wrapper.get(".settlement-secondary").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Review Mistakes");
+    expect(wrapper.text()).toContain("Question");
+    expect(wrapper.text()).toContain("正确答案：Water");
+  });
 });

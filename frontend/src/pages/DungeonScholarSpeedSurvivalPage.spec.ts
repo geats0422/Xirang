@@ -200,4 +200,50 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
 
     expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
   });
+
+  it("opens mistake review panel from settlement", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_options: [{ id: "o-2", text: "True" }],
+        explanation: "The source material marks this statement as true.",
+        source_locator: "快捷键",
+        supporting_excerpt: "Ctrl + / # 注释",
+      },
+      run: {
+        id: "run-speed-1",
+        status: "completed",
+        score: 0,
+        state: { hp: 2, max_hp: 3, floor: 8, floor_total: 8, time_left_sec: 0, pending_coins: 0 },
+      },
+      settlement: {
+        run_id: "run-speed-1",
+        xp_earned: 10,
+        coins_earned: 1,
+        combo_max: 1,
+        accuracy: 0.5,
+        correct_count: 0,
+        total_count: 1,
+      },
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.speedSurvival, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarSpeedSurvivalPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".answer-pill--false").trigger("click");
+    await flushPromises();
+
+    await wrapper.get(".settlement-secondary").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Review Mistakes");
+    expect(wrapper.text()).toContain("Speed question");
+    expect(wrapper.text()).toContain("正确答案：True");
+  });
 });

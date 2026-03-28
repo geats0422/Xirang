@@ -37,6 +37,8 @@ Rules:
 - Avoid generic questions that could apply to any Python tutorial.
 - Keep option wording grounded in the document's wording whenever possible.
 - Each explanation must cite the document-supported reason briefly.
+- The explanation must stay tightly tied to the supporting excerpt and mention concrete evidence from it.
+- Avoid generic explanations such as "according to the text" without quoting or paraphrasing specific details.
 
 For each question, provide:
 - question_type: one of "single_choice", "multiple_choice", "true_false"
@@ -126,6 +128,11 @@ class QuestionGenerator:
                     q.question_type,
                     q.prompt,
                     q.options,
+                )
+                self._validator.validate_explanation(
+                    q.explanation,
+                    q.metadata.get("supporting_excerpt") if isinstance(q.metadata, dict) else None,
+                    q.prompt,
                 )
                 if not self._is_grounded_in_context(q, context):
                     continue

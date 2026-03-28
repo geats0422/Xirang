@@ -30,4 +30,25 @@ describe("GameSettlementModal", () => {
 
     expect(wrapper.emitted("confirm")).toHaveLength(1);
   });
+
+  it("clicking secondary action emits review", async () => {
+    const wrapper = mount(GameSettlementModal, {
+      props: baseProps,
+    });
+
+    await wrapper.get(".settlement-secondary").trigger("click");
+
+    expect(wrapper.emitted("review")).toHaveLength(1);
+  });
+
+  it("disables review action when reviewEnabled is false", async () => {
+    const wrapper = mount(GameSettlementModal, {
+      props: {
+        ...baseProps,
+        reviewEnabled: false,
+      },
+    });
+
+    expect(wrapper.get(".settlement-secondary").attributes("disabled")).toBeDefined();
+  });
 });

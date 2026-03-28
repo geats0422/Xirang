@@ -216,6 +216,21 @@ class TestQuestionValidator:
             validator.validate(question)
         assert "at least 2 options" in str(exc_info.value).lower()
 
+    def test_validate_explanation_rejects_generic_text_without_excerpt_overlap(self) -> None:
+        validator = QuestionValidator()
+
+        with pytest.raises(ValidationError) as exc_info:
+            validator.validate_explanation(
+                "According to the text, this is correct.",
+                "Python syntax and dynamic typing make it an interpreted language.",
+                "Why is Python interpreted?",
+            )
+
+        assert (
+            "supporting excerpt" in str(exc_info.value).lower()
+            or "stay close" in str(exc_info.value).lower()
+        )
+
 
 class TestQuestionGenerator:
     def make_fake_provider(self, responses: list[dict[str, Any]]) -> FakeLLMProvider:
@@ -239,7 +254,7 @@ class TestQuestionGenerator:
                     {"option_key": "C", "content": "3", "is_correct": False},
                     {"option_key": "D", "content": "4", "is_correct": False},
                 ],
-                "explanation": "1 + 1 = 2",
+                "explanation": "The excerpt states that 1 + 1 = 2.",
                 "source_locator": "Math Basics",
                 "metadata": {"supporting_excerpt": "1 + 1 = 2"},
                 "difficulty": 1,
@@ -269,7 +284,7 @@ class TestQuestionGenerator:
                     {"option_key": "A", "content": "1", "is_correct": True},
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
-                "explanation": "Valid",
+                "explanation": "The excerpt states that this is the valid question.",
                 "source_locator": "Test context",
                 "metadata": {"supporting_excerpt": "Valid question"},
                 "difficulty": 1,
@@ -369,7 +384,7 @@ class TestQuestionGenerator:
                     {"option_key": "A", "content": "1", "is_correct": True},
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
-                "explanation": "Single",
+                "explanation": "The supporting excerpt explicitly identifies this as the single choice question.",
                 "source_locator": "Mixed types",
                 "metadata": {"supporting_excerpt": "Single choice question"},
                 "difficulty": 1,
@@ -381,7 +396,7 @@ class TestQuestionGenerator:
                     {"option_key": "A", "content": "True", "is_correct": True},
                     {"option_key": "B", "content": "False", "is_correct": False},
                 ],
-                "explanation": "TF",
+                "explanation": "The supporting excerpt explicitly identifies this as the true false question.",
                 "source_locator": "Mixed types",
                 "metadata": {"supporting_excerpt": "True false question"},
                 "difficulty": 1,
@@ -411,7 +426,7 @@ class TestQuestionGenerator:
                     {"option_key": "A", "content": "1", "is_correct": True},
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
-                "explanation": f"Exp {i}",
+                "explanation": f"The excerpt explicitly references Question {i} as the supported item.",
                 "source_locator": "Count Test",
                 "metadata": {"supporting_excerpt": f"Question {i}"},
                 "difficulty": 1,
@@ -453,6 +468,34 @@ class TestQuestionGenerator:
         result = await generator.generate(
             document_id=uuid4(),
             context="Python supports multiple programming paradigms.",
+            question_types=[QuestionType.SINGLE_CHOICE],
+            count=1,
+        )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_generate_filters_questions_with_low_quality_explanations(self) -> None:
+        questions_data = [
+            {
+                "question_type": "single_choice",
+                "prompt": "Why is Python interpreted?",
+                "options": [
+                    {"option_key": "A", "content": "Because it is dynamic", "is_correct": True},
+                    {"option_key": "B", "content": "Because it is compiled", "is_correct": False},
+                ],
+                "explanation": "According to the text, this is correct.",
+                "source_locator": "一、Python简介",
+                "metadata": {"supporting_excerpt": "Python语法和动态类型，以及解释型语言的本质"},
+                "difficulty": 1,
+            }
+        ]
+        provider = self.make_fake_provider([self.build_structured_response(questions_data)])
+        generator = QuestionGenerator(llm_client=provider)
+
+        result = await generator.generate(
+            document_id=uuid4(),
+            context="一、Python简介：Python语法和动态类型，以及解释型语言的本质。",
             question_types=[QuestionType.SINGLE_CHOICE],
             count=1,
         )

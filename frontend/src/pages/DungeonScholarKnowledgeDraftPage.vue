@@ -3,11 +3,13 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import MistakeReviewPanel from "../components/MistakeReviewPanel.vue";
 import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion, type RunQuestionOption } from '../api/runs';
+import { createRun, submitAnswer, type MistakeReviewItem, type RunAnswerFeedback, type RunQuestion, type RunQuestionOption } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
+import { buildMistakeReviewItem } from "../utils/mistakeReview";
 import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
@@ -50,6 +52,8 @@ const settlementGoalTotal = ref(10);
 
 const showNotice = ref(false);
 const wrongFeedback = ref<RunAnswerFeedback | null>(null);
+const showMistakeReview = ref(false);
+const mistakeReviewItems = ref<MistakeReviewItem[]>([]);
 
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 const materialTitle = computed(() => {
@@ -104,6 +108,23 @@ const wrongFeedbackExcerpt = computed(() => {
     ? stripQuestionFormatting(excerpt).trim()
     : null;
 });
+
+const reviewLabel = computed(() => (mistakeReviewItems.value.length > 0 ? "Review Mistakes" : "No mistakes this run"));
+
+const appendMistakeReviewItem = (
+  question: RunQuestion,
+  feedback: RunAnswerFeedback | null,
+  selectedAnswerText?: string | null,
+) => {
+  const item = buildMistakeReviewItem(question, feedback, selectedAnswerText);
+  if (!item) {
+    return;
+  }
+  if (mistakeReviewItems.value.some((entry) => entry.question_id === item.question_id)) {
+    return;
+  }
+  mistakeReviewItems.value = [...mistakeReviewItems.value, item];
+};
 
 const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
 
@@ -247,6 +268,9 @@ const chooseOption = async (option: RunQuestionOption) => {
     applyRunState(result.run.state);
     wrongFeedback.value = result.is_correct ? null : result.feedback;
     showNotice.value = !result.is_correct;
+    if (!result.is_correct) {
+      appendMistakeReviewItem(currentQuestion.value, result.feedback, option.text);
+    }
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
@@ -271,6 +295,18 @@ const chooseOption = async (option: RunQuestionOption) => {
 const closeSettlement = () => {
   showSettlement.value = false;
 }
+
+const openMistakeReview = () => {
+  if (mistakeReviewItems.value.length === 0) {
+    return;
+  }
+  showSettlement.value = false;
+  showMistakeReview.value = true;
+};
+
+const closeMistakeReview = () => {
+  showMistakeReview.value = false;
+};
 
 const handleFeedback = async () => {
   if (!currentQuestion.value || !runId.value) {
@@ -426,9 +462,18 @@ onUnmounted(() => {
       :combo-count="settlementCombo"
       :goal-current="settlementGoalCurrent"
       :goal-total="settlementGoalTotal"
+      :review-enabled="mistakeReviewItems.length > 0"
+      :review-label="reviewLabel"
       goal-text="Keep filling the scroll to reach enlightenment through study."
       @close="closeSettlement"
       @confirm="goLibrary"
+      @review="openMistakeReview"
+    />
+
+    <MistakeReviewPanel
+      :visible="showMistakeReview"
+      :items="mistakeReviewItems"
+      @close="closeMistakeReview"
     />
   </main>
 </template>

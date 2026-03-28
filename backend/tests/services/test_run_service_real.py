@@ -548,6 +548,36 @@ async def test_real_run_service_returns_feedback_for_wrong_answers(mode: RunMode
 
 
 @pytest.mark.asyncio
+async def test_real_run_service_builds_fallback_explanation_for_wrong_answers() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    questions = _build_questions(document_id)[:1]
+    questions[0].correct_option_ids = [UUID(questions[0].options[0]["id"])]
+    questions[0].explanation = None
+    questions[0].supporting_excerpt = "Python语法和动态类型，以及解释型语言的本质。"
+
+    repository = InMemoryRunRepository(questions)
+    service = RunService(repository=repository)
+    run, generated = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.ENDLESS,
+        question_count=1,
+    )
+
+    wrong_option_id = UUID(generated[0].options[1]["id"])
+    result = await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[wrong_option_id],
+    )
+
+    assert result.feedback is not None
+    assert result.feedback.explanation is not None
+    assert "Python语法和动态类型" in result.feedback.explanation
+
+
+@pytest.mark.asyncio
 async def test_real_run_service_accumulates_study_seconds_and_goal_progress() -> None:
     user_id = uuid4()
     document_id = uuid4()

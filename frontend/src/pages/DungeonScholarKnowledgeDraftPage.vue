@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
 import { ROUTES } from "../constants/routes";
 import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion, type RunQuestionOption } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
@@ -403,19 +404,13 @@ onUnmounted(() => {
         </button>
 
         <div v-if="showNotice" class="run-status-notice run-status-notice--danger wrong-feedback">
-          <p class="wrong-feedback__title">回答错误，已显示正确答案。</p>
-          <p v-if="wrongFeedbackAnswerText" class="wrong-feedback__line">
-            正确答案：{{ wrongFeedbackAnswerText }}
-          </p>
-          <p v-if="wrongFeedbackExplanation" class="wrong-feedback__line">
-            解析：{{ wrongFeedbackExplanation }}
-          </p>
-          <p v-if="wrongFeedbackSourceLocator" class="wrong-feedback__meta">
-            来源：{{ wrongFeedbackSourceLocator }}
-          </p>
-          <p v-if="wrongFeedbackExcerpt" class="wrong-feedback__meta">
-            摘录：{{ wrongFeedbackExcerpt }}
-          </p>
+          <WrongAnswerFeedbackCard
+            title="回答错误，已显示正确答案。"
+            :correct-answer-text="wrongFeedbackAnswerText"
+            :explanation="wrongFeedbackExplanation"
+            :source-locator="wrongFeedbackSourceLocator"
+            :supporting-excerpt="wrongFeedbackExcerpt"
+          />
         </div>
         <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
           ⚠ Reduced rewards: -50% XP/coins
@@ -843,26 +838,6 @@ onUnmounted(() => {
   color: var(--color-danger-title);
 }
 
-.wrong-feedback {
-  text-align: left;
-}
-
-.wrong-feedback__title,
-.wrong-feedback__line,
-.wrong-feedback__meta {
-  margin: 0;
-}
-
-.wrong-feedback__line {
-  margin-top: 6px;
-}
-
-.wrong-feedback__meta {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-top: 4px;
-}
 
 @media (max-width: 900px) {
   .draft-page {

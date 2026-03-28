@@ -4,7 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion, type RunQuestionOption } from '../api/runs';
+import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion, type RunQuestionOption } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
 import { stripQuestionFormatting } from "../utils/questionText";
@@ -19,6 +19,8 @@ onMounted(() => {
 watch(locale, () => {
   document.title = t("knowledgeDraft.metaTitle");
 });
+
+type RunStatus = "normal" | "reduced-reward";
 
 const route = useRoute();
 const router = useRouter();
@@ -38,6 +40,7 @@ let tickerId: number | null = null;
 const progressWidth = computed(() => `${(progressCurrent.value / progressTotal.value) * 100}%`);
 const backNavigating = ref(false);
 const showSettlement = ref(false);
+const runStatus = ref<RunStatus>("normal");
 const settlementXp = ref(0);
 const settlementCoins = ref(0);
 const settlementCombo = ref(0);
@@ -45,6 +48,7 @@ const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(10);
 
 const showNotice = ref(false);
+const wrongFeedback = ref<RunAnswerFeedback | null>(null);
 
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 const materialTitle = computed(() => {
@@ -57,6 +61,47 @@ const questionText = computed(() => {
     return stripQuestionFormatting(currentQuestion.value.text);
   }
   return "Loading question...";
+});
+
+const questionSourceLocator = computed(() => {
+  const locator = currentQuestion.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const questionSupportingExcerpt = computed(() => {
+  const excerpt = currentQuestion.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
+});
+
+const wrongFeedbackAnswerText = computed(() => {
+  if (!wrongFeedback.value?.correct_options?.length) {
+    return null;
+  }
+  return wrongFeedback.value.correct_options
+    .map((option) => stripQuestionFormatting(option.text).trim())
+    .filter(Boolean)
+    .join(" / ");
+});
+
+const wrongFeedbackExplanation = computed(() => {
+  const explanation = wrongFeedback.value?.explanation;
+  return typeof explanation === "string" && explanation.trim()
+    ? stripQuestionFormatting(explanation).trim()
+    : null;
+});
+
+const wrongFeedbackSourceLocator = computed(() => {
+  const locator = wrongFeedback.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const wrongFeedbackExcerpt = computed(() => {
+  const excerpt = wrongFeedback.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
 });
 
 const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
@@ -150,7 +195,7 @@ const bootstrapRun = async () => {
     questionStartAt.value = Date.now();
     startTicker();
   } catch {
-    showNotice.value = true;
+    runStatus.value = "reduced-reward";
   }
 };
 
@@ -199,9 +244,8 @@ const chooseOption = async (option: RunQuestionOption) => {
     );
 
     applyRunState(result.run.state);
-    if (!result.is_correct) {
-      showNotice.value = true;
-    }
+    wrongFeedback.value = result.is_correct ? null : result.feedback;
+    showNotice.value = !result.is_correct;
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
@@ -219,7 +263,7 @@ const chooseOption = async (option: RunQuestionOption) => {
     syncProgress();
     questionStartAt.value = Date.now();
   } catch {
-    showNotice.value = true;
+    runStatus.value = "reduced-reward";
   }
 };
 
@@ -325,6 +369,11 @@ onUnmounted(() => {
               {{ questionText }}
             </p>
 
+            <div v-if="questionSourceLocator || questionSupportingExcerpt" class="question-provenance">
+              <p v-if="questionSourceLocator" class="question-provenance__line">来源：{{ questionSourceLocator }}</p>
+              <p v-if="questionSupportingExcerpt" class="question-provenance__line">摘录：{{ questionSupportingExcerpt }}</p>
+            </div>
+
             <div class="scroll-watermark" aria-hidden="true">✎</div>
           </div>
 
@@ -353,8 +402,23 @@ onUnmounted(() => {
           这题有误
         </button>
 
-        <div v-if="showNotice" class="run-status-notice">
-          ⚠ Answer quickly to avoid reduced XP/coins!
+        <div v-if="showNotice" class="run-status-notice run-status-notice--danger wrong-feedback">
+          <p class="wrong-feedback__title">回答错误，已显示正确答案。</p>
+          <p v-if="wrongFeedbackAnswerText" class="wrong-feedback__line">
+            正确答案：{{ wrongFeedbackAnswerText }}
+          </p>
+          <p v-if="wrongFeedbackExplanation" class="wrong-feedback__line">
+            解析：{{ wrongFeedbackExplanation }}
+          </p>
+          <p v-if="wrongFeedbackSourceLocator" class="wrong-feedback__meta">
+            来源：{{ wrongFeedbackSourceLocator }}
+          </p>
+          <p v-if="wrongFeedbackExcerpt" class="wrong-feedback__meta">
+            摘录：{{ wrongFeedbackExcerpt }}
+          </p>
+        </div>
+        <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
+          ⚠ Reduced rewards: -50% XP/coins
         </div>
       </section>
     </section>
@@ -660,6 +724,20 @@ onUnmounted(() => {
   text-align: left;
 }
 
+.question-provenance {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.question-provenance__line {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+
 .drop-slot {
   border: 1px dashed color-mix(in srgb, var(--color-border) 60%, var(--color-badge-blue-bg) 40%);
   border-radius: 999px;
@@ -757,6 +835,33 @@ onUnmounted(() => {
   margin-top: 12px;
   padding: 8px 12px;
   text-align: center;
+}
+
+.run-status-notice--danger {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-title);
+}
+
+.wrong-feedback {
+  text-align: left;
+}
+
+.wrong-feedback__title,
+.wrong-feedback__line,
+.wrong-feedback__meta {
+  margin: 0;
+}
+
+.wrong-feedback__line {
+  margin-top: 6px;
+}
+
+.wrong-feedback__meta {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 
 @media (max-width: 900px) {

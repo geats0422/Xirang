@@ -262,6 +262,16 @@ async def submit_answer(
             "score": result.run.score,
             "state": result.run.mode_state,
         },
+        "feedback": None
+        if result.feedback is None
+        else {
+            "correct_options": [
+                {"id": option.id, "text": option.text} for option in result.feedback.correct_options
+            ],
+            "explanation": result.feedback.explanation,
+            "source_locator": result.feedback.source_locator,
+            "supporting_excerpt": result.feedback.supporting_excerpt,
+        },
         "settlement": None
         if result.settlement is None
         else {

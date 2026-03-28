@@ -170,6 +170,7 @@ class RunRepository:
                     correct_option_ids=[option.id for option in options if option.is_correct],
                     difficulty=question.difficulty,
                     chapter_reference=None,
+                    explanation=question.explanation,
                     source_locator=source_locator,
                     supporting_excerpt=supporting_excerpt,
                 )
@@ -196,6 +197,7 @@ class RunRepository:
                 "correct_option_ids": [str(v) for v in question.correct_option_ids],
                 "difficulty": question.difficulty,
                 "chapter_reference": question.chapter_reference,
+                "explanation": question.explanation,
                 "source_locator": question.source_locator,
                 "supporting_excerpt": question.supporting_excerpt,
             }
@@ -241,6 +243,7 @@ class RunRepository:
                     "options": snapshot.get("options", []),
                     "correct_option_ids": snapshot.get("correct_option_ids", []),
                     "difficulty": difficulty,
+                    "explanation": snapshot.get("explanation"),
                     "source_locator": snapshot.get("source_locator"),
                     "supporting_excerpt": snapshot.get("supporting_excerpt"),
                 }

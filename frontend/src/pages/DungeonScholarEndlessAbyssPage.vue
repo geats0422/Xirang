@@ -4,7 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
+import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
 import { stripQuestionFormatting } from "../utils/questionText";
@@ -49,6 +49,7 @@ const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(10);
 
 const showNotice = ref(false);
+const wrongFeedback = ref<RunAnswerFeedback | null>(null);
 
 const materialTitle = computed(() => {
   const rawTitle = route.query.title;
@@ -99,6 +100,35 @@ const questionSupportingExcerpt = computed(() => {
     return null;
   }
   return stripQuestionFormatting(excerpt).trim();
+});
+
+const wrongFeedbackAnswerText = computed(() => {
+  if (!wrongFeedback.value?.correct_options?.length) {
+    return null;
+  }
+  return wrongFeedback.value.correct_options
+    .map((option) => stripQuestionFormatting(option.text).trim())
+    .filter(Boolean)
+    .join(" / ");
+});
+
+const wrongFeedbackExplanation = computed(() => {
+  const explanation = wrongFeedback.value?.explanation;
+  return typeof explanation === "string" && explanation.trim()
+    ? stripQuestionFormatting(explanation).trim()
+    : null;
+});
+
+const wrongFeedbackSourceLocator = computed(() => {
+  const locator = wrongFeedback.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const wrongFeedbackExcerpt = computed(() => {
+  const excerpt = wrongFeedback.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
 });
 
 const floorProgress = computed(() => {
@@ -215,10 +245,8 @@ const castSpell = async () => {
       elapsedMs,
     );
     applyRunState(result.run.state);
-
-    if (!result.is_correct) {
-      showNotice.value = true;
-    }
+    wrongFeedback.value = result.is_correct ? null : result.feedback;
+    showNotice.value = !result.is_correct;
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
@@ -354,8 +382,20 @@ onUnmounted(() => {
           这题有误
         </button>
 
-        <div v-if="showNotice" class="run-status-notice run-status-notice--danger">
-          ⚠ Wrong answer. HP decreased.
+        <div v-if="showNotice" class="run-status-notice run-status-notice--danger wrong-feedback">
+          <p class="wrong-feedback__title">⚠ Wrong answer. HP decreased.</p>
+          <p v-if="wrongFeedbackAnswerText" class="wrong-feedback__line">
+            正确答案：{{ wrongFeedbackAnswerText }}
+          </p>
+          <p v-if="wrongFeedbackExplanation" class="wrong-feedback__line">
+            解析：{{ wrongFeedbackExplanation }}
+          </p>
+          <p v-if="wrongFeedbackSourceLocator" class="wrong-feedback__meta">
+            来源：{{ wrongFeedbackSourceLocator }}
+          </p>
+          <p v-if="wrongFeedbackExcerpt" class="wrong-feedback__meta">
+            摘录：{{ wrongFeedbackExcerpt }}
+          </p>
         </div>
 
         <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
@@ -733,6 +773,27 @@ onUnmounted(() => {
   background: var(--color-danger-surface);
   border-color: var(--color-danger-border);
   color: var(--color-danger-title);
+}
+
+.wrong-feedback {
+  text-align: left;
+}
+
+.wrong-feedback__title,
+.wrong-feedback__line,
+.wrong-feedback__meta {
+  margin: 0;
+}
+
+.wrong-feedback__line {
+  margin-top: 6px;
+}
+
+.wrong-feedback__meta {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 
 @media (max-width: 900px) {

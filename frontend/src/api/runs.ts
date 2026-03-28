@@ -6,6 +6,13 @@ export type RunQuestionOption = {
   text: string;
 };
 
+export type RunAnswerFeedback = {
+  correct_options: RunQuestionOption[];
+  explanation?: string | null;
+  source_locator?: string | null;
+  supporting_excerpt?: string | null;
+};
+
 export type RunQuestion = {
   id: string;
   text: string;
@@ -71,6 +78,7 @@ export type CreateRunOptions = {
 
 export type SubmitAnswerResponse = {
   is_correct: boolean;
+  feedback: RunAnswerFeedback | null;
   run: {
     id: string;
     status: string;

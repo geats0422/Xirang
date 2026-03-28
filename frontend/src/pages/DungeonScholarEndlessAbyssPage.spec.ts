@@ -51,6 +51,7 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     });
     mocks.submitAnswer.mockResolvedValue({
       is_correct: true,
+      feedback: null,
       run: {
         id: "run-1",
         status: "running",
@@ -144,6 +145,43 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     await wrapper.vm.$nextTick();
 
     expect(wrapper.find(".run-status-notice").exists()).toBe(true);
+  });
+
+  it("renders wrong answer feedback with correct answer and explanation", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_options: [{ id: "o-1", text: "Water" }],
+        explanation: "Water is identified as the correct answer in the material.",
+        source_locator: "一、Python简介",
+        supporting_excerpt: "Python语法和动态类型，以及解释型语言的本质",
+      },
+      run: {
+        id: "run-1",
+        status: "running",
+        score: 0,
+        state: { hp: 2, max_hp: 3, floor: 1, floor_total: 10, time_left_sec: 890, pending_coins: 0 },
+      },
+      settlement: null,
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.endlessAbyss, query: { documentId: "doc-1" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarEndlessAbyssPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    const answerInput = wrapper.find('input[placeholder="Type the answer keyword"]');
+    await answerInput.setValue("wrong");
+    await answerInput.trigger("keydown.enter");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("正确答案：Water");
+    expect(wrapper.text()).toContain("解析：Water is identified as the correct answer in the material.");
+    expect(wrapper.text()).toContain("来源：一、Python简介");
   });
 
   it("navigates back when clicking return", async () => {

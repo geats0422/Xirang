@@ -11,7 +11,14 @@ from app.api.v1 import runs as runs_router
 from app.db.models.documents import DocumentStatus, QuestionSetStatus
 from app.db.models.runs import RunMode, RunStatus
 from app.main import create_app
-from app.services.runs.schemas import AnswerResult, QuestionData, Settlement, SubmitAnswerResult
+from app.services.runs.schemas import (
+    AnswerFeedback,
+    AnswerFeedbackOption,
+    AnswerResult,
+    QuestionData,
+    Settlement,
+    SubmitAnswerResult,
+)
 
 if TYPE_CHECKING:
     from app.db.models.runs import Run
@@ -31,8 +38,6 @@ class FakeRun:
     mode_state: dict[str, object]
     started_at: datetime
     ended_at: datetime | None = None
-
-
 
 
 @dataclass
@@ -70,7 +75,9 @@ class FakeDocumentRepository:
         )
 
     async def get_question_set_for_document(self, document_id: UUID) -> FakeQuestionSet | None:
-        return FakeQuestionSet(status=self._question_set_status, question_count=self._question_count)
+        return FakeQuestionSet(
+            status=self._question_set_status, question_count=self._question_count
+        )
 
 
 class FakeRunService:
@@ -107,6 +114,9 @@ class FakeRunService:
                 ],
                 correct_option_ids=[uuid4()],
                 difficulty=1,
+                explanation=f"Explanation {i + 1}",
+                source_locator=f"Section {i + 1}",
+                supporting_excerpt=f"Excerpt {i + 1}",
             )
             for i in range(question_count)
         ]
@@ -199,6 +209,18 @@ class FakeRunService:
             "goal_current": goal_current,
         }
         settlement = None
+        feedback = None
+        if not is_correct:
+            feedback = AnswerFeedback(
+                correct_options=[
+                    AnswerFeedbackOption(
+                        id=str(question.correct_option_ids[0]), text=question.options[0]["text"]
+                    )
+                ],
+                explanation=question.explanation,
+                source_locator=question.source_locator,
+                supporting_excerpt=question.supporting_excerpt,
+            )
         if len(self.answers[run_id]) >= run.total_questions:
             run.status = RunStatus.COMPLETED
             run.ended_at = datetime.now(UTC)
@@ -217,6 +239,7 @@ class FakeRunService:
             is_correct=is_correct,
             run=cast("Run", run),
             settlement=settlement,
+            feedback=feedback,
         )
 
     async def get_settlement(self, run_id: UUID) -> Settlement:
@@ -263,30 +286,32 @@ class FakeRunService:
 class FakeLearningPathService:
     async def get_path_options(self, *, document_id: UUID, mode: str) -> dict[str, object]:
         return {
-            'generation_status': 'ready',
-            'mode': mode,
-            'path_version_id': str(uuid4()),
-            'version_no': 1,
-            'options': [
+            "generation_status": "ready",
+            "mode": mode,
+            "path_version_id": str(uuid4()),
+            "version_no": 1,
+            "options": [
                 {
-                    'path_id': 'F1',
-                    'label': 'F1',
-                    'kind': 'floor',
-                    'description': 'Warm-up',
-                    'goal_total': 10,
-                    'path_version_id': str(uuid4()),
-                    'level_node_id': str(uuid4()),
+                    "path_id": "F1",
+                    "label": "F1",
+                    "kind": "floor",
+                    "description": "Warm-up",
+                    "goal_total": 10,
+                    "path_version_id": str(uuid4()),
+                    "level_node_id": str(uuid4()),
                 }
             ],
         }
 
-    async def regenerate_path(self, *, document_id: UUID, mode: str, user_id: UUID) -> dict[str, object]:
+    async def regenerate_path(
+        self, *, document_id: UUID, mode: str, user_id: UUID
+    ) -> dict[str, object]:
         return {
-            'generation_status': 'generating',
-            'mode': mode,
-            'path_version_id': str(uuid4()),
-            'next_version_no': 2,
-            'job_id': None,
+            "generation_status": "generating",
+            "mode": mode,
+            "path_version_id": str(uuid4()),
+            "next_version_no": 2,
+            "job_id": None,
         }
 
 
@@ -301,7 +326,9 @@ def create_test_client(
     document_repository = fake_document_repository or FakeDocumentRepository(owner_user_id=user_id)
     app.dependency_overrides[runs_router.get_current_user_id] = lambda: user_id
     app.dependency_overrides[runs_router.get_run_service] = lambda: fake_service
-    app.dependency_overrides[runs_router.get_learning_path_service] = lambda: fake_learning_path_service
+    app.dependency_overrides[runs_router.get_learning_path_service] = (
+        lambda: fake_learning_path_service
+    )
     app.dependency_overrides[runs_router.get_document_repository] = lambda: document_repository
     return TestClient(app)
 
@@ -390,6 +417,11 @@ class TestRunsAPI:
         assert "is_correct" in body
         assert "answer" in body
         assert "run" in body
+        assert body["feedback"] is not None
+        assert body["feedback"]["correct_options"]
+        assert body["feedback"]["explanation"] == "Explanation 1"
+        assert body["feedback"]["source_locator"] == "Section 1"
+        assert body["feedback"]["supporting_excerpt"] == "Excerpt 1"
 
     def test_submit_answer_returns_settlement_on_completion(self) -> None:
         user_id = uuid4()

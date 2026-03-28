@@ -4,7 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
+import { createRun, submitAnswer, type RunAnswerFeedback, type RunQuestion } from '../api/runs';
 import { submitFeedback } from '../api/feedback';
 import { getShopBalance } from "../api/shop";
 import { stripQuestionFormatting } from "../utils/questionText";
@@ -37,6 +37,7 @@ let tickerId: number | null = null;
 
 const showSettlement = ref(false);
 const runStatus = ref<RunStatus>("normal");
+const wrongFeedback = ref<RunAnswerFeedback | null>(null);
 const settlementXp = ref(0);
 const settlementCoins = ref(0);
 const settlementCombo = ref(0);
@@ -51,6 +52,47 @@ const questionText = computed(() => {
     return stripQuestionFormatting(currentQuestion.value.text);
   }
   return "Loading question...";
+});
+
+const questionSourceLocator = computed(() => {
+  const locator = currentQuestion.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const questionSupportingExcerpt = computed(() => {
+  const excerpt = currentQuestion.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
+});
+
+const wrongFeedbackAnswerText = computed(() => {
+  if (!wrongFeedback.value?.correct_options?.length) {
+    return null;
+  }
+  return wrongFeedback.value.correct_options
+    .map((option) => stripQuestionFormatting(option.text).trim())
+    .filter(Boolean)
+    .join(" / ");
+});
+
+const wrongFeedbackExplanation = computed(() => {
+  const explanation = wrongFeedback.value?.explanation;
+  return typeof explanation === "string" && explanation.trim()
+    ? stripQuestionFormatting(explanation).trim()
+    : null;
+});
+
+const wrongFeedbackSourceLocator = computed(() => {
+  const locator = wrongFeedback.value?.source_locator;
+  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
+});
+
+const wrongFeedbackExcerpt = computed(() => {
+  const excerpt = wrongFeedback.value?.supporting_excerpt;
+  return typeof excerpt === "string" && excerpt.trim()
+    ? stripQuestionFormatting(excerpt).trim()
+    : null;
 });
 
 const progressPercent = computed(() => {
@@ -188,6 +230,7 @@ const chooseAnswer = async (answer: "false" | "true") => {
       elapsedMs,
     );
     applyRunState(result.run.state);
+    wrongFeedback.value = result.is_correct ? null : result.feedback;
 
     if (result.is_correct) {
       combo.value = (combo.value ?? 0) + 1;
@@ -301,6 +344,10 @@ onUnmounted(() => {
           <div class="survival-card__body">
             <p class="survival-card__eyebrow">✦ MYTHOLOGY</p>
             <h2>{{ questionText }}</h2>
+            <div v-if="questionSourceLocator || questionSupportingExcerpt" class="question-provenance">
+              <p v-if="questionSourceLocator" class="question-provenance__line">来源：{{ questionSourceLocator }}</p>
+              <p v-if="questionSupportingExcerpt" class="question-provenance__line">摘录：{{ questionSupportingExcerpt }}</p>
+            </div>
             <p class="survival-card__prompt">{{ answerPrompt }}</p>
           </div>
         </article>
@@ -325,6 +372,21 @@ onUnmounted(() => {
 
         <div v-if="runStatus === 'fast-answer'" class="run-status-notice">
           ⚡ Fast answer! +50% XP bonus
+        </div>
+        <div v-if="wrongFeedback" class="run-status-notice run-status-notice--danger wrong-feedback">
+          <p class="wrong-feedback__title">回答错误，已显示正确答案。</p>
+          <p v-if="wrongFeedbackAnswerText" class="wrong-feedback__line">
+            正确答案：{{ wrongFeedbackAnswerText }}
+          </p>
+          <p v-if="wrongFeedbackExplanation" class="wrong-feedback__line">
+            解析：{{ wrongFeedbackExplanation }}
+          </p>
+          <p v-if="wrongFeedbackSourceLocator" class="wrong-feedback__meta">
+            来源：{{ wrongFeedbackSourceLocator }}
+          </p>
+          <p v-if="wrongFeedbackExcerpt" class="wrong-feedback__meta">
+            摘录：{{ wrongFeedbackExcerpt }}
+          </p>
         </div>
       </section>
     </section>
@@ -580,6 +642,20 @@ onUnmounted(() => {
   margin: 22px 0 0;
 }
 
+.question-provenance {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.question-provenance__line {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+
 .answer-pad {
   display: flex;
   gap: 42px;
@@ -655,6 +731,33 @@ onUnmounted(() => {
   margin-top: 16px;
   padding: 8px 12px;
   text-align: center;
+}
+
+.run-status-notice--danger {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-title);
+}
+
+.wrong-feedback {
+  text-align: left;
+}
+
+.wrong-feedback__title,
+.wrong-feedback__line,
+.wrong-feedback__meta {
+  margin: 0;
+}
+
+.wrong-feedback__line {
+  margin-top: 6px;
+}
+
+.wrong-feedback__meta {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 
 @media (max-width: 900px) {

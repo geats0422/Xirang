@@ -20,6 +20,21 @@ class QuestionData:
     correct_option_ids: list[UUID]
     difficulty: int
     chapter_reference: str | None = None
+    explanation: str | None = None
+    source_locator: str | None = None
+    supporting_excerpt: str | None = None
+
+
+@dataclass(slots=True)
+class AnswerFeedbackOption:
+    id: str
+    text: str
+
+
+@dataclass(slots=True)
+class AnswerFeedback:
+    correct_options: list[AnswerFeedbackOption]
+    explanation: str | None = None
     source_locator: str | None = None
     supporting_excerpt: str | None = None
 
@@ -47,6 +62,7 @@ class SubmitAnswerResult:
     is_correct: bool
     run: Run
     settlement: Settlement | None = None
+    feedback: AnswerFeedback | None = None
 
 
 @dataclass(slots=True)

@@ -185,7 +185,11 @@ class InMemoryRunRepository:
             {
                 "run_question_id": uuid4(),
                 "question_id": question.id,
+                "options": question.options,
                 "correct_option_ids": [str(v) for v in question.correct_option_ids],
+                "explanation": question.explanation,
+                "source_locator": question.source_locator,
+                "supporting_excerpt": question.supporting_excerpt,
             }
             for question in questions
         ]
@@ -355,7 +359,9 @@ class InMemoryRunRepository:
     async def is_subscription_active(self, *, user_id: UUID, at: datetime) -> bool:
         return self._subscription_active
 
-    async def get_daily_reward_cap_usage(self, *, user_id: UUID, date_key: date) -> FakeDailyRewardCapUsage | None:
+    async def get_daily_reward_cap_usage(
+        self, *, user_id: UUID, date_key: date
+    ) -> FakeDailyRewardCapUsage | None:
         return self._daily_cap_usage.get((user_id, date_key))
 
     async def upsert_daily_reward_cap_usage(
@@ -409,6 +415,9 @@ def _build_questions(document_id: UUID) -> list[QuestionData]:
             ],
             correct_option_ids=[],
             difficulty=1,
+            explanation=f"Explanation {i + 1}",
+            source_locator=f"Section {i + 1}",
+            supporting_excerpt=f"Excerpt {i + 1}",
         )
         for i in range(3)
     ]
@@ -502,6 +511,40 @@ async def test_real_run_service_get_settlement_requires_completion() -> None:
 
     with pytest.raises(RunNotCompletedError):
         await service.get_settlement(run.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [RunMode.ENDLESS, RunMode.SPEED, RunMode.DRAFT])
+async def test_real_run_service_returns_feedback_for_wrong_answers(mode: RunMode) -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    questions = _build_questions(document_id)[:1]
+    questions[0].correct_option_ids = [UUID(questions[0].options[0]["id"])]
+
+    repository = InMemoryRunRepository(questions)
+    service = RunService(repository=repository)
+    run, generated = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=mode,
+        question_count=1,
+    )
+
+    wrong_option_id = UUID(generated[0].options[1]["id"])
+    result = await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[wrong_option_id],
+    )
+
+    assert result.is_correct is False
+    assert result.feedback is not None
+    assert [option.text for option in result.feedback.correct_options] == [
+        generated[0].options[0]["text"]
+    ]
+    assert result.feedback.explanation == generated[0].explanation
+    assert result.feedback.source_locator == generated[0].source_locator
+    assert result.feedback.supporting_excerpt == generated[0].supporting_excerpt
 
 
 @pytest.mark.asyncio
@@ -683,12 +726,14 @@ async def test_real_run_service_applies_legend_decay_and_old_version_discount() 
     )
     repository._path_version_meta[path_version_id] = (document_id, "endless", 1)
     repository._latest_ready_versions[(document_id, "endless")] = 2
-    repository._legend_review_progress[(user_id, path_version_id, unit_node_id)] = FakeLegendReviewProgress(
-        user_id=user_id,
-        path_version_id=path_version_id,
-        unit_node_id=unit_node_id,
-        legend_round_count=1,
-        last_legend_run_at=datetime.now(UTC),
+    repository._legend_review_progress[(user_id, path_version_id, unit_node_id)] = (
+        FakeLegendReviewProgress(
+            user_id=user_id,
+            path_version_id=path_version_id,
+            unit_node_id=unit_node_id,
+            legend_round_count=1,
+            last_legend_run_at=datetime.now(UTC),
+        )
     )
 
     service = RunService(repository=repository)

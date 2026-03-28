@@ -15,7 +15,14 @@ from app.services.runs.exceptions import (
     RunNotCompletedError,
     RunNotFoundError,
 )
-from app.services.runs.schemas import AnswerResult, QuestionData, Settlement, SubmitAnswerResult
+from app.services.runs.schemas import (
+    AnswerFeedback,
+    AnswerFeedbackOption,
+    AnswerResult,
+    QuestionData,
+    Settlement,
+    SubmitAnswerResult,
+)
 
 
 class RunRepositoryProtocol(Protocol):
@@ -111,9 +118,13 @@ class RunRepositoryProtocol(Protocol):
         completed_at: datetime,
     ) -> None: ...
 
-    async def get_path_version_meta(self, *, path_version_id: UUID) -> tuple[UUID, str, int] | None: ...
+    async def get_path_version_meta(
+        self, *, path_version_id: UUID
+    ) -> tuple[UUID, str, int] | None: ...
 
-    async def get_latest_ready_path_version_no(self, *, document_id: UUID, mode: str) -> int | None: ...
+    async def get_latest_ready_path_version_no(
+        self, *, document_id: UUID, mode: str
+    ) -> int | None: ...
 
     async def get_legend_round_count(
         self,
@@ -259,6 +270,7 @@ class RunService:
         provided_ids = {str(v) for v in selected_option_ids}
         correct_ids = {str(v) for v in target_question.get("correct_option_ids", [])}
         is_correct = provided_ids == correct_ids
+        feedback = None if is_correct else self._build_wrong_answer_feedback(target_question)
 
         answer = await self._repository.record_answer(
             run_id,
@@ -352,8 +364,12 @@ class RunService:
             combo_count=combo_count,
             mode_state=mode_state,
             ended_at=ended_at,
-            legend_reward_rate=reward_meta.legend_rate if run_status == RunStatus.COMPLETED else None,
-            version_reward_discount=reward_meta.version_discount if run_status == RunStatus.COMPLETED else None,
+            legend_reward_rate=reward_meta.legend_rate
+            if run_status == RunStatus.COMPLETED
+            else None,
+            version_reward_discount=reward_meta.version_discount
+            if run_status == RunStatus.COMPLETED
+            else None,
         )
 
         await self._repository.commit()
@@ -363,6 +379,28 @@ class RunService:
             is_correct=is_correct,
             run=refreshed_run,
             settlement=settlement,
+            feedback=feedback,
+        )
+
+    @staticmethod
+    def _build_wrong_answer_feedback(target_question: dict[str, Any]) -> AnswerFeedback:
+        correct_ids = {str(v) for v in target_question.get("correct_option_ids", [])}
+        raw_options = target_question.get("options", [])
+        correct_options = [
+            AnswerFeedbackOption(id=str(option.get("id", "")), text=str(option.get("text", "")))
+            for option in raw_options
+            if isinstance(option, dict) and str(option.get("id", "")) in correct_ids
+        ]
+
+        explanation = target_question.get("explanation")
+        source_locator = target_question.get("source_locator")
+        supporting_excerpt = target_question.get("supporting_excerpt")
+
+        return AnswerFeedback(
+            correct_options=correct_options,
+            explanation=explanation if isinstance(explanation, str) else None,
+            source_locator=source_locator if isinstance(source_locator, str) else None,
+            supporting_excerpt=supporting_excerpt if isinstance(supporting_excerpt, str) else None,
         )
 
     async def get_settlement(self, run_id: UUID) -> Settlement:
@@ -437,7 +475,9 @@ class RunService:
         is_latest_ready_version: bool | None = None
 
         if isinstance(path_version_id, UUID):
-            path_meta = await self._repository.get_path_version_meta(path_version_id=path_version_id)
+            path_meta = await self._repository.get_path_version_meta(
+                path_version_id=path_version_id
+            )
             if path_meta is not None:
                 document_id, mode_value, version_no = path_meta
                 latest_ready_version_no = await self._repository.get_latest_ready_path_version_no(
@@ -461,7 +501,9 @@ class RunService:
                     unit_node_id=unit_node_id,
                 )
 
-        subscription_active = await self._repository.is_subscription_active(user_id=run.user_id, at=now)
+        subscription_active = await self._repository.is_subscription_active(
+            user_id=run.user_id, at=now
+        )
         usage = DailyCapUsage(xp_earned=0, coin_earned=0)
         usage_date_key = RewardPolicy.utc8_date_key(now)
         if not subscription_active:

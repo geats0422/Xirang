@@ -66,6 +66,31 @@ async def get_ai_config(
     )
 
 
+@router.get("/ai-models", response_model=AiConfigResponse)
+async def get_ai_models() -> AiConfigResponse:
+    from app.integrations.agents.client import OpenAIClient
+
+    settings = get_app_settings()
+    available_models: list[str] = []
+    if settings.llm_api_key and settings.llm_base_url:
+        try:
+            client = OpenAIClient(
+                api_key=settings.llm_api_key,
+                model=settings.llm_model,
+                base_url=settings.llm_base_url,
+            )
+            available_models = await client.list_models()
+        except Exception:
+            available_models = [settings.llm_model]
+    return AiConfigResponse(
+        provider="openai-compatible",
+        base_url=settings.llm_base_url,
+        model=settings.llm_model,
+        configured=bool(settings.llm_api_key),
+        available_models=available_models,
+    )
+
+
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}

@@ -33,3 +33,4 @@ class AiConfigResponse(BaseModel):
     base_url: str | None
     model: str
     configured: bool
+    available_models: list[str] = []

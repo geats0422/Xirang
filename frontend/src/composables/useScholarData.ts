@@ -13,6 +13,7 @@ import { getMyProfile } from "../api/profile";
 import { listRuns, type RunListItem } from "../api/runs";
 import {
   getAiConfig,
+  getAiModels,
   getSettings,
   updateSettings,
   type AiConfigResponse,
@@ -375,6 +376,11 @@ const hydrate = async () => {
     refreshModelOptions(aiConfigResult.value.model);
   } else {
     aiConfig.value = null;
+  }
+
+  const [aiModelsResult] = await Promise.allSettled([invoke(() => getAiModels())]);
+  if (aiModelsResult.status === "fulfilled" && aiModelsResult.value.available_models?.length > 0) {
+    modelOptions.value = aiModelsResult.value.available_models;
   }
 
 

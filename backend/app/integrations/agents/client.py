@@ -23,6 +23,14 @@ class OpenAIClient:
         self._client = AsyncOpenAI(**client_kwargs)
         self._model = model
 
+    async def list_models(self) -> list[str]:
+        """List available models from the provider's /models endpoint."""
+        try:
+            response = await self._client.models.list()
+            return [m.id for m in response.data]
+        except Exception:
+            return [self._model]
+
     async def generate(
         self,
         prompt: str,

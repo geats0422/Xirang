@@ -58,50 +58,16 @@ type Model = {
   tags: string[];
 };
 
-const modelCatalog: Record<string, Omit<Model, "id">> = {
-  "gemini-2.5-flash": {
-    name: "Gemini 2.5 Flash",
-    description: "Fast and efficient. Ideal for quick storytelling and standard quests.",
-    tags: ["High Speed", "Low Latency"],
-  },
-  "gemini-3.1-pro": {
-    name: "Gemini 3.1 Pro",
-    description: "Advanced reasoning for complex campaigns and deep lore generation.",
-    tags: ["PRO", "Deep Logic", "Creative"],
-  },
-  "claude-3.5-sonnet": {
-    name: "Claude 3.5 Sonnet",
-    description: "Balanced performance for educational content generation.",
-    tags: ["Balanced", "Education"],
-  },
-  "gpt-4o": {
-    name: "GPT-4o",
-    description: "Strong all-around capabilities for diverse content needs.",
-    tags: ["Versatile", "Adaptive"],
-  },
-  "gpt-4o-mini": {
-    name: "GPT-4o Mini",
-    description: "Lightweight and cost-effective model for everyday generation tasks.",
-    tags: ["Fast", "Efficient"],
-  },
-  "nvidia/nemotron-3-nano-30b-a3b": {
-    name: "Nemotron 3 Nano 30B",
-    description: "NVIDIA Build model optimized for responsive OpenAI-compatible inference.",
-    tags: ["NVIDIA", "Fast"],
-  },
-};
+const modelCatalog: Record<string, Omit<Model, "id">> = {};
 
 const toModelMeta = (id: string): Model => {
   const normalized = id.trim();
-  const known = modelCatalog[normalized];
-  if (known) {
-    return { id: normalized, ...known };
-  }
+  void modelCatalog[normalized];
 
   return {
     id: normalized,
     name: normalized,
-    description: "Configured model from runtime settings.",
+    description: "Model from runtime settings.",
     tags: [],
   };
 };

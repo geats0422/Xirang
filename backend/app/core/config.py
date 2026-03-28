@@ -5,10 +5,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
+from dotenv import load_dotenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+# Load .env file into os.environ so pydantic_settings can read it
+load_dotenv(ENV_FILE, override=True)
 
 
 class Settings(BaseSettings):

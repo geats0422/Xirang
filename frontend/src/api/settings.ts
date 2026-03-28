@@ -32,6 +32,7 @@ export type AiConfigResponse = {
   base_url: string | null;
   model: string;
   configured: boolean;
+  available_models: string[];
 };
 
 export const getSettings = async (): Promise<SettingsResponse> => {
@@ -42,6 +43,12 @@ export const getSettings = async (): Promise<SettingsResponse> => {
 
 export const getAiConfig = async (): Promise<AiConfigResponse> => {
   return apiRequest<AiConfigResponse>("/api/v1/settings/ai-config", {
+    headers: getAuthHeaders(),
+  });
+};
+
+export const getAiModels = async (): Promise<AiConfigResponse> => {
+  return apiRequest<AiConfigResponse>("/api/v1/settings/ai-models", {
     headers: getAuthHeaders(),
   });
 };

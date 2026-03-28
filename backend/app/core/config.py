@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/xirang"
     database_echo: bool = False
     pageindex_url: str = "http://localhost:8080"
+    pageindex_auto_start: bool = True
+    pageindex_timeout_seconds: int = 30
+    pageindex_startup_timeout_seconds: int = 30
+    pageindex_startup_poll_interval_seconds: float = 1.0
+    pageindex_subprocess_log_level: str = "warning"
+    pageindex_launch_command: str | None = None
+    pageindex_launch_workdir: str | None = None
+    pageindex_launch_shell: bool = True
+    pageindex_mock_fallback: bool = True
 
     # LLM provider configuration (OpenAI-compatible)
     openai_api_key: str | None = None

@@ -51,7 +51,21 @@ uv run python ../scripts/init_db.py --skip-vector-extension
 uv run alembic upgrade head
 ```
 
-6. Start development server:
+6. Configure PageIndex child-service startup for local development (recommended):
+```bash
+# Example: replace with your real PageIndex startup command
+PAGEINDEX_LAUNCH_COMMAND="pageindex serve --host {host} --port {port} --log-level {log_level}"
+```
+
+Available placeholders in `PAGEINDEX_LAUNCH_COMMAND`:
+- `{host}`
+- `{port}`
+- `{url}`
+- `{log_level}`
+
+If `PAGEINDEX_LAUNCH_COMMAND` is empty and `PAGEINDEX_MOCK_FALLBACK=true`, backend will fall back to the in-repo mock PageIndex server for local development.
+
+7. Start development server:
 ```bash
 uv run uvicorn app.main:app --reload --port 8000
 ```
@@ -117,6 +131,8 @@ See [docs/backend-phase1-scope.md](../docs/backend-phase1-scope.md) for the comp
 | `SECRET_KEY` | JWT signing key | Required |
 | `OPENAI_API_KEY` | OpenAI API key | Required |
 | `PAGEINDEX_URL` | Self-hosted PageIndex URL | `http://localhost:8080` |
+| `PAGEINDEX_LAUNCH_COMMAND` | Local child-process command used to auto-start real PageIndex | None |
+| `PAGEINDEX_MOCK_FALLBACK` | Fall back to in-repo mock PageIndex when no real launch command is configured | `true` |
 | `STORAGE_MODE` | Storage backend: `local` or `s3` | `local` |
 | `UPLOAD_DIR` | Local upload directory | `.data/uploads` |
 

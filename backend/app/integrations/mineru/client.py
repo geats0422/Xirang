@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+import re
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -41,7 +43,8 @@ class MinerUClient:
             "lang_list": ",".join(selected_langs),
         }
 
-        files = {"files": (file_name, file_bytes, "application/octet-stream")}
+        multipart_file_name = _to_multipart_filename(file_name)
+        files = {"files": (multipart_file_name, file_bytes, "application/octet-stream")}
 
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(endpoint, data=data, files=files)
@@ -73,6 +76,15 @@ class MinerUClient:
 
 def _extract_markdown(payload: Any) -> str:
     if isinstance(payload, dict):
+        results = payload.get("results")
+        if isinstance(results, dict):
+            for item in results.values():
+                if not isinstance(item, dict):
+                    continue
+                md_content = item.get("md_content")
+                if isinstance(md_content, str):
+                    return md_content
+
         for key in ("markdown", "md"):
             raw = payload.get(key)
             if isinstance(raw, str):
@@ -91,3 +103,20 @@ def _extract_markdown(payload: Any) -> str:
                 return nested
 
     return ""
+
+
+def _to_multipart_filename(file_name: str) -> str:
+    candidate = file_name.strip()
+    if not candidate:
+        return "document.bin"
+
+    path = Path(candidate)
+    stem = path.stem or "document"
+    suffix = path.suffix or ".bin"
+
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-") or "document"
+    safe_suffix = re.sub(r"[^A-Za-z0-9._-]+", "", suffix)
+    if not safe_suffix.startswith("."):
+        safe_suffix = f".{safe_suffix}" if safe_suffix else ".bin"
+
+    return f"{safe_stem}{safe_suffix}"

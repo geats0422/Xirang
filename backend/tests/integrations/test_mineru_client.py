@@ -108,6 +108,52 @@ async def test_mineru_client_parse_to_markdown_supports_nested_result(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_mineru_client_parse_to_markdown_supports_results_md_content(monkeypatch) -> None:
+    class ResultsPayloadClient(FakeAsyncClient):
+        async def post(self, *args: object, **kwargs: object) -> FakeResponse:
+            _ = args
+            _ = kwargs
+            return FakeResponse(
+                200,
+                payload={"results": {"sample": {"md_content": "# from-results"}}},
+            )
+
+    monkeypatch.setattr("app.integrations.mineru.client.httpx.AsyncClient", ResultsPayloadClient)
+    client = MinerUClient(base_url="http://127.0.0.1:8300")
+
+    markdown = await client.parse_to_markdown(file_name="doc.pdf", file_bytes=b"binary")
+
+    assert markdown == "# from-results"
+
+
+@pytest.mark.asyncio
+async def test_mineru_client_parse_to_markdown_sanitizes_unicode_filename(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class CaptureFilenameClient(FakeAsyncClient):
+        async def post(self, *args: object, **kwargs: object) -> FakeResponse:
+            captured.update(kwargs)
+            return FakeResponse(200, payload={"markdown": "# ok"})
+
+    monkeypatch.setattr("app.integrations.mineru.client.httpx.AsyncClient", CaptureFilenameClient)
+    client = MinerUClient(base_url="http://127.0.0.1:8300")
+
+    await client.parse_to_markdown(
+        file_name="13、-AI行业落地案例补充知识.pdf", file_bytes=b"binary"
+    )
+
+    files = captured.get("files")
+    assert isinstance(files, dict)
+    file_tuple = files.get("files")
+    assert isinstance(file_tuple, tuple)
+    assert len(file_tuple) == 3
+    sent_name = file_tuple[0]
+    assert isinstance(sent_name, str)
+    assert sent_name.endswith(".pdf")
+    assert all(ord(char) < 128 for char in sent_name)
+
+
+@pytest.mark.asyncio
 async def test_mineru_client_parse_to_markdown_raises_on_http_error(monkeypatch) -> None:
     class HttpErrorClient(FakeAsyncClient):
         async def post(self, *args: object, **kwargs: object) -> FakeResponse:

@@ -2,18 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from collections.abc import Awaitable
+from datetime import UTC, datetime, timedelta
+from inspect import isawaitable
 from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.db.models.documents import DocumentStatus, Job, QuestionSetStatus, TreeStatus
+from app.db.models.documents import (
+    DocumentFormat,
+    DocumentStatus,
+    Job,
+    QuestionSetStatus,
+    TreeStatus,
+)
 from app.db.models.questions import QuestionType
 from app.db.session import get_session_factory
 from app.integrations.agents.client import AgentsClient
+from app.integrations.mineru.client import MinerUClient
 from app.integrations.pageindex.client import PageIndexClient
 from app.repositories.document_repository import DocumentRepository
+from app.services.documents.normalizer import normalize_markdown
 from app.services.documents.storage import StorageMode
 from app.services.documents.storage import build_storage as build_document_storage
 from app.services.questions.generator import GeneratedQuestion, QuestionGenerator
@@ -105,6 +116,18 @@ class IngestionRepositoryProtocol(Protocol):
         error_message: str,
     ) -> None: ...
 
+    async def create_job(
+        self,
+        *,
+        job_type: str,
+        queue_name: str,
+        payload: dict[str, object],
+        max_attempts: int = 3,
+        available_at: datetime | None = None,
+    ) -> Any: ...
+
+    async def delete_document_by_id(self, document_id: UUID) -> None: ...
+
     async def commit(self) -> None: ...
 
 
@@ -121,6 +144,25 @@ class IngestionQuestionGeneratorProtocol(Protocol):
         *,
         document_id: Any = None,
     ) -> list[GeneratedQuestion]: ...
+
+
+class MinerUClientProtocol(Protocol):
+    async def parse_to_markdown(
+        self,
+        *,
+        file_name: str,
+        file_bytes: bytes,
+        backend: str | None = None,
+        lang_list: tuple[str, ...] | None = None,
+    ) -> str: ...
+
+
+class CleanupRepositoryProtocol(Protocol):
+    async def get_document_by_id(self, document_id: UUID) -> Any | None: ...
+
+    async def delete_document_by_id(self, document_id: UUID) -> None: ...
+
+    async def commit(self) -> None: ...
 
 
 class HeuristicQuestionGenerator:
@@ -221,6 +263,12 @@ def build_job_registry() -> JobRegistry:
         client=PageIndexClient(base_url=settings.pageindex_url),
         config=PageIndexConfig(base_url=settings.pageindex_url),
     )
+    mineru_client = MinerUClient(
+        base_url=settings.mineru_url,
+        timeout_seconds=settings.mineru_timeout_seconds,
+        backend=settings.mineru_backend,
+        lang_list=tuple(settings.mineru_lang_list),
+    )
 
     if settings.openai_api_key:
         agents_client = AgentsClient(api_key=settings.openai_api_key)
@@ -242,9 +290,16 @@ def build_job_registry() -> JobRegistry:
                 storage,
                 index_backend=index_backend,
                 question_generator=question_generator,
+                mineru_client=mineru_client,
             )
 
+    async def document_failed_cleanup_handler(job: Job) -> None:
+        async with session_factory() as session:
+            repository = DocumentRepository(session)
+            await _process_document_failed_cleanup(job, repository, storage)
+
     registry.register("document_ingestion", document_ingestion_handler)
+    registry.register("document_failed_cleanup", document_failed_cleanup_handler)
     return registry
 
 
@@ -255,6 +310,7 @@ async def _process_document_ingestion(
     *,
     index_backend: IngestionIndexBackendProtocol,
     question_generator: IngestionQuestionGeneratorProtocol,
+    mineru_client: MinerUClientProtocol,
 ) -> None:
     payload = job.payload if isinstance(job.payload, dict) else {}
     raw_document_id = payload.get("document_id")
@@ -272,7 +328,13 @@ async def _process_document_ingestion(
             ingest_status=DocumentStatus.PROCESSING,
         )
 
-        content = _read_document_content(document.storage_path, storage)
+        content = await _load_document_markdown(
+            storage=storage,
+            storage_key=document.storage_path,
+            file_name=document.file_name,
+            document_format=document.format,
+            mineru_client=mineru_client,
+        )
         if not content.strip():
             raise ValueError("Document content is empty")
 
@@ -395,8 +457,43 @@ async def _process_document_ingestion(
             error_code="INGESTION_FAILED",
             error_message=str(e),
         )
+        await repository.create_job(
+            job_type="document_failed_cleanup",
+            queue_name="default",
+            payload={"document_id": str(document_id)},
+            max_attempts=1,
+            available_at=datetime.now(UTC) + timedelta(days=7),
+        )
         await repository.commit()
         raise
+
+
+async def _process_document_failed_cleanup(
+    job: Any,
+    repository: CleanupRepositoryProtocol,
+    storage: Any,
+) -> None:
+    payload = job.payload if isinstance(job.payload, dict) else {}
+    raw_document_id = payload.get("document_id")
+    if not isinstance(raw_document_id, str):
+        raise ValueError("document_id missing in cleanup job payload")
+
+    document_id = UUID(raw_document_id)
+    document = await repository.get_document_by_id(document_id)
+    if document is None:
+        await repository.commit()
+        return
+
+    if document.ingest_status != DocumentStatus.FAILED:
+        await repository.commit()
+        return
+
+    delete_result = storage.delete(document.storage_path)
+    if isawaitable(delete_result):
+        await cast("Awaitable[None]", delete_result)
+
+    await repository.delete_document_by_id(document_id)
+    await repository.commit()
 
 
 def _read_document_content(storage_key: str, storage: Any) -> str:
@@ -414,6 +511,43 @@ def _read_document_content(storage_key: str, storage: Any) -> str:
         return fallback.read_text(encoding="utf-8", errors="ignore")
 
     raise FileNotFoundError(f"Cannot locate source document at {storage_key}")
+
+
+def _read_document_bytes(storage_key: str, storage: Any) -> bytes:
+    root_dir = None
+    storage_any = cast("Any", storage)
+    if hasattr(storage_any, "root_dir"):
+        root_dir = storage_any.root_dir
+    if isinstance(root_dir, Path):
+        target = root_dir / storage_key
+        if target.exists():
+            return target.read_bytes()
+
+    fallback = Path(storage_key)
+    if fallback.exists():
+        return fallback.read_bytes()
+
+    raise FileNotFoundError(f"Cannot locate source document at {storage_key}")
+
+
+async def _load_document_markdown(
+    *,
+    storage: Any,
+    storage_key: str,
+    file_name: str,
+    document_format: DocumentFormat,
+    mineru_client: MinerUClientProtocol,
+) -> str:
+    if document_format in (DocumentFormat.MARKDOWN, DocumentFormat.TXT):
+        raw_content = _read_document_content(storage_key, storage)
+        return normalize_markdown(raw_content)
+
+    raw_bytes = _read_document_bytes(storage_key, storage)
+    parsed_markdown = await mineru_client.parse_to_markdown(
+        file_name=file_name,
+        file_bytes=raw_bytes,
+    )
+    return normalize_markdown(parsed_markdown)
 
 
 def _estimate_page_count(content: str) -> int:

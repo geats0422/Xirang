@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -25,6 +26,7 @@ class FakeDocument:
     storage_path: str
     ingest_status: DocumentStatus
     format: DocumentFormat
+    file_name: str
 
 
 @dataclass
@@ -42,6 +44,11 @@ class FakeJob:
 class FakeStorage:
     def __init__(self, root_dir: Path) -> None:
         self.root_dir = root_dir
+
+    async def delete(self, storage_key: str) -> None:
+        target = self.root_dir / storage_key
+        if target.exists():
+            target.unlink()
 
 
 class FakeIndexBackend:
@@ -84,6 +91,22 @@ class FakeQuestionGenerator:
         ]
 
 
+class FakeMinerUClient:
+    async def parse_to_markdown(
+        self,
+        *,
+        file_name: str,
+        file_bytes: bytes,
+        backend: str | None = None,
+        lang_list: tuple[str, ...] | None = None,
+    ) -> str:
+        _ = file_name
+        _ = file_bytes
+        _ = backend
+        _ = lang_list
+        return "# Parsed\n\nMinerU markdown content"
+
+
 class FakeRepository:
     def __init__(self, document: FakeDocument) -> None:
         self.document = document
@@ -92,6 +115,7 @@ class FakeRepository:
         self.tree_status: TreeStatus | None = None
         self.ingestion_job_status: JobStatus | None = None
         self.ingestion_error: str | None = None
+        self.created_jobs: list[dict[str, object]] = []
         self.commits = 0
 
     async def get_document_by_id(self, document_id: UUID) -> FakeDocument | None:
@@ -195,6 +219,34 @@ class FakeRepository:
         self.ingestion_job_status = JobStatus.FAILED
         self.ingestion_error = error_message
 
+    async def create_job(
+        self,
+        *,
+        job_type: str,
+        queue_name: str,
+        payload: dict[str, object],
+        max_attempts: int = 3,
+        available_at: datetime | None = None,
+    ) -> Any:
+        self.created_jobs.append(
+            {
+                "job_type": job_type,
+                "queue_name": queue_name,
+                "payload": payload,
+                "max_attempts": max_attempts,
+                "available_at": available_at,
+            }
+        )
+
+        class FakeCreatedJob:
+            def __init__(self) -> None:
+                self.id = uuid4()
+
+        return FakeCreatedJob()
+
+    async def delete_document_by_id(self, document_id: UUID) -> None:
+        _ = document_id
+
     async def commit(self) -> None:
         self.commits += 1
 
@@ -212,6 +264,7 @@ async def test_process_document_ingestion_marks_ready_on_success(tmp_path: Path)
         storage_path=storage_key,
         ingest_status=DocumentStatus.PROCESSING,
         format=DocumentFormat.TXT,
+        file_name="sample.txt",
     )
     repository = FakeRepository(document)
     job = FakeJob(id=uuid4(), payload={"document_id": str(document.id)})
@@ -222,6 +275,7 @@ async def test_process_document_ingestion_marks_ready_on_success(tmp_path: Path)
         FakeStorage(tmp_path),
         index_backend=FakeIndexBackend(),
         question_generator=FakeQuestionGenerator(),
+        mineru_client=FakeMinerUClient(),
     )
 
     assert document.ingest_status == DocumentStatus.READY
@@ -246,6 +300,7 @@ async def test_process_document_ingestion_marks_failed_on_index_error(tmp_path: 
         storage_path=storage_key,
         ingest_status=DocumentStatus.PROCESSING,
         format=DocumentFormat.TXT,
+        file_name="sample.txt",
     )
     repository = FakeRepository(document)
     job = FakeJob(id=uuid4(), payload={"document_id": str(document.id)})
@@ -257,10 +312,64 @@ async def test_process_document_ingestion_marks_failed_on_index_error(tmp_path: 
             FakeStorage(tmp_path),
             index_backend=FailingIndexBackend(),
             question_generator=FakeQuestionGenerator(),
+            mineru_client=FakeMinerUClient(),
         )
 
     assert document.ingest_status == DocumentStatus.FAILED
     assert repository.tree_status == TreeStatus.FAILED
     assert repository.ingestion_job_status == JobStatus.FAILED
     assert repository.ingestion_error is not None
+    assert len(repository.created_jobs) == 1
+    created_job = repository.created_jobs[0]
+    assert created_job["job_type"] == "document_failed_cleanup"
+    assert created_job["max_attempts"] == 1
+    cleanup_available_at = repository.created_jobs[0]["available_at"]
+    assert isinstance(cleanup_available_at, datetime)
+    assert abs(cleanup_available_at - (datetime.now(UTC) + timedelta(days=7))) < timedelta(
+        seconds=10
+    )
     assert repository.commits == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("doc_format", "file_name", "binary_content"),
+    [
+        (DocumentFormat.PDF, "document.pdf", b"PDF-BINARY"),
+        (DocumentFormat.DOCX, "document.docx", b"DOCX-BINARY"),
+        (DocumentFormat.PPTX, "document.pptx", b"PPTX-BINARY"),
+    ],
+)
+async def test_process_document_ingestion_uses_mineru_for_non_text_formats(
+    tmp_path: Path,
+    doc_format: DocumentFormat,
+    file_name: str,
+    binary_content: bytes,
+) -> None:
+    owner_id = uuid4()
+    storage_key = f"{owner_id}/{file_name}"
+    file_path = tmp_path / storage_key
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(binary_content)
+
+    document = FakeDocument(
+        id=uuid4(),
+        storage_path=storage_key,
+        ingest_status=DocumentStatus.PROCESSING,
+        format=doc_format,
+        file_name=file_name,
+    )
+    repository = FakeRepository(document)
+    job = FakeJob(id=uuid4(), payload={"document_id": str(document.id)})
+
+    await _process_document_ingestion(
+        job,
+        repository,
+        FakeStorage(tmp_path),
+        index_backend=FakeIndexBackend(),
+        question_generator=FakeQuestionGenerator(),
+        mineru_client=FakeMinerUClient(),
+    )
+
+    assert document.ingest_status == DocumentStatus.READY
+    assert repository.ingestion_job_status == JobStatus.COMPLETED

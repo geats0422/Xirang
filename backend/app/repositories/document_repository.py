@@ -124,6 +124,7 @@ class DocumentRepository:
         queue_name: str,
         payload: dict[str, object],
         max_attempts: int = 3,
+        available_at: datetime | None = None,
     ) -> Job:
         job = Job(
             job_type=job_type,
@@ -132,10 +133,18 @@ class DocumentRepository:
             attempt_count=0,
             max_attempts=max_attempts,
             payload=payload,
+            available_at=available_at or datetime.now(UTC),
         )
         self._session.add(job)
         await self._session.flush()
         return job
+
+    async def delete_document_by_id(self, document_id: UUID) -> None:
+        document = await self.get_document_by_id(document_id)
+        if document is None:
+            return
+        await self._session.delete(document)
+        await self._session.flush()
 
     async def create_ingestion_job(
         self,

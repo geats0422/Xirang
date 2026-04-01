@@ -25,6 +25,9 @@ Thumbs.db
 .mypy_cache/
 .pytest_cache/
 
+# Tools
+.playwright-mcp/
+
 # Environment
 .env
 .env.local

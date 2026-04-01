@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/xirang"
     database_echo: bool = False
-    pageindex_url: str = "http://localhost:8080"
+    pageindex_url: str = "http://localhost:8000/pageindex"
     pageindex_auto_start: bool = True
     pageindex_timeout_seconds: int = 30
     pageindex_startup_timeout_seconds: int = 30
@@ -39,16 +39,18 @@ class Settings(BaseSettings):
     pageindex_launch_shell: bool = True
     pageindex_mock_fallback: bool = True
     mineru_url: str = "http://127.0.0.1:8300"
-    mineru_timeout_seconds: float = 300.0
+    mineru_timeout_seconds: float = 1800.0
     mineru_backend: str = "hybrid-auto-engine"
     mineru_lang_list: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["ch"])
 
     # LLM provider configuration (OpenAI-compatible)
+    # IMPORTANT: API credentials MUST NOT be modified - these are provided by the project
     openai_api_key: str | None = None
     openai_base_url: str | None = None
     openai_model: str = "gpt-4o-mini"
-    nvidia_base_url: str | None = None
+    # NVIDIA Build API (primary LLM provider - DO NOT MODIFY)
     nvidia_api_key: str | None = None
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
     storage_mode: str = "local"
     upload_dir: str = ".data/uploads"

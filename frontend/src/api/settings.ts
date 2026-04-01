@@ -4,6 +4,14 @@ import { apiRequest } from "./http";
 export type ThemeKey = "light" | "dark" | "system";
 export type LeaderboardScope = "global" | "friends";
 
+export type ModelInfo = {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  provider: string;
+};
+
 export type SettingsResponse = {
   user_id: string;
   theme_key: ThemeKey;
@@ -12,6 +20,7 @@ export type SettingsResponse = {
   haptic_enabled: boolean;
   daily_reminder_enabled: boolean;
   leaderboard_scope_default: LeaderboardScope;
+  selected_model: string | null;
   updated_at: string;
 };
 
@@ -24,8 +33,14 @@ export type SettingsUpdateRequest = Partial<
     | "haptic_enabled"
     | "daily_reminder_enabled"
     | "leaderboard_scope_default"
+    | "selected_model"
   >
 >;
+
+/** Fetch available LLM models from backend */
+export const getAvailableModels = async (): Promise<ModelInfo[]> => {
+  return apiRequest<ModelInfo[]>("/api/v1/settings/models");
+};
 
 export const getSettings = async (): Promise<SettingsResponse> => {
   return apiRequest<SettingsResponse>("/api/v1/settings", {

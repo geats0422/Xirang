@@ -83,6 +83,13 @@ class UserSetting(Base):
         default=LeaderboardScope.GLOBAL,
         server_default=LeaderboardScope.GLOBAL.value,
     )
+    selected_model: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        default=None,
+        server_default=None,
+        comment="User's selected LLM model for question generation",
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

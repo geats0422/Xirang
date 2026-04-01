@@ -40,6 +40,7 @@ const messages = {
         powered: "AI POWERED",
         note:
           "The Forge Engine powers dynamic storytelling. Pro models may consume more energy (credits) but provide richer narrative depth.",
+        selectModel: "Select Model",
       },
       support: {
         title: "Support & Legal",
@@ -536,7 +537,7 @@ const messages = {
         dark: "深色",
         system: "跟随系统",
       },
-      forge: { title: "锻炉引擎", activeModel: "当前智能模型", powered: "AI 驱动", note: "锻炉引擎用于动态叙事。高阶模型可能消耗更多能量，但可提供更深层的内容生成。" },
+      forge: { title: "锻炉引擎", activeModel: "当前智能模型", powered: "AI 驱动", note: "锻炉引擎用于动态叙事。高阶模型可能消耗更多能量，但可提供更深层的内容生成。", selectModel: "选择模型" },
       support: { title: "支持与法务", subscription: "订阅管理", subscriptionDesc: "查看当前方案与账单历史", manage: "管理方案", userAgreement: "用户协议", privacyPolicy: "隐私政策", helpCenter: "帮助中心" },
       danger: {
         title: "危险区域",
@@ -1023,7 +1024,7 @@ const messages = {
         dark: "深色",
         system: "跟隨系統",
       },
-      forge: { title: "鍛爐引擎", activeModel: "目前智慧模型", powered: "AI 驅動", note: "鍛爐引擎用於動態敘事。高階模型可能消耗更多能量，但可提供更深層內容生成。" },
+      forge: { title: "鍛爐引擎", activeModel: "目前智慧模型", powered: "AI 驅動", note: "鍛爐引擎用於動態敘事。高階模型可能消耗更多能量，但可提供更深層內容生成。", selectModel: "選擇模型" },
       support: { title: "支援與法務", subscription: "訂閱管理", subscriptionDesc: "查看目前方案與帳單歷史", manage: "管理方案", userAgreement: "使用者協議", privacyPolicy: "隱私政策", helpCenter: "幫助中心" },
       danger: {
         title: "危險區域",

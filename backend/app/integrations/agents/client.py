@@ -10,8 +10,13 @@ from app.services.llm.provider_registry import LLMProvider, ProviderRegistry
 
 
 class OpenAIClient:
-    def __init__(self, api_key: str | None) -> None:
-        self._client = AsyncOpenAI(api_key=api_key)
+    """OpenAI-compatible LLM client (works with OpenAI, NVIDIA Build API, etc.)."""
+
+    def __init__(
+        self, api_key: str | None, base_url: str | None = None, model: str = "gpt-4o-mini"
+    ) -> None:
+        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._model = model
 
     async def generate(
         self,
@@ -21,7 +26,7 @@ class OpenAIClient:
         response_format = kwargs.get("response_format")
         try:
             params: dict[str, Any] = {
-                "model": "gpt-4o-mini",
+                "model": kwargs.get("model", self._model),
                 "messages": [{"role": "user", "content": prompt}],
             }
             if response_format and response_format.get("type") == "json_object":
@@ -38,22 +43,34 @@ class OpenAIClient:
 
             return {"content": content}
         except Exception as e:
-            raise RuntimeError(f"OpenAI API call failed: {e}") from e
+            raise RuntimeError(f"LLM API call failed: {e}") from e
 
 
 class AgentsClient:
-    def __init__(self, api_key: str | None = None) -> None:
-        self._api_key = api_key or getattr(get_settings(), "openai_api_key", None)
+    """LLM client with provider registry support for OpenAI-compatible APIs."""
+
+    def __init__(
+        self, api_key: str | None = None, base_url: str | None = None, model: str | None = None
+    ) -> None:
+        settings = get_settings()
+        self._api_key = api_key or settings.llm_api_key
+        self._base_url = base_url or settings.llm_base_url
+        self._model = model or settings.llm_model
         self._registry = ProviderRegistry()
-        self._registry.register(
-            "openai",
-            LLMProvider(
-                name="openai",
-                client=OpenAIClient(api_key=self._api_key),
-            ),
-        )
-        if self._registry.get_default() is None:
-            self._registry.set_default("openai")
+
+        if self._api_key:
+            self._registry.register(
+                "default",
+                LLMProvider(
+                    name="default",
+                    client=OpenAIClient(
+                        api_key=self._api_key,
+                        base_url=self._base_url,
+                        model=self._model,
+                    ),
+                ),
+            )
+            self._registry.set_default("default")
 
     @property
     def registry(self) -> ProviderRegistry:

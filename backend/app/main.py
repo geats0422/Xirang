@@ -48,6 +48,11 @@ def create_app() -> FastAPI:
         }
 
     app.include_router(api_router, prefix="/api/v1")
+
+    from app.integrations.pageindex.mock_server import app as pageindex_app
+
+    app.mount("/pageindex", pageindex_app)
+
     return app
 
 

@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import signal
-from collections.abc import Awaitable
+import sys
+import time
+from collections.abc import Awaitable, Iterator
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from inspect import isawaitable
 from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID
+
+from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
@@ -18,9 +25,10 @@ from app.db.models.documents import (
     QuestionSetStatus,
     TreeStatus,
 )
+from app.db.models.profile import UserSetting
 from app.db.models.questions import QuestionType
 from app.db.session import get_session_factory
-from app.integrations.agents.client import AgentsClient
+from app.integrations.agents.client import AgentsClient, OpenAIClient
 from app.integrations.mineru.client import MinerUClient
 from app.integrations.pageindex.client import PageIndexClient
 from app.repositories.document_repository import DocumentRepository
@@ -35,6 +43,8 @@ from app.services.retrieval.pageindex_backend import (
 )
 from app.workers.job_runner import JobRunner
 from app.workers.registry import JobRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionRepositoryProtocol(Protocol):
@@ -133,6 +143,7 @@ class IngestionRepositoryProtocol(Protocol):
 
 class IngestionIndexBackendProtocol(Protocol):
     async def index_document(self, *, document_id: str, content: str) -> IndexDocumentResult: ...
+    async def ask(self, *, document_id: str, question: str, context_chunks: int = 3) -> Any: ...
 
 
 class IngestionQuestionGeneratorProtocol(Protocol):
@@ -143,6 +154,7 @@ class IngestionQuestionGeneratorProtocol(Protocol):
         count: int,
         *,
         document_id: Any = None,
+        model: str | None = None,
     ) -> list[GeneratedQuestion]: ...
 
 
@@ -173,43 +185,91 @@ class HeuristicQuestionGenerator:
         count: int,
         *,
         document_id: Any = None,
+        game_mode: str | None = None,
+        model: str | None = None,
     ) -> list[GeneratedQuestion]:
-        chunks = [line.strip() for line in context.splitlines() if line.strip()]
+        chunks = [
+            line.strip() for line in context.splitlines() if line.strip() and len(line.strip()) > 20
+        ]
         if not chunks:
-            chunks = ["This document contains study material."]
+            chunks = ["This document contains important study material that should be reviewed."]
 
         generated: list[GeneratedQuestion] = []
-        types = question_types or [QuestionType.SINGLE_CHOICE]
+
+        # Determine question type based on game mode
+        if game_mode == "endless-abyss":
+            question_type = QuestionType.FILL_IN_BLANK
+        elif game_mode == "speed-survival":
+            question_type = QuestionType.TRUE_FALSE
+        else:
+            question_type = QuestionType.SINGLE_CHOICE
+
         for index in range(count):
             chunk = chunks[index % len(chunks)]
-            question_type = types[index % len(types)]
-            generated.append(
-                GeneratedQuestion(
-                    question_type=question_type,
-                    prompt=f"Which statement best matches: {chunk[:80]}?",
-                    options=[
-                        {
-                            "option_key": "A",
-                            "content": "It is explicitly stated.",
-                            "is_correct": True,
-                        },
-                        {
-                            "option_key": "B",
-                            "content": "It is contradicted by the text.",
-                            "is_correct": False,
-                        },
-                        {
-                            "option_key": "C",
-                            "content": "The text does not mention this.",
-                            "is_correct": False,
-                        },
-                    ],
-                    explanation="Answer based on available document context.",
-                    source_locator="local-heuristic",
-                    difficulty=min(5, (index % 5) + 1),
-                    metadata={"generator": "heuristic"},
+            # Extract key terms from the chunk (simple heuristic)
+            words = chunk.split()
+            key_term = words[len(words) // 2] if len(words) > 3 else "concept"
+
+            if question_type == QuestionType.FILL_IN_BLANK:
+                # Fill-in-blank for Endless Abyss
+                prompt_text = chunk.replace(key_term, "____", 1)
+                generated.append(
+                    GeneratedQuestion(
+                        question_type=QuestionType.FILL_IN_BLANK,
+                        prompt=f"Complete the statement: {prompt_text[:120]}",
+                        options=[],
+                        correct_answer=key_term,
+                        hints=[f"Starts with '{key_term[0].upper()}'", f"{len(key_term)} letters"],
+                        explanation=f"The term '{key_term}' fits this context.",
+                        source_locator="local-heuristic",
+                        difficulty=min(5, (index % 5) + 1),
+                        metadata={"generator": "heuristic", "answer": key_term},
+                    )
                 )
-            )
+            elif question_type == QuestionType.TRUE_FALSE:
+                # True/False for Speed Survival
+                is_true = index % 2 == 0
+                generated.append(
+                    GeneratedQuestion(
+                        question_type=QuestionType.TRUE_FALSE,
+                        prompt=chunk[:150],
+                        options=[
+                            {"option_key": "A", "content": "正确 / True", "is_correct": is_true},
+                            {
+                                "option_key": "B",
+                                "content": "错误 / False",
+                                "is_correct": not is_true,
+                            },
+                        ],
+                        explanation="Based on the document content.",
+                        source_locator="local-heuristic",
+                        difficulty=min(5, (index % 5) + 1),
+                        metadata={"generator": "heuristic"},
+                    )
+                )
+            else:
+                # Single/Multiple choice for Knowledge Draft (displayed as fill-in-blank)
+                prompt_with_blank = chunk.replace(key_term, "____", 1)
+                generated.append(
+                    GeneratedQuestion(
+                        question_type=QuestionType.SINGLE_CHOICE,
+                        prompt=f"Which term best completes: {prompt_with_blank[:120]}?",
+                        options=[
+                            {"option_key": "A", "content": key_term, "is_correct": True},
+                            {
+                                "option_key": "B",
+                                "content": "alternative concept",
+                                "is_correct": False,
+                            },
+                            {"option_key": "C", "content": "unrelated term", "is_correct": False},
+                            {"option_key": "D", "content": "another option", "is_correct": False},
+                        ],
+                        explanation=f"The term '{key_term}' is correct in this context.",
+                        source_locator="local-heuristic",
+                        difficulty=min(5, (index % 5) + 1),
+                        metadata={"generator": "heuristic"},
+                    )
+                )
         return generated
 
 
@@ -246,6 +306,62 @@ class WorkerJobRepository:
         await self._repo.commit()
 
 
+async def _get_user_selected_model(session: Any, user_id: UUID) -> str | None:
+    stmt = select(UserSetting.selected_model).where(UserSetting.user_id == user_id)
+    result = await session.execute(stmt)
+    return cast("str | None", result.scalar_one_or_none())
+
+
+def _create_llm_client_for_model(model: str | None) -> OpenAIClient | None:
+    settings = get_settings()
+    if not settings.llm_api_key:
+        return None
+    return OpenAIClient(
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+        model=model or settings.llm_model,
+    )
+
+
+async def _get_enriched_context_from_pageindex(
+    index_backend: IngestionIndexBackendProtocol,
+    document_id: str,
+    content: str,
+) -> str:
+    study_queries = [
+        "What are the main concepts, theories, or key points covered in this document?",
+        "What are the important definitions, formulas, or technical terms explained?",
+        "What examples, case studies, or practical applications are discussed?",
+        "What conclusions, recommendations, or takeaways are presented?",
+    ]
+
+    enriched_parts: list[str] = []
+
+    for query in study_queries:
+        try:
+            result = await index_backend.ask(
+                document_id=document_id,
+                question=query,
+                context_chunks=5,
+            )
+            if result.answer and len(result.answer.strip()) > 50:
+                enriched_parts.append(f"Topic: {query}\nAnswer: {result.answer}")
+        except Exception as exc:
+            logger.debug("PageIndex.ask failed for query '%s': %s", query, exc)
+
+    if enriched_parts:
+        enriched_context = "\n\n".join(enriched_parts)
+        logger.info(
+            "PageIndex enriched context: %d bytes from %d queries",
+            len(enriched_context),
+            len(enriched_parts),
+        )
+        return enriched_context
+
+    logger.debug("PageIndex enrichment unavailable, using raw content")
+    return content[:12000]
+
+
 def build_job_registry() -> JobRegistry:
     registry = JobRegistry()
     settings = get_settings()
@@ -270,16 +386,9 @@ def build_job_registry() -> JobRegistry:
         lang_list=tuple(settings.mineru_lang_list),
     )
 
-    if settings.openai_api_key:
-        agents_client = AgentsClient(api_key=settings.openai_api_key)
-        provider = agents_client.registry.get_default()
-        question_generator: IngestionQuestionGeneratorProtocol
-        if provider is None:
-            question_generator = HeuristicQuestionGenerator()
-        else:
-            question_generator = QuestionGenerator(provider.client)
-    else:
-        question_generator = HeuristicQuestionGenerator()
+    agents_client = AgentsClient()
+    provider = agents_client.registry.get_default()
+    default_llm_client = provider.client if provider is not None else None
 
     async def document_ingestion_handler(job: Job) -> None:
         async with session_factory() as session:
@@ -288,8 +397,9 @@ def build_job_registry() -> JobRegistry:
                 job,
                 repository,
                 storage,
+                session=session,
                 index_backend=index_backend,
-                question_generator=question_generator,
+                default_llm_client=default_llm_client,
                 mineru_client=mineru_client,
             )
 
@@ -308,8 +418,9 @@ async def _process_document_ingestion(
     repository: IngestionRepositoryProtocol,
     storage: Any,
     *,
+    session: Any,
     index_backend: IngestionIndexBackendProtocol,
-    question_generator: IngestionQuestionGeneratorProtocol,
+    default_llm_client: Any,
     mineru_client: MinerUClientProtocol,
 ) -> None:
     payload = job.payload if isinstance(job.payload, dict) else {}
@@ -321,6 +432,22 @@ async def _process_document_ingestion(
     document = await repository.get_document_by_id(document_id)
     if document is None:
         raise ValueError(f"Document not found: {document_id}")
+
+    user_selected_model = await _get_user_selected_model(session, document.owner_user_id)
+    llm_client = _create_llm_client_for_model(user_selected_model) or default_llm_client
+
+    if llm_client is not None:
+        question_generator: IngestionQuestionGeneratorProtocol = QuestionGenerator(llm_client)
+        logger.info("Using LLM for question generation: model=%s", user_selected_model or "default")
+    else:
+        question_generator = HeuristicQuestionGenerator()
+        logger.warning(
+            "LLM not available for document %s (user=%s). "
+            "Falling back to heuristic question generator (low quality). "
+            "Configure NVIDIA_API_KEY to enable LLM-powered generation.",
+            document_id,
+            document.owner_user_id,
+        )
 
     try:
         await repository.update_document_status(
@@ -378,8 +505,14 @@ async def _process_document_ingestion(
             )
             await repository.clear_questions_for_set(question_set.id)
 
+        enriched_context = await _get_enriched_context_from_pageindex(
+            index_backend=index_backend,
+            document_id=str(document_id),
+            content=content,
+        )
+
         questions = await question_generator.generate(
-            context=content[:12000],
+            context=enriched_context,
             question_types=[
                 QuestionType.SINGLE_CHOICE,
                 QuestionType.MULTIPLE_CHOICE,
@@ -387,6 +520,7 @@ async def _process_document_ingestion(
             ],
             count=10,
             document_id=document_id,
+            model=user_selected_model,
         )
 
         if not questions:
@@ -583,16 +717,74 @@ async def run_worker(*, queue_name: str = "default", poll_interval: float = 1.0)
                 await asyncio.sleep(poll_interval)
 
 
+def _worker_lock_path(queue_name: str) -> Path:
+    data_dir = Path(__file__).resolve().parent.parent.parent / ".data"
+    return data_dir / f"worker-{queue_name}.lock"
+
+
+def _pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+@contextmanager
+def _worker_single_instance(queue_name: str) -> Iterator[None]:
+    lock_path = _worker_lock_path(queue_name)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = None
+    max_retries = 3
+    retry_delay = 0.5
+
+    try:
+        while True:
+            try:
+                fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                break
+            except FileExistsError:
+                existing_pid = 0
+                with suppress(Exception):
+                    existing_pid = int(lock_path.read_text(encoding="utf-8").strip() or "0")
+                if _pid_is_running(existing_pid):
+                    raise RuntimeError(
+                        f"worker already running for queue {queue_name}: {existing_pid}"
+                    ) from None
+                for attempt in range(max_retries):
+                    try:
+                        lock_path.unlink()
+                        break
+                    except OSError:
+                        if attempt == max_retries - 1:
+                            raise
+                        time.sleep(retry_delay)
+        os.write(fd, str(os.getpid()).encode("utf-8"))
+        yield
+    finally:
+        if fd is not None:
+            with suppress(OSError):
+                os.close(fd)
+        with suppress(OSError):
+            lock_path.unlink()
+
+
 def main() -> None:
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    asyncio.run(
-        run_worker(
-            queue_name="default",
-            poll_interval=1.0,
-        )
-    )
+    try:
+        with _worker_single_instance("default"):
+            asyncio.run(
+                run_worker(
+                    queue_name="default",
+                    poll_interval=1.0,
+                )
+            )
+    except RuntimeError as exc:
+        sys.exit(str(exc))
 
 
 if __name__ == "__main__":

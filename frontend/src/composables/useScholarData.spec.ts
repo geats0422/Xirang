@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api/http";
 
 const mocks = vi.hoisted(() => ({
   getCurrentAuthUser: vi.fn(),
@@ -127,5 +128,21 @@ describe("useScholarData profile name priority", () => {
     await state.hydrate();
 
     expect(state.linkedEmail.value).toBe("briannr.an.g.el.286@gmail.com");
+  });
+
+  it("keeps cached username when profile endpoint returns 404", async () => {
+    window.localStorage.setItem("xirang:isAuthenticated", "true");
+    window.localStorage.setItem("xirang:username", "testuser2");
+    window.localStorage.setItem("xirang:accessToken", "valid-token");
+    window.localStorage.setItem("xirang:userId", "user-1");
+
+    mocks.getMyProfile.mockRejectedValue(new ApiError("profile not found", 404, { detail: "not found" }));
+
+    const state = useScholarData();
+    await state.hydrate();
+
+    expect(state.profileName.value).toBe("testuser2");
+    expect(window.localStorage.getItem("xirang:isAuthenticated")).toBe("true");
+    expect(window.localStorage.getItem("xirang:accessToken")).toBe("valid-token");
   });
 });

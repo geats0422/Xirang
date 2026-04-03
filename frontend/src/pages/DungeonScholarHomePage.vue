@@ -16,7 +16,6 @@ type HomeDocumentCard = {
   id: string;
   title: string;
   createdAt: string;
-  lastVisited: string;
   progress: number;
   icon: string;
 };
@@ -59,7 +58,6 @@ const fetchDocuments = async () => {
       id: doc.id,
       title: doc.title,
       createdAt: doc.created_at ?? "",
-      lastVisited: "Just now",
       progress: 0,
       icon: getDocIcon(),
     }));
@@ -329,7 +327,7 @@ defineExpose({
           <h2>{{ $t("home.recentTitle") }}</h2>
           <div class="recent-section__actions">
             <button class="recent-section__batch-btn" type="button" @click="toggleBatchDeleteMode">
-              {{ isBatchDeleteMode ? "Cancel Batch" : "Batch Delete" }}
+              {{ isBatchDeleteMode ? $t("home.cancelBatch") : $t("home.batchDelete") }}
             </button>
             <button
               v-if="isBatchDeleteMode"
@@ -338,7 +336,7 @@ defineExpose({
               :disabled="selectedCount === 0"
               @click="openBatchDeleteConfirm"
             >
-              Delete Selected ({{ selectedCount }})
+              {{ $t("home.deleteSelected", { count: selectedCount }) }}
             </button>
             <a href="#">{{ $t("home.viewAll") }}</a>
           </div>
@@ -368,13 +366,13 @@ defineExpose({
                 </button>
                 <div v-if="activeCardMenuId === card.id" class="dungeon-card__menu-popover">
                   <button class="dungeon-card__menu-action dungeon-card__menu-action--danger" type="button" @click="requestDelete(card)">
-                    Delete
+                    {{ $t("home.delete") }}
                   </button>
                 </div>
               </div>
             </div>
             <h3>{{ card.title }}</h3>
-            <p>{{ $t("home.lastVisitedPrefix") }} {{ card.lastVisited }}</p>
+            <p>{{ $t("home.lastVisitedPrefix") }} {{ $t("home.lastVisitedNow") }}</p>
             <div class="dungeon-card__progress">
               <div class="progress-track" role="presentation">
                 <span class="progress-fill" :style="{ width: `${card.progress}%` }" />
@@ -388,7 +386,7 @@ defineExpose({
       <DocumentDeleteConfirmModal
         :visible="Boolean(pendingDeleteCard) || pendingBatchDeleteIds.length > 0"
         :title="pendingDeleteCard?.title || ''"
-        :message="pendingBatchDeleteIds.length > 0 ? `Are you sure you want to delete ${pendingBatchDeleteIds.length} selected documents?` : ''"
+        :message="pendingBatchDeleteIds.length > 0 ? $t('home.deleteSelectedConfirm', { count: pendingBatchDeleteIds.length }) : ''"
         :processing="isDeleting"
         @cancel="closeDeleteModal"
         @confirm="confirmDelete"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { getLeaderboard, type LeaderboardEntry } from "../api/leaderboard";
+import { getLeaderboardSnapshot, type DailyFocusItem, type LeaderboardEntry } from "../api/leaderboard";
 import LeaderboardStandingsTable from "../components/leaderboard/LeaderboardStandingsTable.vue";
 import LeaderboardSummaryPanel from "../components/leaderboard/LeaderboardSummaryPanel.vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
@@ -31,6 +31,18 @@ type StandingRow = {
 
 const leaderboardData = ref<LeaderboardEntry[]>([]);
 const isLoading = ref(false);
+const hasMore = ref(false);
+const scope = ref<"global" | "friends">("global");
+const pageSize = 25;
+
+const viewerName = ref<string>("");
+const viewerXp = ref(0);
+const viewerLevel = ref(1);
+const viewerRank = ref(0);
+const viewerEnergyPoints = ref(0);
+const viewerDailyFocus = ref<DailyFocusItem[]>([]);
+const refreshIntervalMs = 30_000;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 const toStandingRow = (entry: LeaderboardEntry): StandingRow => {
   let tone: StandingRow["tone"] = "normal";
@@ -38,42 +50,100 @@ const toStandingRow = (entry: LeaderboardEntry): StandingRow => {
 
   if (entry.rank === 1) {
     tone = "gold";
-    status = "Top Sage";
+    status = t("leaderboard.status.topSage");
   } else if (entry.rank === 2) {
     tone = "silver";
   } else if (entry.rank === 3) {
     tone = "bronze";
   } else if (entry.rank >= 41) {
     tone = "danger";
-    status = "Danger";
+    status = t("leaderboard.status.danger");
   }
 
   return {
     rank: String(entry.rank),
-    scholar: entry.display_name ?? `Scholar ${entry.user_id.slice(0, 6)}`,
+    scholar: entry.display_name ?? t("leaderboard.fallbackScholarName", { id: entry.user_id.slice(0, 6) }),
     guild: "",
-    xp: new Intl.NumberFormat("en-US").format(entry.total_xp),
+    xp: new Intl.NumberFormat(locale.value).format(entry.total_xp),
     status,
     tone,
   };
 };
 
-const standings = computed<StandingRow[]>(() => leaderboardData.value.map(toStandingRow));
+const standings = computed<StandingRow[]>(() => {
+  const _ = locale.value;
+  return leaderboardData.value.map(toStandingRow);
+});
 
-const fetchLeaderboard = async () => {
+const fetchLeaderboard = async (reset = false) => {
+  if (isLoading.value) {
+    return;
+  }
   isLoading.value = true;
   try {
-    leaderboardData.value = await getLeaderboard();
+    const offset = reset ? 0 : leaderboardData.value.length;
+    const snapshot = await getLeaderboardSnapshot(pageSize, offset, scope.value);
+
+    viewerName.value = snapshot.viewer.display_name;
+    viewerXp.value = snapshot.viewer.total_xp;
+    viewerLevel.value = snapshot.viewer.level;
+    viewerRank.value = snapshot.viewer.rank;
+    viewerEnergyPoints.value = snapshot.viewer.energy_points;
+    viewerDailyFocus.value = snapshot.viewer.daily_focus;
+
+    leaderboardData.value = reset
+      ? snapshot.entries
+      : [...leaderboardData.value, ...snapshot.entries];
+    hasMore.value = snapshot.has_more;
   } catch (error) {
     console.error("Failed to fetch leaderboard:", error);
-    leaderboardData.value = [];
+    if (reset) {
+      leaderboardData.value = [];
+      hasMore.value = false;
+    }
   } finally {
     isLoading.value = false;
   }
 };
 
+const handleScopeChange = async (nextScope: "global" | "friends") => {
+  scope.value = nextScope;
+  await fetchLeaderboard(true);
+};
+
+const handleLoadMore = async () => {
+  if (!hasMore.value) {
+    return;
+  }
+  await fetchLeaderboard(false);
+};
+
+const handleVisibilityRefresh = async () => {
+  if (!document.hidden) {
+    await fetchLeaderboard(true);
+  }
+};
+
+const handleWindowFocusRefresh = async () => {
+  await fetchLeaderboard(true);
+};
+
 onMounted(async () => {
-  await Promise.all([hydrate(), fetchLeaderboard()]);
+  await Promise.all([hydrate(), fetchLeaderboard(true)]);
+  refreshTimer = setInterval(() => {
+    void fetchLeaderboard(true);
+  }, refreshIntervalMs);
+  document.addEventListener("visibilitychange", handleVisibilityRefresh);
+  window.addEventListener("focus", handleWindowFocusRefresh);
+});
+
+onBeforeUnmount(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  document.removeEventListener("visibilitychange", handleVisibilityRefresh);
+  window.removeEventListener("focus", handleWindowFocusRefresh);
 });
 
 // Update document title reactively when locale changes
@@ -94,45 +164,30 @@ const closeNotifications = () => {
   notificationVisible.value = false;
 };
 
-// User progress - if no data or empty, show 0
 const userXp = computed(() => {
-  // When leaderboard is empty, user has 0 XP
-  if (!leaderboardData.value || leaderboardData.value.length === 0) {
-    return 0;
-  }
-  const entry = leaderboardData.value.find((e) => e.is_current_user);
-  return entry?.total_xp ?? 0;
+  return viewerXp.value;
 });
 const progress = computed(() => {
-  if (userXp.value === 0) return 0;
-  return Math.round((userXp.value / 18000) * 100);
+  return userXp.value <= 0 ? 0 : Math.round(((userXp.value % 500) / 500) * 100);
 });
 
-// User level - if no data, show 1 (novice)
 const userLevel = computed(() => {
-  if (!leaderboardData.value || leaderboardData.value.length === 0) {
-    return 1;
-  }
-  const entry = leaderboardData.value.find((e) => e.is_current_user);
-  return entry?.level ?? 1;
+  return viewerLevel.value;
 });
 
-// User name - if no data, show default
 const userName = computed(() => {
-  if (!leaderboardData.value || leaderboardData.value.length === 0) {
-    return profileName.value;
-  }
-  const entry = leaderboardData.value.find((e) => e.is_current_user);
-  return entry?.display_name || profileName.value;
+  return viewerName.value || profileName.value;
 });
 
-// Energy points - if no data, show 0
 const energyPoints = computed(() => {
-  if (!leaderboardData.value || leaderboardData.value.length === 0) {
-    return 0;
-  }
-  const entry = leaderboardData.value.find((e) => e.is_current_user);
-  return entry?.energy_points ?? 0;
+  return viewerEnergyPoints.value;
+});
+
+const dailyFocusItems = computed(() => {
+  return viewerDailyFocus.value.map((item) => ({
+    title: item.title,
+    progressText: item.progress_text,
+  }));
 });
 
 const statusClass = (row: StandingRow) => {
@@ -191,9 +246,19 @@ const statusClass = (row: StandingRow) => {
           :user-xp="userXp"
           :user-level="userLevel"
           :user-name="userName"
+          :user-rank="viewerRank"
           :energy-points="energyPoints"
+          :daily-focus="dailyFocusItems"
         />
-        <LeaderboardStandingsTable :standings="standings" :status-class="statusClass" />
+        <LeaderboardStandingsTable
+          :standings="standings"
+          :status-class="statusClass"
+          :active-scope="scope"
+          :has-more="hasMore"
+          :is-loading="isLoading"
+          @scope-change="handleScopeChange"
+          @load-more="handleLoadMore"
+        />
       </section>
     </main>
   </div>

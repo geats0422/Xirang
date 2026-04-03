@@ -90,6 +90,17 @@ const activeModel = ref(import.meta.env.VITE_DEFAULT_MODEL || "gpt-4o-mini");
 const LANGUAGE_STORAGE_KEY = "xirang:language";
 const ACTIVE_MODEL_KEY = "xirang:activeModel";
 
+const getStoredLanguage = (): SupportedLocale | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  if (!stored || !(SUPPORTED_LOCALES as readonly string[]).includes(stored)) {
+    return null;
+  }
+  return stored as SupportedLocale;
+};
+
 const applyLanguage = (value: SupportedLocale) => {
   language.value = value;
   i18n.global.locale.value = value as typeof i18n.global.locale.value;
@@ -104,12 +115,9 @@ const applyLanguage = (value: SupportedLocale) => {
 
 // Restore language preference from localStorage on app initialization
 const restoreLanguage = () => {
-  if (typeof window === "undefined") {
-    return;
-  }
-  const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  if (stored && (SUPPORTED_LOCALES as readonly string[]).includes(stored)) {
-    applyLanguage(stored as SupportedLocale);
+  const stored = getStoredLanguage();
+  if (stored) {
+    applyLanguage(stored);
   }
 };
 
@@ -232,6 +240,13 @@ const calculateStreak = (timestamps: string[]): number => {
   return count;
 };
 
+const isUnauthorized = (error: unknown): boolean => {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  return error.status === 401;
+};
+
 const isNotFoundOrUnauthorized = (error: unknown): boolean => {
   if (!(error instanceof ApiError)) {
     return false;
@@ -274,14 +289,17 @@ const hydrate = async () => {
       invoke(() => getLeaderboard(20)),
     ]);
 
+  // Capture username before potential auth storage clear on 401
+  const storedUsername = getStoredUsername();
+
   if (profileResult.status === "fulfilled") {
     profileName.value = resolveProfileName(profileResult.value.display_name);
     profileLevel.value = profileResult.value.tier_label?.trim() || DEFAULT_LEVEL_LABEL;
   } else {
-    if (isNotFoundOrUnauthorized(profileResult.reason)) {
+    if (isUnauthorized(profileResult.reason)) {
       clearAuthSessionStorage();
     }
-    profileName.value = getStoredUsername() || DEFAULT_DISPLAY_NAME;
+    profileName.value = storedUsername || DEFAULT_DISPLAY_NAME;
     profileLevel.value = DEFAULT_LEVEL_LABEL;
   }
 
@@ -334,7 +352,24 @@ const hydrate = async () => {
     const payload = settingsResult.value;
     if (isRecord(payload)) {
       applyTheme(payload.theme_key);
-      applyLanguage(normalizeLanguage(payload.language_code, language.value));
+      const serverLanguage = normalizeLanguage(payload.language_code, language.value);
+      const localLanguage = getStoredLanguage();
+
+      if (localLanguage) {
+        applyLanguage(localLanguage);
+        if (serverLanguage !== localLanguage) {
+          const syncWrite = updateSettings({ language_code: localLanguage }).catch(() => undefined);
+          pendingSettingsWrite = syncWrite;
+          syncWrite.finally(() => {
+            if (pendingSettingsWrite === syncWrite) {
+              pendingSettingsWrite = null;
+            }
+          });
+        }
+      } else {
+        applyLanguage(serverLanguage);
+      }
+
       if (typeof payload.sound_enabled === "boolean") {
         soundEnabled.value = payload.sound_enabled;
       }

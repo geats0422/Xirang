@@ -16,6 +16,14 @@ type StandingRow = {
 defineProps<{
   statusClass: (row: StandingRow) => string;
   standings: StandingRow[];
+  activeScope: "global" | "friends";
+  hasMore: boolean;
+  isLoading: boolean;
+}>();
+
+const emit = defineEmits<{
+  loadMore: [];
+  scopeChange: [scope: "global" | "friends"];
 }>();
 </script>
 
@@ -27,8 +35,22 @@ defineProps<{
         <p>{{ t("leaderboard.table.subtitle") }}</p>
       </div>
       <div class="switches" role="group" :aria-label="t('leaderboard.table.scopeAria')">
-        <button class="scope-btn scope-btn--active" type="button">{{ t("leaderboard.table.global") }}</button>
-        <button class="scope-btn" type="button">{{ t("leaderboard.table.friends") }}</button>
+        <button
+          class="scope-btn"
+          :class="{ 'scope-btn--active': activeScope === 'global' }"
+          type="button"
+          @click="emit('scopeChange', 'global')"
+        >
+          {{ t("leaderboard.table.global") }}
+        </button>
+        <button
+          class="scope-btn"
+          :class="{ 'scope-btn--active': activeScope === 'friends' }"
+          type="button"
+          @click="emit('scopeChange', 'friends')"
+        >
+          {{ t("leaderboard.table.friends") }}
+        </button>
       </div>
     </header>
 
@@ -45,7 +67,7 @@ defineProps<{
         :key="`${row.rank}-${row.scholar}`"
         class="table-row"
         role="row"
-        :aria-label="`${row.rank} ${row.scholar} ${row.xp} XP`"
+        :aria-label="t('leaderboard.table.rowAria', { rank: row.rank, scholar: row.scholar, xp: row.xp })"
         :class="{
           'table-row--gold': row.tone === 'gold',
           'table-row--silver': row.tone === 'silver',
@@ -81,7 +103,9 @@ defineProps<{
 
       <div class="ellipsis-row">•••</div>
       <div class="demotion-row">{{ t("leaderboard.table.demotionZone") }}</div>
-      <button class="load-more" type="button">{{ t("leaderboard.table.loadMore") }}</button>
+      <button class="load-more" type="button" :disabled="isLoading || !hasMore" @click="emit('loadMore')">
+        {{ hasMore ? t("leaderboard.table.loadMore") : t("leaderboard.table.noMore") }}
+      </button>
     </div>
   </article>
 </template>

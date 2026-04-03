@@ -11,12 +11,19 @@ const props = withDefaults(
     userLevel?: number;
     userName?: string;
     energyPoints?: number;
+    userRank?: number;
+    dailyFocus?: Array<{
+      title: string;
+      progressText: string;
+    }>;
   }>(),
   {
     userXp: 0,
     userLevel: 1,
-    userName: "Default user",
+    userName: "",
     energyPoints: 0,
+    userRank: 0,
+    dailyFocus: () => [],
   },
 );
 
@@ -29,13 +36,32 @@ const formattedXp = computed(() => {
 const levelTitle = computed(() => {
   const level = props.userLevel;
   // Determine rank title based on level
-  let rankTitle = "Novice Scholar";
-  if (level >= 40) rankTitle = "Wandering Sage";
-  else if (level >= 30) rankTitle = "Ancient Scholar";
-  else if (level >= 20) rankTitle = "Journeyman Scholar";
-  else if (level >= 10) rankTitle = "Apprentice Scholar";
-  return `Level ${level} · ${rankTitle}`;
+  let rankKey = "leaderboard.summary.rankTitle.novice";
+  if (level >= 40) rankKey = "leaderboard.summary.rankTitle.wanderingSage";
+  else if (level >= 30) rankKey = "leaderboard.summary.rankTitle.ancientScholar";
+  else if (level >= 20) rankKey = "leaderboard.summary.rankTitle.journeymanScholar";
+  else if (level >= 10) rankKey = "leaderboard.summary.rankTitle.apprenticeScholar";
+  return t("leaderboard.summary.levelTitle", { level, rank: t(rankKey) });
 });
+
+const displayUserName = computed(() => props.userName?.trim() || t("leaderboard.summary.defaultUserName"));
+const displayRank = computed(() => {
+  if (!props.userRank || props.userRank <= 0) {
+    return "--";
+  }
+  return `#${props.userRank}`;
+});
+
+const formatFocusTitle = (title: string) => {
+  const safeTitle = title.trim();
+  if (safeTitle.length === 0) {
+    return locale.value.startsWith("zh") ? "练习《未命名文档》" : "Practice \"Untitled document\"";
+  }
+  if (locale.value.startsWith("zh")) {
+    return `练习《${safeTitle}》`;
+  }
+  return `Practice "${safeTitle}"`;
+};
 </script>
 
 <template>
@@ -46,7 +72,7 @@ const levelTitle = computed(() => {
         <div class="avatar">🧑</div>
         <span class="energy-pill">✪ {{ energyPoints }}</span>
       </div>
-      <h1>{{ userName }}</h1>
+      <h1>{{ displayUserName }}</h1>
       <p class="level">{{ levelTitle }}</p>
 
       <div class="stat-card">
@@ -57,12 +83,12 @@ const levelTitle = computed(() => {
       <div class="league-card">
         <div class="league-head">
           <span>♠</span>
-          <span>{{ t("leaderboard.summary.leagueName") }}</span>
+          <span>{{ t("leaderboard.summary.currentRank", { rank: displayRank }) }}</span>
         </div>
         <div class="progress-track" role="presentation">
           <span class="progress-fill" :style="{ width: `${progress}%` }" />
         </div>
-        <p>{{ t("leaderboard.summary.nextTier") }}</p>
+        <p>{{ t("leaderboard.summary.progressToNextLevel", { xp: Math.max(0, 500 - (userXp % 500)) }) }}</p>
       </div>
 
       <div class="badge-card">
@@ -76,11 +102,14 @@ const levelTitle = computed(() => {
 
     <article class="focus-card">
       <p class="focus-label">{{ t("leaderboard.summary.dailyFocus") }}</p>
-      <div class="focus-body">
-        <span class="focus-icon">📖</span>
-        <div>
-          <p>{{ t("leaderboard.summary.focusTitle") }}</p>
-          <p>{{ t("leaderboard.summary.focusProgress") }}</p>
+      <div v-if="dailyFocus.length === 0" class="focus-empty">{{ t("leaderboard.summary.noFocusToday") }}</div>
+      <div v-else class="focus-list">
+        <div v-for="item in dailyFocus" :key="`${item.title}-${item.progressText}`" class="focus-body">
+          <span class="focus-icon">📖</span>
+          <div>
+            <p>{{ formatFocusTitle(item.title) }}</p>
+            <p>{{ t("leaderboard.summary.focusProgress", { progress: item.progressText }) }}</p>
+          </div>
         </div>
       </div>
     </article>
@@ -289,6 +318,18 @@ const levelTitle = computed(() => {
   align-items: center;
   display: flex;
   gap: 12px;
+  margin-top: 8px;
+}
+
+.focus-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.focus-empty {
+  color: #64748b;
+  font-size: 13px;
   margin-top: 8px;
 }
 

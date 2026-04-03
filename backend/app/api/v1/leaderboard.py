@@ -1,12 +1,15 @@
 """API routes for leaderboard."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies.auth import get_current_user_id
 from app.db.session import get_db_session
 from app.repositories.leaderboard_repository import LeaderboardRepository
-from app.schemas.shop import LeaderboardEntryResponse
-from app.services.leaderboard.service import LeaderboardService
+from app.schemas.leaderboard import LeaderboardListResponse
+from app.services.leaderboard.service import LeaderboardService, create_leaderboard_service
 
 router = APIRouter(prefix="/leaderboard", tags=["leaderboard"])
 
@@ -14,16 +17,23 @@ router = APIRouter(prefix="/leaderboard", tags=["leaderboard"])
 async def get_leaderboard_service(
     session: AsyncSession = Depends(get_db_session),
 ) -> LeaderboardService:
-    return LeaderboardService(repository=LeaderboardRepository(session))
+    return create_leaderboard_service(repository=LeaderboardRepository(session))
 
 
-@router.get("", response_model=list[LeaderboardEntryResponse])
+@router.get("", response_model=LeaderboardListResponse)
 async def list_leaderboard(
-    limit: int = 50,
+    limit: int = 25,
+    offset: int = 0,
+    scope: str = "global",
+    user_id: UUID = Depends(get_current_user_id),
     service: LeaderboardService = Depends(get_leaderboard_service),
-) -> list[LeaderboardEntryResponse]:
-    safe_limit = max(1, min(limit, 100))
-    return await service.get_global_leaderboard(safe_limit)
+) -> LeaderboardListResponse:
+    return await service.get_global_leaderboard(
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+        scope=scope,
+    )
 
 
 @router.get("/health")

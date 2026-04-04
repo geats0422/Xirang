@@ -12,6 +12,12 @@ This is a monorepo containing a Vue 3 frontend and FastAPI backend. Agentic codi
 - No `.cursorrules`, `.cursor/rules/`, or `.github/copilot-instructions.md` files found.
 - OpenCode internal config exists at `.opencode/AGENTS.md`.
 
+
+
+## Communication Language
+- **All replies must be in Chinese (中文)** unless the user explicitly requests otherwise in a non-Chinese language.
+- This includes code comments, commit messages, documentation, and any written communication.
+
 ---
 
 ## Frontend (`frontend/`)

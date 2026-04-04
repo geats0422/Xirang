@@ -43,6 +43,8 @@ class FakeSettlementRow:
 class InMemoryRunRepository:
     def __init__(self, questions: list[QuestionData]) -> None:
         self._source_questions = questions
+        self._knowledge_points = ["python", "asyncio", "orm"]
+        self._language_code = "en"
         self._runs: dict[UUID, FakeRun] = {}
         self._run_questions: dict[UUID, list[dict[str, Any]]] = {}
         self._answers: dict[UUID, list[AnswerResult]] = {}
@@ -115,8 +117,29 @@ class InMemoryRunRepository:
         mode: RunMode,
         count: int,
         path_id: str | None = None,
+        user_id: UUID | None = None,
     ) -> list[QuestionData]:
+        _ = mode
+        _ = path_id
+        _ = user_id
         return [q for q in self._source_questions if q.document_id == document_id][:count]
+
+    async def count_document_questions(self, *, document_id: UUID) -> int:
+        return sum(1 for q in self._source_questions if q.document_id == document_id)
+
+    async def list_document_knowledge_points(
+        self,
+        *,
+        document_id: UUID,
+        limit: int = 8,
+    ) -> list[str]:
+        if not any(q.document_id == document_id for q in self._source_questions):
+            return []
+        return self._knowledge_points[:limit]
+
+    async def get_user_language_code(self, user_id: UUID) -> str:
+        _ = user_id
+        return self._language_code
 
     async def add_run_questions(self, run_id: UUID, questions: list[QuestionData]) -> None:
         self._run_questions[run_id] = [
@@ -331,6 +354,52 @@ async def test_real_run_service_get_settlement_requires_completion() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_path_options_localizes_description_for_chinese_user() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    repository = InMemoryRunRepository(_build_questions(document_id))
+    repository._language_code = "zh-CN"
+    service = RunService(repository=repository)
+
+    endless_options = await service.list_path_options(
+        mode=RunMode.ENDLESS,
+        document_id=document_id,
+        user_id=user_id,
+    )
+    speed_options = await service.list_path_options(
+        mode=RunMode.SPEED,
+        document_id=document_id,
+        user_id=user_id,
+    )
+    draft_options = await service.list_path_options(
+        mode=RunMode.DRAFT,
+        document_id=document_id,
+        user_id=user_id,
+    )
+
+    assert endless_options[0]["description"] == "python章节: 热身关, 先把节奏找回来"
+    assert speed_options[0]["description"] == "python章节: 短局快练, 命中率越高收益越好"
+    assert draft_options[0]["description"] == "基础章节线 · python"
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_falls_back_to_english_for_unsupported_language() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    repository = InMemoryRunRepository(_build_questions(document_id))
+    repository._language_code = "fr-FR"
+    service = RunService(repository=repository)
+
+    endless_options = await service.list_path_options(
+        mode=RunMode.ENDLESS,
+        document_id=document_id,
+        user_id=user_id,
+    )
+
+    assert endless_options[0]["description"] == "python: Warm-up floor"
+
+
+@pytest.mark.asyncio
 async def test_real_run_service_accumulates_study_seconds_and_goal_progress() -> None:
     user_id = uuid4()
     document_id = uuid4()
@@ -373,3 +442,78 @@ async def test_real_run_service_accumulates_study_seconds_and_goal_progress() ->
     assert after_second.mode_state["study_seconds"] == 122
     assert after_second.mode_state["goal_current"] == 2
     assert after_second.mode_state["goal_total"] == 8
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_uses_document_knowledge_points_in_description() -> None:
+    document_id = uuid4()
+    repository = InMemoryRunRepository(_build_questions(document_id))
+    repository._knowledge_points = ["基础语法", "面向对象", "异步编程"]
+    service = RunService(repository=repository)
+
+    options = await service.list_path_options(mode=RunMode.DRAFT, document_id=document_id)
+
+    assert options
+    descriptions = [str(item["description"]) for item in options]
+    assert any("Foundation Route" in item for item in descriptions)
+    assert any("Deep-dive Route" in item for item in descriptions)
+    assert any("Consolidation Route" in item for item in descriptions)
+    assert any("基础语法" in item for item in descriptions)
+    assert any("面向对象" in item for item in descriptions)
+    assert any("异步编程" in item for item in descriptions)
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_falls_back_when_knowledge_points_weak() -> None:
+    document_id = uuid4()
+    repository = InMemoryRunRepository(_build_questions(document_id))
+    repository._knowledge_points = []
+    service = RunService(repository=repository)
+
+    options = await service.list_path_options(mode=RunMode.SPEED, document_id=document_id)
+
+    assert options
+    assert all(":" not in str(item["description"]) for item in options)
+
+
+@pytest.mark.asyncio
+async def test_fill_in_blank_accepts_semantic_equivalent_answer() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    fill_question = QuestionData(
+        id=uuid4(),
+        document_id=document_id,
+        question_text='Python中, print("hello\\nworld")的输出结果是hello和world之间进行____.',
+        question_type="fill_in_blank",
+        options=[],
+        correct_option_ids=[],
+        difficulty=1,
+        correct_answer="换行符",
+    )
+
+    repository = InMemoryRunRepository([fill_question])
+    service = RunService(repository=repository)
+
+    run, generated = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.ENDLESS,
+        question_count=1,
+        path_id="F1",
+    )
+    run_questions = repository._run_questions[run.id]
+    run_questions[0].update(
+        {
+            "question_type": "fill_in_blank",
+            "correct_answer": "换行符",
+        }
+    )
+
+    submit_result = await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[],
+        text_answer="换行",
+    )
+
+    assert submit_result.answer.is_correct is True

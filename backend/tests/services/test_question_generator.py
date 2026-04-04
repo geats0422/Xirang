@@ -33,7 +33,10 @@ class FakeLLMProvider:
         prompt: str,
         *,
         response_format: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
+        _ = response_format
+        _ = kwargs
         self.call_count += 1
         self.last_prompt = prompt
         if self.call_count <= len(self.responses):
@@ -301,7 +304,11 @@ class TestQuestionGenerator:
                 prompt: str,
                 *,
                 response_format: dict[str, Any] | None = None,
+                **kwargs: Any,
             ) -> dict[str, Any]:
+                _ = prompt
+                _ = response_format
+                _ = kwargs
                 raise RuntimeError("LLM service unavailable")
 
         generator = QuestionGenerator(llm_client=FailingProvider())
@@ -412,3 +419,83 @@ class TestQuestionGenerator:
 
         assert len(result) == 5
         assert all(q.question_type == QuestionType.SINGLE_CHOICE for q in result)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "game_mode",
+        ["endless-abyss", "speed-survival", "knowledge-draft", None],
+    )
+    async def test_generate_prompt_includes_study_material_guardrails_and_language_requirement(
+        self,
+        game_mode: str | None,
+    ) -> None:
+        provider = self.make_fake_provider(
+            [
+                self.build_structured_response(
+                    [
+                        {
+                            "question_type": "single_choice",
+                            "prompt": "Test",
+                            "options": [
+                                {"option_key": "A", "content": "Yes", "is_correct": True},
+                                {"option_key": "B", "content": "No", "is_correct": False},
+                            ],
+                            "explanation": "Test",
+                            "difficulty": 1,
+                        }
+                    ]
+                )
+            ]
+        )
+        generator = QuestionGenerator(llm_client=provider)
+
+        await generator.generate(
+            document_id=uuid4(),
+            context="Only this study material should be used.",
+            question_types=[QuestionType.SINGLE_CHOICE],
+            count=1,
+            game_mode=game_mode,
+            language_code="zh-CN",
+        )
+
+        assert provider.last_prompt is not None
+        assert "<STUDY_MATERIAL>" in provider.last_prompt
+        assert "</STUDY_MATERIAL>" in provider.last_prompt
+        assert "Use Simplified Chinese (zh-CN)" in provider.last_prompt
+        assert "Generate questions ONLY from facts explicitly present" in provider.last_prompt
+        assert "question_type, options, correct_answer" in provider.last_prompt
+
+    @pytest.mark.asyncio
+    async def test_generate_speed_survival_localizes_true_false_option_labels(self) -> None:
+        provider = self.make_fake_provider(
+            [
+                self.build_structured_response(
+                    [
+                        {
+                            "question_type": "true_false",
+                            "prompt": "陈述",
+                            "options": [
+                                {"option_key": "A", "content": "正确", "is_correct": True},
+                                {"option_key": "B", "content": "错误", "is_correct": False},
+                            ],
+                            "explanation": "说明",
+                            "difficulty": 1,
+                        }
+                    ]
+                )
+            ]
+        )
+        generator = QuestionGenerator(llm_client=provider)
+
+        await generator.generate(
+            document_id=uuid4(),
+            context="测试材料",
+            question_types=[QuestionType.TRUE_FALSE],
+            count=1,
+            game_mode="speed-survival",
+            language_code="zh-CN",
+        )
+
+        assert provider.last_prompt is not None
+        assert 'content: "正确"' in provider.last_prompt
+        assert 'content: "错误"' in provider.last_prompt

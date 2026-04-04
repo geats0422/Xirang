@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.review import (
     FeedbackStatus,
@@ -194,9 +197,7 @@ class ReviewRepository:
     async def update_feedback_status(self, feedback_id: UUID, status: str) -> None:
         """Update the status of a feedback record."""
         stmt = (
-            update(QuestionFeedback)
-            .where(QuestionFeedback.id == feedback_id)
-            .values(status=status)
+            update(QuestionFeedback).where(QuestionFeedback.id == feedback_id).values(status=status)
         )
         await self._session.execute(stmt)
 
@@ -257,4 +258,3 @@ class ReviewRepository:
             }
             for c in db_candidates
         ]
-

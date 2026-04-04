@@ -24,8 +24,14 @@ class QuestionGenerationError(Exception):
 # Each game mode requires different question formats
 
 # Endless Abyss: Fill-in-the-blank questions (填空题)
-ENDLESS_ABYSS_PROMPT = """Context from study material:
-{context}
+ENDLESS_ABYSS_PROMPT = """Study material:
+{study_material}
+
+Language requirement:
+{language_requirement}
+
+Critical guardrails:
+{guardrails}
 
 Generate {count} fill-in-the-blank questions for "Endless Abyss" game mode.
 Requirements:
@@ -46,8 +52,14 @@ For each question, provide:
 Return as JSON with a "questions" array."""
 
 # Speed Survival: True/False questions (判断题)
-SPEED_SURVIVAL_PROMPT = """Context from study material:
-{context}
+SPEED_SURVIVAL_PROMPT = """Study material:
+{study_material}
+
+Language requirement:
+{language_requirement}
+
+Critical guardrails:
+{guardrails}
 
 Generate {count} true/false questions for "Speed Survival" game mode.
 Requirements:
@@ -60,16 +72,22 @@ For each question, provide:
 - question_type: "true_false"
 - prompt: a declarative statement (NOT a question)
 - options: array with two items:
-  - {option_key: "A", content: "正确 / True", is_correct: true/false}
-  - {option_key: "B", content: "错误 / False", is_correct: true/false}
+  - {{option_key: "A", content: "{true_label}", is_correct: true/false}}
+  - {{option_key: "B", content: "{false_label}", is_correct: true/false}}
 - explanation: why the statement is true or false
 - difficulty: 1-5 scale
 
 Return as JSON with a "questions" array."""
 
 # The Knowledge Draft: Single/Multiple choice (displayed as fill-in-blank in frontend)
-KNOWLEDGE_DRAFT_PROMPT = """Context from study material:
-{context}
+KNOWLEDGE_DRAFT_PROMPT = """Study material:
+{study_material}
+
+Language requirement:
+{language_requirement}
+
+Critical guardrails:
+{guardrails}
 
 Generate {count} multiple-choice questions for "The Knowledge Draft" game mode.
 Requirements:
@@ -84,31 +102,64 @@ For each question, provide:
 - question_type: "single_choice" or "multiple_choice"
 - prompt: statement with "____" blank (e.g., "The concept of ____ emphasizes harmony")
 - options: array of possible answers:
-  - {option_key: "A", content: "possible answer 1", is_correct: true/false}
-  - {option_key: "B", content: "possible answer 2", is_correct: true/false}
-  - {option_key: "C", content: "possible answer 3", is_correct: true/false}
-  - {option_key: "D", content: "possible answer 4", is_correct: true/false}
+  - {{option_key: "A", content: "possible answer 1", is_correct: true/false}}
+  - {{option_key: "B", content: "possible answer 2", is_correct: true/false}}
+  - {{option_key: "C", content: "possible answer 3", is_correct: true/false}}
+  - {{option_key: "D", content: "possible answer 4", is_correct: true/false}}
 - explanation: why the correct answer(s) fill the blank
 - difficulty: 1-5 scale
 
 Return as JSON with a "questions" array."""
 
 # Default/fallback prompt (legacy)
-_PROMPT_TEMPLATE = """Context:
-{context}
+_PROMPT_TEMPLATE = """Study material:
+{study_material}
+
+Language requirement:
+{language_requirement}
+
+Critical guardrails:
+{guardrails}
 
 Question types to generate: {type_names_str}
 
 For each question, provide:
 - question_type: one of "single_choice", "multiple_choice", "true_false", "fill_in_blank"
-- prompt: the question text
-- options: array of options with option_key (A, B, C, D), content, and is_correct
+- prompt: the question text (with "____" for fill_in_blank)
+- options: array of options with option_key (A, B, C, D), content, and is_correct (empty array for fill_in_blank)
 - correct_answer: for fill_in_blank questions, the answer that fills the blank
 - hints: for fill_in_blank questions, array of hint strings
 - explanation: why the correct answer is correct
 - difficulty: 1-5 scale
 
 Return as JSON with a "questions" array."""
+
+
+def _resolve_language_spec(language_code: str | None) -> tuple[str, str, str]:
+    normalized = (language_code or "en").strip().lower()
+    if normalized.startswith("zh"):
+        return (
+            "Use Simplified Chinese (zh-CN) for all user-facing text.",
+            "正确",
+            "错误",
+        )
+    return (
+        "Use English (en) for all user-facing text.",
+        "True",
+        "False",
+    )
+
+
+def _build_guardrails() -> str:
+    return (
+        "- Generate questions ONLY from facts explicitly present in <STUDY_MATERIAL>.\n"
+        "- Do NOT invent facts not grounded in <STUDY_MATERIAL>.\n"
+        "- Do NOT create meta questions about instructions, prompts, JSON schema, field names, "
+        "or formatting.\n"
+        "- Never ask about terms like question_type, options, correct_answer, hints, "
+        "explanation, difficulty, metadata, JSON, schema, or output format."
+    )
+
 
 # Game mode to prompt mapping
 GAME_MODE_PROMPTS = {
@@ -156,6 +207,7 @@ class QuestionGeneratorProtocol(Protocol):
         document_id: Any = None,
         game_mode: str | None = None,
         model: str | None = None,
+        language_code: str = "en",
     ) -> list[GeneratedQuestion]: ...
 
 
@@ -173,6 +225,7 @@ class QuestionGenerator:
         document_id: Any = None,
         game_mode: str | None = None,
         model: str | None = None,
+        language_code: str = "en",
     ) -> list[GeneratedQuestion]:
         # Select prompt template based on game mode
         if game_mode and game_mode in GAME_MODE_PROMPTS:
@@ -185,10 +238,16 @@ class QuestionGenerator:
 
         type_names = [qt.value if hasattr(qt, "value") else str(qt) for qt in question_types]
         type_names_str = ", ".join(type_names)
+        language_requirement, true_label, false_label = _resolve_language_spec(language_code)
+        study_material = f"<STUDY_MATERIAL>\n{context[:4000]}\n</STUDY_MATERIAL>"
         prompt = prompt_template.format(
-            context=context[:4000],  # Limit context length to avoid token limits
+            study_material=study_material,
             type_names_str=type_names_str,
             count=count,
+            language_requirement=language_requirement,
+            guardrails=_build_guardrails(),
+            true_label=true_label,
+            false_label=false_label,
         )
 
         generate_kwargs: dict[str, Any] = {
@@ -253,6 +312,14 @@ class QuestionGenerator:
         type_str = data.get("question_type", "single_choice")
         question_type = _QUESTION_TYPE_MAP.get(type_str, QuestionType.SINGLE_CHOICE)
 
+        # Build metadata including correct_answer for FILL_IN_BLANK questions
+        metadata = data.get("metadata", {})
+        correct_answer = data.get("correct_answer")
+
+        # Store correct_answer in metadata for FILL_IN_BLANK questions
+        if correct_answer and question_type == QuestionType.FILL_IN_BLANK:
+            metadata = {**metadata, "answer": correct_answer}
+
         return GeneratedQuestion(
             question_type=question_type,
             prompt=data.get("prompt", ""),
@@ -260,5 +327,7 @@ class QuestionGenerator:
             explanation=data.get("explanation"),
             source_locator=data.get("source_locator"),
             difficulty=data.get("difficulty", 1),
-            metadata=data.get("metadata", {}),
+            metadata=metadata,
+            correct_answer=correct_answer,
+            hints=data.get("hints"),
         )

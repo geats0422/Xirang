@@ -20,6 +20,7 @@ class SettingsProtocol(Protocol):
     haptic_enabled: bool
     daily_reminder_enabled: bool
     leaderboard_scope_default: LeaderboardScope
+    selected_model: str | None
     updated_at: datetime
 
 
@@ -39,6 +40,7 @@ class SettingsData:
     daily_reminder_enabled: bool
     leaderboard_scope_default: LeaderboardScope
     updated_at: datetime
+    selected_model: str | None = None
 
 
 class SettingsServiceError(Exception):

@@ -184,7 +184,15 @@ class FakeRunService:
             raise ValueError("Settlement not found")
         return settlement
 
-    def list_path_options(self, *, mode: RunMode) -> list[dict[str, object]]:
+    async def list_path_options(
+        self,
+        *,
+        mode: RunMode,
+        document_id: UUID | None = None,
+        user_id: UUID | None = None,
+    ) -> list[dict[str, object]]:
+        _ = document_id
+        _ = user_id
         if mode == RunMode.ENDLESS:
             return [
                 {

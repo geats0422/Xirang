@@ -20,6 +20,8 @@ class QuestionData:
     correct_option_ids: list[UUID]
     difficulty: int
     chapter_reference: str | None = None
+    correct_answer: str | None = None  # For FILL_IN_BLANK questions
+    explanation: str | None = None  # Question explanation for feedback
 
 
 @dataclass(slots=True)

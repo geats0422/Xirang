@@ -178,7 +178,7 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     );
   });
 
-  it("does not advance on wrong full submission and supports replacing filled slots", async () => {
+  it("shows feedback after wrong submission and advances after local correction", async () => {
     mocks.createRun.mockResolvedValue({
       run_id: "run-draft-1",
       mode: "draft",
@@ -205,21 +205,16 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     mocks.submitAnswer
       .mockResolvedValueOnce({
         is_correct: false,
+        feedback: {
+          correct_option_ids: ["o-3", "o-2"],
+          correct_answer: "gamma, beta",
+          explanation: "The source sentence requires gamma and beta in order.",
+        },
         run: {
           id: "run-draft-1",
           status: "running",
           score: 10,
           state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 590, pending_coins: 10 },
-        },
-        settlement: null,
-      })
-      .mockResolvedValueOnce({
-        is_correct: true,
-        run: {
-          id: "run-draft-1",
-          status: "running",
-          score: 20,
-          state: { hp: 3, max_hp: 3, floor: 2, floor_total: 8, time_left_sec: 585, pending_coins: 20 },
         },
         settlement: null,
       });
@@ -234,15 +229,17 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
     expect(wrapper.find(".scroll-paper__body").text()).toContain("First");
     expect(wrapper.find(".run-status-notice").exists()).toBe(true);
+    expect(wrapper.find(".answer-feedback").exists()).toBe(true);
+    expect(wrapper.text()).toContain("Correct answer:");
 
     const slots = wrapper.findAll(".drop-slot");
     await slots[0].trigger("click");
     await chips[2].trigger("click");
     await flushPromises();
 
-    expect(mocks.submitAnswer).toHaveBeenCalledTimes(2);
-    expect(mocks.submitAnswer.mock.calls[1][2]).toEqual(["o-3", "o-2"]);
+    expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
     expect(wrapper.text()).toContain("Second puzzle");
+    expect(wrapper.find(".answer-feedback").exists()).toBe(false);
   });
 
   it("supports drag filling and slot reordering before submit", async () => {

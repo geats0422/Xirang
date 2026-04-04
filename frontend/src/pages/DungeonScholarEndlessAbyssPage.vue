@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
@@ -35,6 +35,7 @@ const coins = ref<number | null>(null);
 const runId = ref<string | null>(null);
 const questions = ref<RunQuestion[]>([]);
 const questionIndex = ref(0);
+const runBootstrapFailed = ref(false);
 const questionStartAt = ref<number>(Date.now());
 let tickerId: number | null = null;
 
@@ -50,6 +51,13 @@ const settlementGoalTotal = ref(10);
 const settlementTopPercent = ref<number | null>(null);
 
 const showNotice = ref(false);
+const showFeedback = ref(false);
+const lastAnswerCorrect = ref(false);
+const feedbackCorrectAnswer = ref<string | null>(null);
+const feedbackExplanation = ref<string | null>(null);
+const awaitingCorrection = ref(false);
+const expectedCorrectOptionIds = ref<string[]>([]);
+const correctionRetryNotice = ref(false);
 const showReviveModal = ref(false);
 const reviveError = ref("");
 const reviveShieldCount = ref(0);
@@ -80,6 +88,9 @@ const time = computed(() => {
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 
 const questionTitle = computed(() => {
+  if (runBootstrapFailed.value) {
+    return t("endlessAbyss.loadingQuestionFailed");
+  }
   if (currentQuestion.value?.text) {
     return currentQuestion.value.text;
   }
@@ -87,6 +98,33 @@ const questionTitle = computed(() => {
 });
 
 const hasTypedAnswer = computed(() => answer.value.trim().length > 0);
+
+const defaultWrongAnswerNotice = computed(() => {
+  if (locale.value === "zh-CN") {
+    return "⚠ 回答错误，生命值下降。";
+  }
+  if (locale.value === "zh-TW") {
+    return "⚠ 回答錯誤，生命值下降。";
+  }
+  return "⚠ Wrong answer. HP decreased.";
+});
+
+const correctionRetryNoticeText = computed(() => {
+  if (locale.value === "zh-CN") {
+    return "⚠ 仍未答对，请继续修正。";
+  }
+  if (locale.value === "zh-TW") {
+    return "⚠ 仍未答對，請繼續修正。";
+  }
+  return "⚠ Still not correct, please keep revising.";
+});
+
+const noticeMessage = computed(() => {
+  return correctionRetryNotice.value
+    ? correctionRetryNoticeText.value
+    : defaultWrongAnswerNotice.value;
+});
+
 
 const questionHint = computed(() => {
   const firstOption = currentQuestion.value?.options[0];
@@ -112,6 +150,53 @@ const resolveLeagueTopPercent = (accuracy: number | null | undefined): number | 
   }
   const normalized = Math.min(1, Math.max(0, accuracy));
   return Math.max(1, 100 - Math.round(normalized * 100));
+};
+
+const areSameOptionSet = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const setA = new Set(a);
+  return b.every((item) => setA.has(item));
+};
+
+const normalizeComparableText = (value: string): string => {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\u3000/g, " ")
+    .replace(/\s+/g, "");
+};
+
+const normalizeTokens = (value: string): string[] => {
+  return value
+    .toLowerCase()
+    .split(/[\s,，。！？!?;；:：/]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+};
+
+const resolveExpectedCorrectOptionIds = (payload: {
+  correctOptionIds: string[];
+  correctAnswerText: string | null;
+  options: { id: string; text: string }[];
+}): string[] => {
+  if (payload.correctOptionIds.length > 0) {
+    return payload.correctOptionIds;
+  }
+  if (!payload.correctAnswerText) {
+    return [];
+  }
+  const answerTokens = normalizeTokens(payload.correctAnswerText);
+  if (answerTokens.length === 0) {
+    return [];
+  }
+  return payload.options
+    .filter((option) => {
+      const optionTokens = normalizeTokens(option.text);
+      return optionTokens.some((token) => answerTokens.includes(token));
+    })
+    .map((option) => option.id);
 };
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
@@ -171,12 +256,14 @@ const bootstrapRun = async () => {
   const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
   if (!documentId) {
     return;
   }
 
   try {
-    const created = await createRun(documentId, "endless", 0, pathId);
+    const created = await createRun(documentId, "endless", 10, pathId, isMistakeReview);
+    runBootstrapFailed.value = false;
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
@@ -184,13 +271,15 @@ const bootstrapRun = async () => {
     questionStartAt.value = Date.now();
     startTicker();
   } catch {
+    runBootstrapFailed.value = true;
     runStatus.value = "reduced-reward";
   }
 };
 
 const goBack = async () => {
+  const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
   await router.push({
-    path: route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
+    path: isMistakeReview ? ROUTES.gameModes : route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
     query: route.query,
   });
 };
@@ -210,25 +299,68 @@ const castSpell = async () => {
     return;
   }
 
-  isSubmittingAnswer.value = true;
-
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
-  const normalizedAnswer = answer.value.trim().toLowerCase();
+  const normalizedInput = answer.value.trim();
+  const normalizedAnswer = normalizedInput.toLowerCase();
+  const isFillInBlankQuestion = currentQuestion.value.question_type === "fill_in_blank";
   const matchedOption = currentQuestion.value.options.find(
     (option) => option.text.trim().toLowerCase() === normalizedAnswer,
   );
+  const selectedOptionIds = matchedOption ? [matchedOption.id] : [];
+
+  if (awaitingCorrection.value) {
+    const matchedByOption = expectedCorrectOptionIds.value.length > 0 && areSameOptionSet(selectedOptionIds, expectedCorrectOptionIds.value);
+    const normalizedCurrentAnswer = normalizeComparableText(normalizedInput);
+    const normalizedCorrectAnswer = normalizeComparableText(feedbackCorrectAnswer.value ?? "");
+    const matchedByAnswer =
+      normalizedCurrentAnswer.length > 0 &&
+      normalizedCorrectAnswer.length > 0 &&
+      normalizedCurrentAnswer === normalizedCorrectAnswer;
+
+    if (!matchedByOption && !matchedByAnswer) {
+      showNotice.value = true;
+      showFeedback.value = true;
+      correctionRetryNotice.value = true;
+      return;
+    }
+
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+    showFeedback.value = false;
+    showNotice.value = false;
+    correctionRetryNotice.value = false;
+    questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
+    questionStartAt.value = Date.now();
+    answer.value = "";
+    return;
+  }
+
+  isSubmittingAnswer.value = true;
 
   try {
     const result = await submitAnswer(
       runId.value,
       currentQuestion.value.id,
-      matchedOption ? [matchedOption.id] : [],
+      selectedOptionIds,
       elapsedMs,
+      isFillInBlankQuestion ? normalizedInput : undefined,
     );
     applyRunState(result.run.state);
 
+    lastAnswerCorrect.value = result.is_correct;
+    feedbackCorrectAnswer.value = result.feedback?.correct_answer ?? null;
+    feedbackExplanation.value = result.feedback?.explanation ?? null;
+
     if (!result.is_correct) {
       showNotice.value = true;
+      showFeedback.value = true;
+      correctionRetryNotice.value = false;
+      awaitingCorrection.value = true;
+      expectedCorrectOptionIds.value = resolveExpectedCorrectOptionIds({
+        correctOptionIds: result.feedback?.correct_option_ids ?? [],
+        correctAnswerText: result.feedback?.correct_answer ?? null,
+        options: currentQuestion.value.options,
+      });
       if (result.settlement) {
         settlementXp.value = result.settlement.xp_earned;
         settlementCoins.value = result.settlement.coins_earned;
@@ -249,6 +381,10 @@ const castSpell = async () => {
     }
 
     showNotice.value = false;
+    showFeedback.value = false;
+    awaitingCorrection.value = false;
+    correctionRetryNotice.value = false;
+    expectedCorrectOptionIds.value = [];
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
@@ -359,6 +495,13 @@ watch(
   currentQuestion,
   () => {
     showNotice.value = false;
+    showFeedback.value = false;
+    lastAnswerCorrect.value = false;
+    feedbackCorrectAnswer.value = null;
+    feedbackExplanation.value = null;
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+    correctionRetryNotice.value = false;
     answer.value = "";
     isSubmittingAnswer.value = false;
   },
@@ -433,8 +576,21 @@ onUnmounted(() => {
           {{ t("common.reportQuestionIssue") }}
         </button>
 
+        <div v-if="showFeedback && !lastAnswerCorrect" class="answer-feedback answer-feedback--wrong">
+          <div class="answer-feedback__header">
+            <span class="answer-feedback__icon">✗</span>
+            <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
+          </div>
+          <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong> {{ feedbackCorrectAnswer }}
+          </div>
+          <div v-if="feedbackExplanation" class="answer-feedback__explanation">
+            <strong>{{ t("speedSurvival.explanation") }}</strong> {{ feedbackExplanation }}
+          </div>
+        </div>
+
         <div v-if="showNotice" class="run-status-notice run-status-notice--danger">
-          {{ t("endlessAbyss.wrongAnswerNotice") }}
+          {{ noticeMessage }}
         </div>
 
         <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
@@ -832,6 +988,57 @@ onUnmounted(() => {
   color: var(--color-danger-title);
 }
 
+.answer-feedback {
+  background: var(--color-danger-surface);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  text-align: left;
+}
+
+.answer-feedback--wrong {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+}
+
+.answer-feedback__header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.answer-feedback__icon {
+  align-items: center;
+  background: var(--color-danger-title);
+  border-radius: 50%;
+  color: var(--color-surface);
+  display: inline-flex;
+  font-size: 14px;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.answer-feedback__title {
+  color: var(--color-danger-title);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.answer-feedback__correct {
+  color: var(--color-danger-title);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.answer-feedback__explanation {
+  color: var(--color-danger-title);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 @media (max-width: 900px) {
   .abyss-page {
     padding: 12px;
@@ -928,3 +1135,5 @@ onUnmounted(() => {
 }
 
 </style>
+
+

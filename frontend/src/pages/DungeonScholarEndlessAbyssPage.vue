@@ -1,11 +1,11 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
-import { submitFeedback } from '../api/feedback';
+import { createRun, submitAnswer, useRunRevive, type RunQuestion } from "../api/runs";
+import { submitFeedback } from "../api/feedback";
 import { getShopBalance } from "../api/shop";
 
 const { t, locale } = useI18n();
@@ -39,6 +39,7 @@ const questionStartAt = ref<number>(Date.now());
 let tickerId: number | null = null;
 
 const answer = ref("");
+const isSubmittingAnswer = ref(false);
 const showSettlement = ref(false);
 const runStatus = ref<RunStatus>("normal");
 const settlementXp = ref(0);
@@ -46,15 +47,22 @@ const settlementCoins = ref(0);
 const settlementCombo = ref(0);
 const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(10);
+const settlementTopPercent = ref<number | null>(null);
 
 const showNotice = ref(false);
+const showReviveModal = ref(false);
+const reviveError = ref("");
+const reviveShieldCount = ref(0);
+const reviveShieldExpiresAt = ref<string | null>(null);
 
 const materialTitle = computed(() => {
   const rawTitle = route.query.title;
-  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Ancient Wisdom";
+  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : t("endlessAbyss.ancientWisdom");
 });
 
-const chapterTitle = computed(() => `Chapter ${floor.value ?? "--"}: ${materialTitle.value}`);
+const chapterTitle = computed(() =>
+  t("endlessAbyss.chapterLabel", { n: floor.value ?? "--", title: materialTitle.value }),
+);
 
 const time = computed(() => {
   if (timeLeftSec.value === null) {
@@ -75,17 +83,21 @@ const questionTitle = computed(() => {
   if (currentQuestion.value?.text) {
     return currentQuestion.value.text;
   }
-  return "Loading question...";
+  return t("endlessAbyss.loadingQuestion");
 });
+
+const hasTypedAnswer = computed(() => answer.value.trim().length > 0);
 
 const questionHint = computed(() => {
   const firstOption = currentQuestion.value?.options[0];
   if (!firstOption?.text) {
-    return "HINT: --";
+    return t("endlessAbyss.hintNoOption");
   }
   const firstChar = firstOption.text.trim().charAt(0).toUpperCase();
-  return firstChar ? `HINT: STARTS WITH ${firstChar}` : "HINT: --";
+  return firstChar ? `${t("endlessAbyss.hintStartsWith", { char: firstChar })}` : t("endlessAbyss.hintNoOption");
 });
+
+const reviveShieldActive = computed(() => reviveShieldCount.value > 0);
 
 const floorProgress = computed(() => {
   if (floor.value === null || floorTotal.value === null) {
@@ -93,6 +105,14 @@ const floorProgress = computed(() => {
   }
   return (floor.value / Math.max(1, floorTotal.value)) * 100;
 });
+
+const resolveLeagueTopPercent = (accuracy: number | null | undefined): number | null => {
+  if (typeof accuracy !== "number" || !Number.isFinite(accuracy)) {
+    return null;
+  }
+  const normalized = Math.min(1, Math.max(0, accuracy));
+  return Math.max(1, 100 - Math.round(normalized * 100));
+};
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
@@ -103,11 +123,17 @@ const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   const floorValue = Number(state.floor);
   const floorTotalValue = Number(state.floor_total);
   const timeValue = Number(state.time_left_sec);
+  const shieldCount = Number(state.revive_shield_count);
+  const shieldExpires = typeof state.revive_shield_expires_at === "string"
+    ? state.revive_shield_expires_at
+    : null;
   hpLevel.value = Number.isFinite(hp) ? hp : hpLevel.value;
   maxHp.value = Number.isFinite(maxHpValue) ? maxHpValue : maxHp.value;
   floor.value = Number.isFinite(floorValue) ? floorValue : floor.value;
   floorTotal.value = Number.isFinite(floorTotalValue) ? floorTotalValue : floorTotal.value;
   timeLeftSec.value = Number.isFinite(timeValue) ? timeValue : timeLeftSec.value;
+  reviveShieldCount.value = Number.isFinite(shieldCount) ? shieldCount : 0;
+  reviveShieldExpiresAt.value = shieldExpires;
 };
 
 const startTicker = () => {
@@ -150,7 +176,7 @@ const bootstrapRun = async () => {
   }
 
   try {
-    const created = await createRun(documentId, "endless", 10, pathId);
+    const created = await createRun(documentId, "endless", 0, pathId);
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
@@ -174,9 +200,17 @@ const goLibrary = async () => {
 };
 
 const castSpell = async () => {
-  if (!answer.value.trim() || !runId.value || !currentQuestion.value) {
+  if (
+    showSettlement.value ||
+    isSubmittingAnswer.value ||
+    !answer.value.trim() ||
+    !runId.value ||
+    !currentQuestion.value
+  ) {
     return;
   }
+
+  isSubmittingAnswer.value = true;
 
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
   const normalizedAnswer = answer.value.trim().toLowerCase();
@@ -195,7 +229,26 @@ const castSpell = async () => {
 
     if (!result.is_correct) {
       showNotice.value = true;
+      if (result.settlement) {
+        settlementXp.value = result.settlement.xp_earned;
+        settlementCoins.value = result.settlement.coins_earned;
+        settlementCombo.value = result.settlement.combo_max;
+        settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+        settlementGoalTotal.value = result.settlement.goal_total ?? 10;
+        settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
+        showSettlement.value = true;
+        await refreshBalance();
+        return;
+      }
+      if (result.run.status === "aborted") {
+        reviveError.value = "";
+        showReviveModal.value = true;
+        stopTicker();
+      }
+      return;
     }
+
+    showNotice.value = false;
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
@@ -203,22 +256,53 @@ const castSpell = async () => {
       settlementCombo.value = result.settlement.combo_max;
       settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
       settlementGoalTotal.value = result.settlement.goal_total ?? 10;
+      settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
       showSettlement.value = true;
       await refreshBalance();
     } else {
       questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
       questionStartAt.value = Date.now();
+      if (result.run.status === "aborted") {
+        reviveError.value = "";
+        showReviveModal.value = true;
+        stopTicker();
+      }
     }
   } catch {
     runStatus.value = "reduced-reward";
   } finally {
     answer.value = "";
+    isSubmittingAnswer.value = false;
   }
 };
 
 const closeSettlement = () => {
   showSettlement.value = false;
 }
+
+
+const purchaseRevive = async () => {
+  if (!runId.value) {
+    return;
+  }
+  reviveError.value = "";
+  try {
+    const result = await useRunRevive(runId.value);
+    applyRunState(result.run.state);
+    coins.value = result.coin_balance;
+    showReviveModal.value = false;
+    questionStartAt.value = Date.now();
+    startTicker();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : t("endlessAbyss.reviveFallbackError");
+    reviveError.value = message;
+  }
+};
+
+const leaveAbyss = async () => {
+  showReviveModal.value = false;
+  await goLibrary();
+};
 
 const handleFeedback = async () => {
   if (!currentQuestion.value || !runId.value) {
@@ -263,6 +347,24 @@ onMounted(async () => {
   await bootstrapRun();
 });
 
+watch(showReviveModal, (visible) => {
+  if (visible) {
+    stopTicker();
+  } else if (!showSettlement.value) {
+    startTicker();
+  }
+});
+
+watch(
+  currentQuestion,
+  () => {
+    showNotice.value = false;
+    answer.value = "";
+    isSubmittingAnswer.value = false;
+  },
+  { immediate: true },
+);
+
 onUnmounted(() => {
   stopTicker();
 });
@@ -270,24 +372,24 @@ onUnmounted(() => {
 
 <template>
   <main class="abyss-page">
-    <section class="abyss-shell" aria-label="Endless Abyss gameplay">
+    <section class="abyss-shell" :aria-label="t('endlessAbyss.shellAria')">
       <header class="abyss-status">
-        <div class="hp-block" aria-label="Health points">
+        <div class="hp-block" :aria-label="t('endlessAbyss.hpAria')">
           <span v-for="index in maxHp" :key="index" class="hp-heart" :class="{ 'hp-heart--empty': index > (hpLevel ?? 0) }">
             ♥
           </span>
-          <span class="hp-label">HP LEVEL {{ hpLevel ?? "--" }}</span>
+          <span class="hp-label">{{ t("endlessAbyss.hpLevel", { level: hpLevel ?? "--" }) }}</span>
         </div>
 
-        <div class="floor-block" aria-label="Floor progress">
-          <p>FLOOR {{ floor ?? "--" }}</p>
+        <div class="floor-block" :aria-label="t('endlessAbyss.floorAria')">
+          <p>{{ t("endlessAbyss.floor", { floor: floor ?? "--" }) }}</p>
           <div class="floor-track" role="presentation">
             <span class="floor-fill" :style="{ width: `${floorProgress}%` }" />
           </div>
           <span>{{ floorTotal ?? "--" }}</span>
         </div>
 
-        <div class="meta-block" aria-label="Session info">
+        <div class="meta-block" :aria-label="t('endlessAbyss.metaAria')">
           <span>🕒 {{ time }}</span>
           <button class="meta-coin" type="button" @click="goShop">🪙 {{ coins ?? "--" }}</button>
         </div>
@@ -299,8 +401,8 @@ onUnmounted(() => {
           <div class="dragon-fog" />
         </div>
 
-        <article class="question-card" aria-label="Question card">
-          <p class="question-card__tag">QUESTION CARD</p>
+        <article class="question-card" :aria-label="t('endlessAbyss.questionCardAria')">
+          <p class="question-card__tag">{{ t("endlessAbyss.questionTag") }}</p>
           <h1>{{ questionTitle }}</h1>
 
           <footer class="question-card__footer">
@@ -311,37 +413,60 @@ onUnmounted(() => {
       </section>
 
       <footer class="answer-zone">
-        <label class="answer-input">
+        <label class="answer-input" :class="{ 'answer-input--ready': hasTypedAnswer, 'answer-input--submitting': isSubmittingAnswer }">
           <span aria-hidden="true">✎</span>
-          <input v-model="answer" type="text" placeholder="Type the answer keyword" @keydown.enter="castSpell" />
+          <input v-model="answer" type="text" :placeholder="t('endlessAbyss.answerPlaceholder')" :disabled="isSubmittingAnswer" @keydown.enter="castSpell" />
         </label>
 
-        <button class="cast-btn" type="button" @click="castSpell">Cast Spell ✦</button>
-        <button class="return-btn" type="button" @click="goBack">Return to Mode Select</button>
+        <button
+          class="cast-btn"
+          :class="{ 'cast-btn--ready': hasTypedAnswer, 'cast-btn--submitting': isSubmittingAnswer }"
+          type="button"
+          :disabled="isSubmittingAnswer || !hasTypedAnswer"
+          @click="castSpell"
+        >
+          {{ isSubmittingAnswer ? t("endlessAbyss.casting") : t("endlessAbyss.castSpell") }}
+        </button>
+        <button class="return-btn" type="button" @click="goBack">{{ t("endlessAbyss.returnToModeSelect") }}</button>
 
         <button class="feedback-action" type="button" @click="handleFeedback">
-          这题有误
+          {{ t("common.reportQuestionIssue") }}
         </button>
 
         <div v-if="showNotice" class="run-status-notice run-status-notice--danger">
-          ⚠ Wrong answer. HP decreased.
+          {{ t("endlessAbyss.wrongAnswerNotice") }}
         </div>
 
         <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
-          ⚠ Reduced rewards: -50% XP/coins
+          {{ t("endlessAbyss.reducedRewardNotice") }}
         </div>
       </footer>
     </section>
 
+    <div v-if="showReviveModal" class="revive-overlay">
+      <div class="revive-modal" role="dialog" aria-modal="true" :aria-label="t('endlessAbyss.reviveModal.dialogAria')">
+        <p class="revive-modal__eyebrow">{{ t("endlessAbyss.reviveModal.eyebrow") }}</p>
+        <h2>{{ t("endlessAbyss.reviveModal.title") }}</h2>
+        <p>{{ t("endlessAbyss.reviveModal.description") }}</p>
+        <p v-if="reviveShieldActive" class="revive-modal__buff">{{ t("endlessAbyss.reviveModal.shieldActive", { time: reviveShieldExpiresAt ?? t('endlessAbyss.reviveModal.soon') }) }}</p>
+        <p v-if="reviveError" class="revive-modal__error">{{ reviveError }}</p>
+        <div class="revive-modal__actions">
+          <button class="cast-btn" type="button" @click="purchaseRevive">{{ t("endlessAbyss.reviveModal.useCoins") }}</button>
+          <button class="return-btn" type="button" @click="leaveAbyss">{{ t("endlessAbyss.reviveModal.leave") }}</button>
+        </div>
+      </div>
+    </div>
+
     <GameSettlementModal
       :visible="showSettlement"
-      mode-name="Endless Abyss"
+      :mode-name="t('endlessAbyss.settlementModeName')"
       :xp-gained="settlementXp"
       :coin-reward="settlementCoins"
       :combo-count="settlementCombo"
       :goal-current="settlementGoalCurrent"
       :goal-total="settlementGoalTotal"
-      goal-text="Keep meditating to reach enlightenment through the abyss."
+      :league-top-percent="settlementTopPercent"
+      :goal-text="t('endlessAbyss.settlementGoal')"
       @close="closeSettlement"
       @confirm="goLibrary"
     />
@@ -611,6 +736,16 @@ onUnmounted(() => {
   gap: 8px;
   height: 42px;
   padding: 0 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.answer-input--ready {
+  border-color: color-mix(in srgb, var(--color-primary-500) 32%, var(--color-border) 68%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-100) 55%, transparent);
+}
+
+.answer-input--submitting {
+  opacity: 0.78;
 }
 
 .answer-input input {
@@ -634,6 +769,20 @@ onUnmounted(() => {
   height: 42px;
   min-width: 154px;
   padding: 0 16px;
+  transition: filter 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+.cast-btn--ready {
+  filter: saturate(1.08);
+}
+
+.cast-btn--submitting {
+  transform: scale(0.98);
+}
+
+.cast-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .return-btn {
@@ -723,4 +872,59 @@ onUnmounted(() => {
     width: 100%;
   }
 }
+
+.revive-overlay {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 50;
+}
+
+.revive-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-elevated);
+  max-width: 420px;
+  padding: 24px;
+  width: 100%;
+}
+
+.revive-modal__eyebrow {
+  color: var(--color-primary-500);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+}
+
+.revive-modal h2 {
+  margin: 0 0 12px;
+}
+
+.revive-modal p {
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.revive-modal__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.revive-modal__buff {
+  color: var(--color-primary-500);
+  font-weight: 700;
+}
+
+.revive-modal__error {
+  color: var(--color-trend-down);
+  font-weight: 700;
+}
+
 </style>

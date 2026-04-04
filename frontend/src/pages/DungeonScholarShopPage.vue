@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { getShopBalance as getBalance, listShopItems, purchaseShopItem, type ShopOffer } from "../api/shop";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
@@ -20,6 +20,7 @@ const { t, locale } = useI18n();
 
 const walletBalance = ref(0);
 const shopItems = ref<ShopItem[]>([]);
+const rawOffers = ref<ShopOffer[]>([]);
 const purchaseError = ref<string | null>(null);
 const isLoading = ref(false);
 const isPurchasing = ref(false);
@@ -44,19 +45,66 @@ const rarityAccentMap: Record<string, "teal" | "violet" | "rose" | "amber"> = {
   legendary: "amber",
 };
 
+const rarityLabel = (rarity: string): string => {
+  const rarityLower = rarity.toLowerCase();
+  if (rarityLower === "uncommon") {
+    return t("shop.items.uncommon");
+  }
+  if (rarityLower === "rare") {
+    return t("shop.items.rare");
+  }
+  if (rarityLower === "legendary") {
+    return t("shop.items.rescue");
+  }
+  return t("shop.items.common");
+};
+
+const itemLocalization = (itemCode: string): { name: string; description: string } => {
+  if (itemCode === "streak_freeze") {
+    return {
+      name: t("shop.items.streakFreeze.name"),
+      description: t("shop.items.streakFreeze.desc"),
+    };
+  }
+  if (itemCode === "xp_boost") {
+    return {
+      name: t("shop.items.xpBoost.name"),
+      description: t("shop.items.xpBoost.desc"),
+    };
+  }
+  if (itemCode === "revival") {
+    return {
+      name: t("shop.items.abyssRevive.name"),
+      description: t("shop.items.abyssRevive.desc"),
+    };
+  }
+  if (itemCode === "coin_pack") {
+    return {
+      name: t("shop.items.coinPack.name"),
+      description: t("shop.items.coinPack.desc"),
+    };
+  }
+  return { name: itemCode, description: "" };
+};
+
 const mapOfferToShopItem = (offer: ShopOffer): ShopItem => {
   const itemCode = offer.item_code || "";
   const rarityLower = (offer.rarity || "common").toLowerCase();
+  const localized = itemLocalization(itemCode);
   return {
     offerId: offer.id,
-    name: offer.display_name || itemCode,
-    rarity: offer.rarity || "Common",
+    name: localized.name || offer.display_name || itemCode,
+    rarity: rarityLabel(offer.rarity || "common"),
     price: offer.price_amount || 0,
     icon: iconMap[itemCode] || "",
-    description: "",
+    description: localized.description,
     accent: rarityAccentMap[rarityLower] || "teal",
     itemCode,
   };
+};
+
+const rebuildShopItems = () => {
+  shopItems.value = rawOffers.value.map(mapOfferToShopItem);
 };
 
 const fetchBalance = async () => {
@@ -75,9 +123,11 @@ const fetchShopItems = async () => {
   isLoading.value = true;
   try {
     const offers = await listShopItems();
-    shopItems.value = (offers as ShopOffer[]).map(mapOfferToShopItem);
+    rawOffers.value = offers as ShopOffer[];
+    rebuildShopItems();
   } catch (error) {
     console.error("Failed to fetch shop items:", error);
+    rawOffers.value = [];
     shopItems.value = [];
   } finally {
     isLoading.value = false;
@@ -91,20 +141,21 @@ onMounted(async () => {
 // Update document title reactively when locale changes
 watch(locale, () => {
   document.title = t("shop.metaTitle");
+  rebuildShopItems();
 });
 
 
 // Top-up item for real-money purchases (not from shop API)
-const topUpItem: ShopItem = {
-  offerId: 'top_up',
-  name: 'Coin Pack',
-  rarity: 'Legendary',
+const topUpItem = computed<ShopItem>(() => ({
+  offerId: "top_up",
+  name: t("shop.items.coinPack.name"),
+  rarity: t("shop.items.rescue"),
   price: 199,
-  icon: '💎',
-  description: 'A pack of 1000 gold coins. Use to purchase items in the shop.',
-  accent: 'amber',
-  itemCode: 'coin_pack',
-};
+  icon: "💎",
+  description: t("shop.items.coinPack.desc"),
+  accent: "amber",
+  itemCode: "coin_pack",
+}));
 
 
 const goBack = async () => {
@@ -136,7 +187,7 @@ const handlePurchase = async (item: ShopItem) => {
     await fetchBalance();
   } catch (error) {
     console.error("Purchase failed:", error);
-    purchaseError.value = "Purchase failed. Please try again.";
+    purchaseError.value = t("shop.errors.purchaseFailed");
   } finally {
     isPurchasing.value = false;
   }
@@ -159,16 +210,14 @@ defineExpose({
 
 <template>
   <main class="shop-page">
-    <section class="shop-shell" aria-label="Virtual item shop interface">
+    <section class="shop-shell" :aria-label="t('shop.heroEyebrow')">
       <header class="shop-header">
         <div class="shop-brand">
           <div class="shop-brand__icon">
             <img src="/taotie-logo.svg" alt="" aria-hidden="true" />
           </div>
           <div class="shop-brand__copy">
-            <span>XI rang</span>
-            <strong>Scholar</strong>
-            <span>Shop</span>
+            <span>{{ t("shop.brand") }}</span>
           </div>
         </div>
 
@@ -176,39 +225,38 @@ defineExpose({
           <div class="wallet-pill">
             <span class="wallet-pill__coin">🪙</span>
             <strong>{{ walletBalance.toLocaleString() }}</strong>
-            <small>COINS</small>
+            <small>{{ t("shop.coins") }}</small>
           </div>
-          <button class="bag-btn" type="button" aria-label="Inventory bag">👜</button>
+          <button class="bag-btn" type="button" :aria-label="t('shop.inventoryBag')">👜</button>
         </div>
       </header>
 
       <section class="shop-hero">
         <div>
-          <p class="shop-hero__eyebrow">Virtual Item Shop Interface</p>
-          <h1>Mystical Artifacts</h1>
+          <p class="shop-hero__eyebrow">{{ t("shop.heroEyebrow") }}</p>
+          <h1>{{ t("shop.heroTitle") }}</h1>
           <p>
-            Enhance your journey through the Endless Abyss. Acquire potent items to aid your scholarly pursuits and
-            protect your progress.
+            {{ t("shop.heroDesc") }}
           </p>
         </div>
 
         <div class="shop-hero__actions">
-          <button class="back-btn" type="button" aria-label="Go back" @click="goBack">←</button>
+          <button class="back-btn" type="button" :aria-label="t('shop.goBack')" @click="goBack">←</button>
 
           <div class="shop-filters">
-            <span class="filter-chip filter-chip--teal">✦ New Arrivals</span>
-            <span class="filter-chip filter-chip--amber">🔥 Hot Items</span>
+            <span class="filter-chip filter-chip--teal">✦ {{ t("shop.newArrivals") }}</span>
+            <span class="filter-chip filter-chip--amber">🔥 {{ t("shop.hotItems") }}</span>
           </div>
         </div>
       </section>
 
       <div class="shop-divider" />
 
-      <section class="shop-grid" aria-label="Shop items">
+      <section class="shop-grid" :aria-label="t('shop.itemsAria')">
         <!-- Top Up Card -->
         <article class="shop-card shop-card--amber shop-card--topup">
           <div class="shop-card__head">
-            <span class="rarity-tag rarity-tag--amber">TOP UP</span>
+            <span class="rarity-tag rarity-tag--amber">{{ t("shop.topUp") }}</span>
             <span class="price-tag price-tag--usd">$1.99</span>
           </div>
 
@@ -221,11 +269,11 @@ defineExpose({
 
           <footer class="shop-card__footer">
             <div>
-              <small>TYPE</small>
+              <small>{{ t("shop.type") }}</small>
               <strong class="shop-card__rarity--amber">{{ topUpItem.rarity }}</strong>
             </div>
             <button class="purchase-btn purchase-btn--amber" type="button" @click="handlePurchase(topUpItem)">
-              Buy Now →
+              {{ t("shop.buyNow") }} →
             </button>
           </footer>
         </article>
@@ -239,7 +287,7 @@ defineExpose({
         >
           <div class="shop-card__head">
             <span class="rarity-tag" :class="`rarity-tag--${item.accent}`">{{
-              item.accent === "rose" ? "RARE" : ""
+              item.accent === "rose" ? t("shop.items.rareTag") : ""
             }}</span>
             <span class="price-tag">{{ item.price }} 🪙</span>
           </div>
@@ -253,7 +301,7 @@ defineExpose({
 
           <footer class="shop-card__footer">
             <div>
-              <small>RARITY</small>
+              <small>{{ t("shop.rarity") }}</small>
               <strong :class="`shop-card__rarity--${item.accent}`">{{ item.rarity }}</strong>
             </div>
             <button
@@ -262,7 +310,7 @@ defineExpose({
               type="button"
               @click="handlePurchase(item)"
             >
-              Purchase →
+              {{ t("shop.purchase") }} →
             </button>
           </footer>
         </article>
@@ -273,35 +321,35 @@ defineExpose({
         <div v-if="showInsufficientModal" class="insufficient-modal-overlay" @click="closeInsufficientModal">
           <section class="insufficient-modal" @click.stop>
             <header class="insufficient-modal__header">
-              <h2>⚠ Insufficient Balance</h2>
+              <h2>⚠ {{ t("shop.insufficientTitle") }}</h2>
             </header>
 
             <div class="insufficient-modal__body">
-              <p>You need more coins to purchase <strong>{{ selectedItem?.name }}</strong>.</p>
+              <p>{{ t("shop.insufficientNeedMore", { item: selectedItem?.name }) }}</p>
               <p class="insufficient-modal__balance">
-                Your balance: <span>🪙 {{ walletBalance.toLocaleString() }}</span>
+                {{ t("shop.yourBalance") }}: <span>🪙 {{ walletBalance.toLocaleString() }}</span>
               </p>
               <p class="insufficient-modal__price">
-                Item price: <span>🪙 {{ selectedItem?.price }}</span>
+                {{ t("shop.itemPrice") }}: <span>🪙 {{ selectedItem?.price }}</span>
               </p>
             </div>
 
             <footer class="insufficient-modal__actions">
               <button class="rescue-btn" type="button" @click="buyRescuePack">
-                💎 Buy Coin Pack ($1.99) →
+                💎 {{ t("shop.buyCoinPack") }} ($1.99) →
               </button>
-              <button class="cancel-btn" type="button" @click="closeInsufficientModal">Cancel</button>
+              <button class="cancel-btn" type="button" @click="closeInsufficientModal">{{ t("shop.cancel") }}</button>
             </footer>
           </section>
         </div>
       </transition>
 
       <footer class="shop-footer">
-        <small>© 2023 Dungeon Scholar. All rights reserved.</small>
-        <nav class="shop-footer__links" aria-label="Footer links">
-          <a href="#">Terms of Service</a>
-          <a href="#">Privacy Policy</a>
-          <a href="#">Support</a>
+        <small>{{ t("shop.copyright") }}</small>
+        <nav class="shop-footer__links" :aria-label="t('shop.footerLinksAria')">
+          <a href="#">{{ t("shop.terms") }}</a>
+          <a href="#">{{ t("shop.privacy") }}</a>
+          <a href="#">{{ t("shop.support") }}</a>
         </nav>
       </footer>
     </section>

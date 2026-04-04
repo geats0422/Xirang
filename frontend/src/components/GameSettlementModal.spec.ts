@@ -1,5 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
+import { i18n } from "../i18n";
 import GameSettlementModal from "./GameSettlementModal.vue";
 
 const baseProps = {
@@ -14,6 +15,9 @@ describe("GameSettlementModal", () => {
   it("clicking overlay emits close", async () => {
     const wrapper = mount(GameSettlementModal, {
       props: baseProps,
+      global: {
+        plugins: [i18n],
+      },
     });
 
     await wrapper.get(".settlement-overlay").trigger("click");
@@ -24,6 +28,9 @@ describe("GameSettlementModal", () => {
   it("clicking primary action emits confirm", async () => {
     const wrapper = mount(GameSettlementModal, {
       props: baseProps,
+      global: {
+        plugins: [i18n],
+      },
     });
 
     await wrapper.get(".settlement-cta").trigger("click");

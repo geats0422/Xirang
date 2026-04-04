@@ -124,3 +124,49 @@ export const getCurrentAuthUser = async (): Promise<AuthMeResponse> => {
     headers: getAuthHeaders(),
   });
 };
+
+export const refreshToken = async (): Promise<AuthTokens> => {
+  const refreshTokenValue = window.localStorage.getItem("xirang:refreshToken")?.trim();
+  if (!refreshTokenValue) {
+    throw new Error("No refresh token available");
+  }
+
+  const response = await fetch("/api/v1/auth/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshTokenValue }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Token refresh failed");
+  }
+
+  const data = await response.json();
+  const tokens: AuthTokens = {
+    access_token: data.tokens.access_token,
+    refresh_token: data.tokens.refresh_token,
+    token_type: data.tokens.token_type || "bearer",
+    expires_in: data.tokens.expires_in || 900,
+  };
+
+  // Persist new tokens
+  window.localStorage.setItem("xirang:accessToken", tokens.access_token);
+  window.localStorage.setItem("xirang:token", tokens.access_token);
+  window.localStorage.setItem("xirang:refreshToken", tokens.refresh_token);
+
+  return tokens;
+};
+
+export const clearAuthSessionStorage = (): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem("xirang:accessToken");
+  window.localStorage.removeItem("xirang:token");
+  window.localStorage.removeItem("xirang:refreshToken");
+  window.localStorage.removeItem("xirang:userId");
+  window.localStorage.removeItem("xirang:username");
+  window.localStorage.removeItem("xirang:email");
+  window.localStorage.removeItem("xirang:isAuthenticated");
+};
+

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
 type NotificationItem = {
   id: string;
   title: string;
@@ -13,15 +15,17 @@ defineProps<{
 const emit = defineEmits<{
   close: [];
 }>();
+
+const { t } = useI18n();
 </script>
 
 <template>
   <div v-if="visible" class="notice-overlay" @click="emit('close')">
     <section class="notice-card" @click.stop>
       <header class="notice-card__head">
-        <h3>消息通知</h3>
+        <h3>{{ t("notifications.popover.title") }}</h3>
       </header>
-      <div v-if="items.length === 0" class="notice-empty">无待处理工作</div>
+      <div v-if="items.length === 0" class="notice-empty">{{ t("notifications.popover.empty") }}</div>
       <ul v-else class="notice-list">
         <li v-for="item in items" :key="item.id" class="notice-item">
           <strong>{{ item.title }}</strong>

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { useToast, type ToastType } from "../../composables/useToast";
 
 const { toasts, dismiss } = useToast();
+const { t } = useI18n();
 
 const iconMap: Record<ToastType, string> = {
   success: "✓",
@@ -31,7 +33,7 @@ const toastClass: Record<ToastType, string> = {
         >
           <span class="toast__icon" aria-hidden="true">{{ iconMap[toast.type] }}</span>
           <span class="toast__message">{{ toast.message }}</span>
-          <button class="toast__close" type="button" aria-label="Dismiss" @click="dismiss(toast.id)">
+          <button class="toast__close" type="button" :aria-label="t('toast.dismissAria')" @click="dismiss(toast.id)">
             ✕
           </button>
         </div>

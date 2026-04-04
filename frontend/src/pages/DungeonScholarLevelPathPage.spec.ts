@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ROUTES } from "../constants/routes";
+import { i18n } from "../i18n";
 import DungeonScholarLevelPathPage from "./DungeonScholarLevelPathPage.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -28,6 +29,7 @@ function createTestRouter() {
 describe("DungeonScholarLevelPathPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    i18n.global.locale.value = "en";
     mocks.listRunPathOptions.mockResolvedValue({
       mode: "endless",
       options: [
@@ -43,7 +45,7 @@ describe("DungeonScholarLevelPathPage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarLevelPathPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
     await flushPromises();
 
@@ -56,7 +58,7 @@ describe("DungeonScholarLevelPathPage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarLevelPathPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
     await flushPromises();
 
@@ -79,7 +81,7 @@ describe("DungeonScholarLevelPathPage", () => {
     await router.isReady();
 
     const wrapper = mount(DungeonScholarLevelPathPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
     await flushPromises();
 
@@ -89,5 +91,29 @@ describe("DungeonScholarLevelPathPage", () => {
     expect(router.currentRoute.value.path).toBe(ROUTES.speedSurvival);
     expect(router.currentRoute.value.query.mode).toBe("speed-survival");
     expect(router.currentRoute.value.query.floor).toBeUndefined();
+  });
+
+  it("renders Chinese route copy and shows backend description in selected summary", async () => {
+    i18n.global.locale.value = "zh-CN";
+    mocks.listRunPathOptions.mockResolvedValue({
+      mode: "endless",
+      options: [
+        { path_id: "F1", label: "F1", kind: "floor", description: "夯实基础，稳步推进", goal_total: 10 },
+      ],
+    });
+
+    const router = createTestRouter();
+    await router.push({ path: ROUTES.levelPath, query: { title: "bulk-order-07.txt", documentId: "doc-1", mode: "endless-abyss" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLevelPathPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".path-sub").text()).toBe("开始深渊路径");
+    expect(wrapper.find(".path-start").text()).toBe("进入深渊无尽");
+    expect(wrapper.find(".path-actions p").text()).toContain("已选第 1 层");
+    expect(wrapper.find(".path-actions p").text()).toContain("夯实基础，稳步推进");
   });
 });

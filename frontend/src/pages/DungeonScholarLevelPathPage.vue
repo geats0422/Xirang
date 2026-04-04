@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { ROUTES } from "../constants/routes";
 import { listRunPathOptions, type RunPathOption } from "../api/runs";
 
@@ -17,6 +18,7 @@ type ModeId = "endless-abyss" | "speed-survival" | "knowledge-draft";
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
 const mode = computed<ModeId>(() => {
   const rawMode = route.query.mode;
@@ -40,64 +42,64 @@ const modeApiMap: Record<ModeId, "endless" | "speed" | "draft"> = {
   "knowledge-draft": "draft",
 };
 
-const modeLabelMap: Record<ModeId, string> = {
-  "endless-abyss": "Endless Abyss",
-  "speed-survival": "Speed Survival",
-  "knowledge-draft": "Knowledge Draft",
-};
+const modeLabelMap = computed<Record<ModeId, string>>(() => ({
+  "endless-abyss": t("levelPath.modeLabel.endlessAbyss"),
+  "speed-survival": t("levelPath.modeLabel.speedSurvival"),
+  "knowledge-draft": t("levelPath.modeLabel.knowledgeDraft"),
+}));
 
-const endlessNodes: PathNode[] = [
-  { id: "F1", label: "F1", floor: 1, type: "battle", description: "Warm-up floor", done: true },
-  { id: "F2", label: "F2", floor: 2, type: "study", description: "Steady learning", done: true },
-  { id: "F3", label: "F3", floor: 3, type: "checkpoint", description: "Risk check" },
-  { id: "F4", label: "F4", floor: 4, type: "study", description: "Pattern practice" },
-  { id: "F5", label: "F5", floor: 5, type: "battle", description: "High pressure" },
-  { id: "F6", label: "F6", floor: 6, type: "boss", description: "Abyss boss" },
-];
+const endlessNodes = computed<PathNode[]>(() => [
+  { id: "F1", label: "F1", floor: 1, type: "battle", description: t("levelPath.nodeDescription.endless.f1"), done: true },
+  { id: "F2", label: "F2", floor: 2, type: "study", description: t("levelPath.nodeDescription.endless.f2"), done: true },
+  { id: "F3", label: "F3", floor: 3, type: "checkpoint", description: t("levelPath.nodeDescription.endless.f3") },
+  { id: "F4", label: "F4", floor: 4, type: "study", description: t("levelPath.nodeDescription.endless.f4") },
+  { id: "F5", label: "F5", floor: 5, type: "battle", description: t("levelPath.nodeDescription.endless.f5") },
+  { id: "F6", label: "F6", floor: 6, type: "boss", description: t("levelPath.nodeDescription.endless.f6") },
+]);
 
-const speedNodes: PathNode[] = [
+const speedNodes = computed<PathNode[]>(() => [
   {
     id: "speed-route-focus",
     label: "R1",
     type: "speed",
-    description: "Short rounds, higher accuracy bonus",
+    description: t("levelPath.nodeDescription.speed.r1"),
     done: true,
   },
   {
     id: "speed-route-burst",
     label: "R2",
     type: "speed",
-    description: "Fast tempo with combo scaling",
+    description: t("levelPath.nodeDescription.speed.r2"),
   },
   {
     id: "speed-route-endurance",
     label: "R3",
     type: "speed",
-    description: "Long timer, stable output",
+    description: t("levelPath.nodeDescription.speed.r3"),
   },
-];
+]);
 
-const draftNodes: PathNode[] = [
+const draftNodes = computed<PathNode[]>(() => [
   {
     id: "draft-route-classic",
     label: "R1",
     type: "draft",
-    description: "Balanced drafting journey",
+    description: t("levelPath.nodeDescription.draft.r1"),
     done: true,
   },
   {
     id: "draft-route-theory",
     label: "R2",
     type: "draft",
-    description: "Focus on concept-heavy cards",
+    description: t("levelPath.nodeDescription.draft.r2"),
   },
   {
     id: "draft-route-memory",
     label: "R3",
     type: "draft",
-    description: "Retention-oriented drafting",
+    description: t("levelPath.nodeDescription.draft.r3"),
   },
-];
+]);
 
 const nodes = ref<PathNode[]>([]);
 
@@ -128,16 +130,16 @@ const loadPathOptions = async () => {
   const rawDocumentId = route.query.documentId;
   const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
   if (!documentId) {
-    nodes.value = mode.value === "endless-abyss" ? endlessNodes : mode.value === "speed-survival" ? speedNodes : draftNodes;
+    nodes.value = mode.value === "endless-abyss" ? endlessNodes.value : mode.value === "speed-survival" ? speedNodes.value : draftNodes.value;
     return;
   }
 
   try {
     const response = await listRunPathOptions(documentId, modeApiMap[mode.value]);
     const mapped = response.options.map(mapOptionToNode);
-    nodes.value = mapped.length ? mapped : mode.value === "endless-abyss" ? endlessNodes : mode.value === "speed-survival" ? speedNodes : draftNodes;
+    nodes.value = mapped.length ? mapped : mode.value === "endless-abyss" ? endlessNodes.value : mode.value === "speed-survival" ? speedNodes.value : draftNodes.value;
   } catch {
-    nodes.value = mode.value === "endless-abyss" ? endlessNodes : mode.value === "speed-survival" ? speedNodes : draftNodes;
+    nodes.value = mode.value === "endless-abyss" ? endlessNodes.value : mode.value === "speed-survival" ? speedNodes.value : draftNodes.value;
   }
 };
 
@@ -169,31 +171,54 @@ onMounted(async () => {
 
 const selectedNode = computed(() => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null);
 
-const pageEyebrow = computed(() =>
-  mode.value === "endless-abyss"
-    ? flow.value === "review"
-      ? "Review Abyss Route"
-      : "Begin Abyss Route"
-    : flow.value === "review"
-      ? "Review Learning Route"
-      : "Begin Learning Route",
-);
+const pageEyebrow = computed(() => {
+  if (flow.value === "review") {
+    return mode.value === "endless-abyss"
+      ? t("levelPath.pageEyebrow.reviewAbyss")
+      : t("levelPath.pageEyebrow.reviewLearning");
+  }
+  return mode.value === "endless-abyss"
+    ? t("levelPath.pageEyebrow.beginAbyss")
+    : t("levelPath.pageEyebrow.beginLearning");
+});
 
-const actionLabel = computed(() => `进入 ${modeLabelMap[mode.value]}`);
+const actionLabel = computed(() => t("levelPath.enterAction", { mode: modeLabelMap.value[mode.value] }));
+
+const guideLabel = computed(() => t("levelPath.guide"));
+const backLabel = computed(() => t("levelPath.back"));
+const pathSelectionAriaLabel = computed(() => t("levelPath.selectionAria"));
 
 const selectedSummary = computed(() => {
   if (!selectedNode.value) {
-    return "No route selected";
+    return t("levelPath.noRouteSelected");
   }
+
+  const description = selectedNode.value.description.trim();
+
   if (mode.value === "endless-abyss") {
-    return `Selected Floor ${selectedNode.value.floor ?? 1}`;
+    return description
+      ? t("levelPath.selectedSummary.floorWithDesc", {
+          floor: selectedNode.value.floor ?? 1,
+          description,
+        })
+      : t("levelPath.selectedSummary.floor", {
+          floor: selectedNode.value.floor ?? 1,
+        });
   }
-  return `Selected Route: ${selectedNode.value.description}`;
+
+  return description
+    ? t("levelPath.selectedSummary.routeWithDesc", {
+        route: selectedNode.value.label,
+        description,
+      })
+    : t("levelPath.selectedSummary.route", {
+        route: selectedNode.value.label,
+      });
 });
 
 const title = computed(() => {
   const raw = route.query.title;
-  return typeof raw === "string" && raw.trim() ? raw : "Scroll Trial";
+  return typeof raw === "string" && raw.trim() ? raw : t("levelPath.defaultTitle");
 });
 
 const flow = computed(() => (route.query.flow === "review" ? "review" : "begin"));
@@ -237,14 +262,17 @@ const backToModes = async () => {
 
 <template>
   <main class="path-page">
-    <section class="path-shell" aria-label="Dungeon level path selection">
+    <section class="path-shell" :aria-label="pathSelectionAriaLabel">
       <header class="path-header">
-        <button class="path-back" type="button" @click="backToModes">←</button>
+        <button class="path-back" type="button" :aria-label="backLabel" @click="backToModes">
+          <span aria-hidden="true">←</span>
+          <span class="path-back__label">{{ backLabel }}</span>
+        </button>
         <div>
           <p class="path-sub">{{ pageEyebrow }}</p>
           <h1>{{ title }}</h1>
         </div>
-        <button class="path-guide" type="button">指南</button>
+        <button class="path-guide" type="button">{{ guideLabel }}</button>
       </header>
 
       <section class="path-map">
@@ -314,6 +342,16 @@ const backToModes = async () => {
   min-height: 40px;
   min-width: 40px;
   padding: 0 12px;
+}
+
+.path-back {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.path-back__label {
+  font-size: 13px;
 }
 
 .path-sub {

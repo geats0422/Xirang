@@ -58,6 +58,22 @@ export const deleteDocument = async (documentId: string): Promise<DeleteDocument
   });
 };
 
+export type DocumentProgressResponse = {
+  document_id: string;
+  status: string;
+  progress: number;
+  stage: string;
+};
+
+export const getDocumentProgress = async (
+  documentId: string,
+): Promise<DocumentProgressResponse> => {
+  return apiRequest<DocumentProgressResponse>(
+    `/api/v1/documents/${documentId}/progress`,
+    { headers: getAuthHeaders() },
+  );
+};
+
 type BatchDeleteDocumentsResponse = {
   deleted_ids: string[];
   deleted_count: number;

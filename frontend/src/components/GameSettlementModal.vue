@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 const props = withDefaults(
   defineProps<{
@@ -12,12 +13,14 @@ const props = withDefaults(
     goalCurrent?: number;
     goalTotal?: number;
     xpGainPercent?: number;
+    leagueTopPercent?: number | null;
   }>(),
   {
     comboCount: 12,
     goalCurrent: 5,
     goalTotal: 10,
     xpGainPercent: 15,
+    leagueTopPercent: null,
   }
 );
 
@@ -32,15 +35,31 @@ const goalProgressPercent = computed(() => {
 });
 
 const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
+const goalTitle = computed(() => {
+  const todayGoal = t("settlement.todayGoal");
+  return todayGoal === "settlement.todayGoal" ? t("settlement.cultivationGoal") : todayGoal;
+});
+const goalCopy = computed(() => {
+  const remaining = Math.max(0, props.goalTotal - props.goalCurrent);
+  const summary = t("settlement.todayGoalSummary", { remaining });
+  return summary === "settlement.todayGoalSummary" ? props.goalText : summary;
+});
+const leagueTopPercentLabel = computed(() => {
+  if (props.leagueTopPercent === null || !Number.isFinite(props.leagueTopPercent)) {
+    return t("settlement.topPercentFallback");
+  }
+  return t("settlement.topPercentValue", { percent: props.leagueTopPercent });
+});
+const { t } = useI18n();
 </script>
 
 <template>
   <transition name="settlement-fade">
     <div v-if="visible" class="settlement-overlay" @click="emit('close')">
-      <section class="settlement-modal" aria-label="Dungeon cultivation report" @click.stop>
+      <section class="settlement-modal" :aria-label="t('settlement.dialogAria')" @click.stop>
         <header class="settlement-header">
           <div>
-            <h2>Dungeon Secured!</h2>
+            <h2>{{ t("settlement.title") }}</h2>
           </div>
         </header>
 
@@ -55,7 +74,7 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
 
         <article class="settlement-card settlement-card--stats">
           <div class="stat-col">
-            <p>XP GAINED</p>
+            <p>{{ t("settlement.xpGained") }}</p>
             <div class="settlement-value-row">
               <strong>{{ xpGained }}</strong>
               <span class="gain-pill">↗{{ xpGainPercent }}%</span>
@@ -63,14 +82,14 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
           </div>
 
           <div class="stat-col">
-            <p>DOPAMINE COINS</p>
+            <p>{{ t("settlement.dopamineCoins") }}</p>
             <div class="settlement-value-row">
               <strong class="coin-value">🪙 {{ coinReward }}</strong>
             </div>
           </div>
 
           <div class="stat-col">
-            <p>PERFECT COMBO</p>
+            <p>{{ t("settlement.perfectCombo") }}</p>
             <div class="settlement-value-row">
               <strong>{{ comboCount }}x</strong>
               <span class="combo-bolt">⚡</span>
@@ -81,25 +100,25 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
         <section class="settlement-lower">
           <article class="settlement-card settlement-card--goal">
             <div class="goal-row">
-              <p class="settlement-goal-title">✿ Cultivation Goal</p>
-              <span>{{ goalCurrent }}/{{ goalTotal }} mins</span>
+              <p class="settlement-goal-title">✿ {{ goalTitle }}</p>
+              <span>{{ t("settlement.goalMins", { current: goalCurrent, total: goalTotal }) }}</span>
             </div>
             <div class="settlement-goal-track" role="presentation">
               <span class="settlement-goal-fill" :style="{ width: goalFillWidth }" />
             </div>
-            <p class="settlement-goal-copy">{{ goalText }}</p>
+            <p class="settlement-goal-copy">{{ goalCopy }}</p>
           </article>
 
           <article class="settlement-card settlement-card--league">
-            <p>Weekly League</p>
-            <strong>Top 12%</strong>
-            <span>Keep climbing the ladder</span>
+            <p>{{ t("settlement.weeklyLeague") }}</p>
+            <strong>{{ leagueTopPercentLabel }}</strong>
+            <span>{{ t("settlement.keepClimbing") }}</span>
           </article>
         </section>
 
         <footer class="settlement-actions">
-          <button class="settlement-cta" type="button" @click="emit('confirm')">Continue to Library →</button>
-          <button class="settlement-secondary" type="button" @click="emit('close')">Review Mistakes</button>
+          <button class="settlement-cta" type="button" @click="emit('confirm')">{{ t("settlement.continueToLibrary") }}</button>
+          <button class="settlement-secondary" type="button" @click="emit('close')">{{ t("settlement.reviewMistakes") }}</button>
         </footer>
       </section>
     </div>

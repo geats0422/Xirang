@@ -4,8 +4,8 @@ import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type RunQuestion } from '../api/runs';
-import { submitFeedback } from '../api/feedback';
+import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
+import { submitFeedback } from "../api/feedback";
 import { getShopBalance } from "../api/shop";
 
 const { t, locale } = useI18n();
@@ -41,6 +41,15 @@ const settlementCoins = ref(0);
 const settlementCombo = ref(0);
 const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(8);
+const settlementTopPercent = ref<number | null>(null);
+const isSubmittingAnswer = ref(false);
+const selectedAnswer = ref<"false" | "true" | null>(null);
+
+// Feedback state for showing correct answer and explanation
+const showFeedback = ref(false);
+const lastAnswerCorrect = ref(false);
+const feedbackCorrectAnswer = ref<string | null>(null);
+const feedbackExplanation = ref<string | null>(null);
 
 
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
@@ -49,7 +58,7 @@ const questionText = computed(() => {
   if (currentQuestion.value?.text) {
     return currentQuestion.value.text;
   }
-  return "Loading question...";
+  return t("speedSurvival.loadingQuestion");
 });
 
 const progressPercent = computed(() => {
@@ -61,15 +70,51 @@ const progressPercent = computed(() => {
 
 const answerPrompt = computed(() => {
   if (!currentQuestion.value) {
-    return "Loading options...";
+    return t("speedSurvival.loadingOptions");
   }
   return currentQuestion.value.options.length === 2
-    ? "Choose the best option"
-    : "Tap the option that matches the statement";
+    ? t("speedSurvival.chooseBestOption")
+    : t("speedSurvival.tapOption");
 });
 
-const falseOptionLabel = computed(() => currentQuestion.value?.options[0]?.text || "--");
-const trueOptionLabel = computed(() => currentQuestion.value?.options[1]?.text || "--");
+const TRUE_TOKENS = ["true", "對", "正确", "正確", "正确的"];
+const FALSE_TOKENS = ["false", "錯", "错", "错误", "錯誤"];
+
+const normalizeOptionLabel = (value: string): string => value.trim().toLowerCase();
+
+const matchesAnyToken = (label: string, tokens: string[]): boolean => {
+  const normalized = normalizeOptionLabel(label);
+  return tokens.some((token) => normalized.includes(token));
+};
+
+const trueOption = computed(() => {
+  const options = currentQuestion.value?.options ?? [];
+  const matched = options.find((option) => matchesAnyToken(option.text, TRUE_TOKENS));
+  return matched ?? options[0] ?? null;
+});
+
+const falseOption = computed(() => {
+  const options = currentQuestion.value?.options ?? [];
+  const matched = options.find((option) => matchesAnyToken(option.text, FALSE_TOKENS));
+  if (matched) {
+    return matched;
+  }
+  if (options.length > 1 && trueOption.value?.id === options[0]?.id) {
+    return options[1] ?? null;
+  }
+  return options[0] ?? null;
+});
+
+const trueOptionLabel = computed(() => trueOption.value?.text || "--");
+const falseOptionLabel = computed(() => falseOption.value?.text || "--");
+
+const resolveLeagueTopPercent = (accuracy: number | null | undefined): number | null => {
+  if (typeof accuracy !== "number" || !Number.isFinite(accuracy)) {
+    return null;
+  }
+  const normalized = Math.min(1, Math.max(0, accuracy));
+  return Math.max(1, 100 - Math.round(normalized * 100));
+};
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
@@ -152,14 +197,15 @@ const goLibrary = async () => {
   await router.push(ROUTES.library);
 };
 
-const chooseAnswer = async (answer: "false" | "true") => {
-  if (showSettlement.value || !runId.value || !currentQuestion.value) {
+const chooseAnswer = async (answerChoice: "false" | "true") => {
+  if (showSettlement.value || isSubmittingAnswer.value || !runId.value || !currentQuestion.value) {
     return;
   }
 
-  const selectedOption = answer === "false"
-    ? currentQuestion.value.options[0]
-    : currentQuestion.value.options[1] || currentQuestion.value.options[0];
+  isSubmittingAnswer.value = true;
+  selectedAnswer.value = answerChoice;
+
+  const selectedOption = answerChoice === "false" ? falseOption.value : trueOption.value;
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
 
   try {
@@ -171,12 +217,32 @@ const chooseAnswer = async (answer: "false" | "true") => {
     );
     applyRunState(result.run.state);
 
+    // Store feedback for display
+    lastAnswerCorrect.value = result.is_correct;
+    feedbackCorrectAnswer.value = result.feedback?.correct_answer ?? null;
+    feedbackExplanation.value = result.feedback?.explanation ?? null;
+
     if (result.is_correct) {
+      showFeedback.value = false;
       combo.value = (combo.value ?? 0) + 1;
       runStatus.value = elapsedMs <= 1500 ? "fast-answer" : "normal";
     } else {
       combo.value = 0;
       runStatus.value = "normal";
+      // Show feedback on wrong answer
+      showFeedback.value = true;
+      if (result.settlement) {
+        settlementXp.value = result.settlement.xp_earned;
+        settlementCoins.value = result.settlement.coins_earned;
+        settlementCombo.value = result.settlement.combo_max;
+        settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+        settlementGoalTotal.value = result.settlement.goal_total ?? 8;
+        settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
+        showSettlement.value = true;
+        stopTicker();
+        await refreshBalance();
+      }
+      return;
     }
 
     if (result.settlement) {
@@ -185,6 +251,7 @@ const chooseAnswer = async (answer: "false" | "true") => {
       settlementCombo.value = result.settlement.combo_max;
       settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
       settlementGoalTotal.value = result.settlement.goal_total ?? 8;
+      settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
       showSettlement.value = true;
       stopTicker();
       await refreshBalance();
@@ -194,6 +261,8 @@ const chooseAnswer = async (answer: "false" | "true") => {
     }
   } catch {
     runStatus.value = "reduced-reward";
+  } finally {
+    isSubmittingAnswer.value = false;
   }
 };
 
@@ -234,6 +303,19 @@ onMounted(async () => {
   await bootstrapRun();
 });
 
+watch(
+  currentQuestion,
+  () => {
+    showFeedback.value = false;
+    lastAnswerCorrect.value = false;
+    feedbackCorrectAnswer.value = null;
+    feedbackExplanation.value = null;
+    selectedAnswer.value = null;
+    isSubmittingAnswer.value = false;
+  },
+  { immediate: true },
+);
+
 watch(showSettlement, (visible) => {
   if (visible) {
     stopTicker();
@@ -247,24 +329,24 @@ onUnmounted(() => {
 
 <template>
   <main class="speed-page">
-    <section class="speed-shell" aria-label="Speed Survival gameplay">
+    <section class="speed-shell" :aria-label="t('speedSurvival.shellAria')">
       <header class="speed-topbar">
         <div class="speed-topbar__title">
           <span class="speed-topbar__icon">⚡</span>
-          <h1>Speed Survival</h1>
+          <h1>{{ t("speedSurvival.title") }}</h1>
         </div>
 
         <div class="speed-topbar__actions">
           <button class="coin-badge" type="button">🪙 {{ coins ?? "--" }}</button>
-          <button class="exit-btn" type="button" @click="goBack">Exit Game</button>
-          <button class="settings-btn" type="button" aria-label="Settings">⚙</button>
+          <button class="exit-btn" type="button" @click="goBack">{{ t("speedSurvival.exitGame") }}</button>
+          <button class="settings-btn" type="button" :aria-label="t('speedSurvival.settingsAria')">⚙</button>
         </div>
       </header>
 
       <section class="speed-stage">
         <header class="countdown-strip">
           <div class="countdown-strip__meta">
-            <p>TIME REMAINING</p>
+            <p>{{ t("speedSurvival.timeRemaining") }}</p>
             <span>{{ timeRemaining === null ? "--" : `${timeRemaining}s` }}</span>
           </div>
 
@@ -272,54 +354,83 @@ onUnmounted(() => {
             <span class="countdown-strip__fill" :style="{ width: `${progressPercent}%` }" />
           </div>
 
-          <div class="combo-badge">⚡ Combo x{{ combo ?? "--" }}</div>
+          <div class="combo-badge">{{ t("speedSurvival.combo", { combo: combo ?? "--" }) }}</div>
         </header>
 
-        <article class="survival-card" aria-label="True false card">
+        <article class="survival-card" :aria-label="t('speedSurvival.cardAria')">
           <div class="survival-card__art" aria-hidden="true">
             <div class="survival-card__glow" />
           </div>
 
           <div class="survival-card__body">
-            <p class="survival-card__eyebrow">✦ MYTHOLOGY</p>
+            <p class="survival-card__eyebrow">{{ t("speedSurvival.eyebrow") }}</p>
             <h2>{{ questionText }}</h2>
             <p class="survival-card__prompt">{{ answerPrompt }}</p>
           </div>
         </article>
 
         <footer class="answer-pad">
-          <button class="answer-pill answer-pill--false" type="button" @click="chooseAnswer('false')">
+          <button
+            class="answer-pill answer-pill--false"
+            :class="{ 'answer-pill--selected': selectedAnswer === 'false', 'answer-pill--submitting': isSubmittingAnswer && selectedAnswer === 'false' }"
+            type="button"
+            :disabled="isSubmittingAnswer"
+            @click="chooseAnswer('false')"
+          >
             <span class="answer-pill__icon">✕</span>
             <span class="answer-pill__label">{{ falseOptionLabel }}</span>
           </button>
 
-          <button class="answer-pill answer-pill--true" type="button" @click="chooseAnswer('true')">
+          <button
+            class="answer-pill answer-pill--true"
+            :class="{ 'answer-pill--selected': selectedAnswer === 'true', 'answer-pill--submitting': isSubmittingAnswer && selectedAnswer === 'true' }"
+            type="button"
+            :disabled="isSubmittingAnswer"
+            @click="chooseAnswer('true')"
+          >
             <span class="answer-pill__icon">✓</span>
             <span class="answer-pill__label">{{ trueOptionLabel }}</span>
           </button>
         </footer>
 
-        <p class="answer-tip">SWIPE OR USE ARROW KEYS</p>
+        <p class="answer-tip" :class="{ 'answer-tip--submitting': isSubmittingAnswer }">
+          {{ isSubmittingAnswer ? t("speedSurvival.submitting") : t("speedSurvival.swipeOrArrowKeys") }}
+        </p>
 
         <button class="feedback-action" type="button" @click="toggleFeedbackForm">
-          这题有误?
+          {{ t("speedSurvival.feedbackButton") }}
         </button>
 
+        <!-- Answer Feedback -->
+        <div v-if="showFeedback && !lastAnswerCorrect" class="answer-feedback" :class="{ 'answer-feedback--wrong': !lastAnswerCorrect }">
+          <div class="answer-feedback__header">
+            <span class="answer-feedback__icon">✗</span>
+            <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
+          </div>
+          <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong> {{ feedbackCorrectAnswer }}
+          </div>
+          <div v-if="feedbackExplanation" class="answer-feedback__explanation">
+            <strong>{{ t("speedSurvival.explanation") }}</strong> {{ feedbackExplanation }}
+          </div>
+        </div>
+
         <div v-if="runStatus === 'fast-answer'" class="run-status-notice">
-          ⚡ Fast answer! +50% XP bonus
+          {{ t("speedSurvival.fastAnswerBonus") }}
         </div>
       </section>
     </section>
 
     <GameSettlementModal
       :visible="showSettlement"
-      mode-name="Speed Survival"
+      :mode-name="t('speedSurvival.modeName')"
       :xp-gained="settlementXp"
       :coin-reward="settlementCoins"
       :combo-count="settlementCombo"
       :goal-current="settlementGoalCurrent"
       :goal-total="settlementGoalTotal"
-      goal-text="Keep sharpening your reflexes to reach enlightenment through speed." 
+      :league-top-percent="settlementTopPercent"
+      :goal-text="t('speedSurvival.settlementGoalText')"
       @close="closeSettlement"
       @confirm="goLibrary"
     />
@@ -580,6 +691,12 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 700;
   gap: 10px;
+  transition: opacity 0.2s ease;
+}
+
+.answer-pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .answer-pill__icon {
@@ -591,6 +708,7 @@ onUnmounted(() => {
   font-size: 28px;
   height: 64px;
   justify-content: center;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
   width: 64px;
 }
 
@@ -602,6 +720,15 @@ onUnmounted(() => {
   color: var(--color-primary-500);
 }
 
+.answer-pill--selected .answer-pill__icon {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-100) 72%, transparent);
+  transform: translateY(-1px);
+}
+
+.answer-pill--submitting .answer-pill__icon {
+  background: color-mix(in srgb, var(--color-primary-50) 60%, var(--color-surface) 40%);
+}
+
 .answer-tip {
   color: var(--color-text-muted);
   font-size: 10px;
@@ -609,6 +736,10 @@ onUnmounted(() => {
   letter-spacing: 0.08em;
   margin: 18px 0 0;
   text-align: center;
+}
+
+.answer-tip--submitting {
+  color: var(--color-primary-500);
 }
 
 .feedback-action {
@@ -673,5 +804,56 @@ onUnmounted(() => {
   .answer-pad {
     gap: 20px;
   }
+}
+
+/* Answer Feedback Styles */
+.answer-feedback {
+  background: var(--color-danger-surface);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  text-align: left;
+}
+
+.answer-feedback--wrong {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+}
+
+.answer-feedback__header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.answer-feedback__icon {
+  background: var(--color-danger-title);
+  border-radius: 50%;
+  color: var(--color-surface);
+  display: inline-flex;
+  font-size: 14px;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.answer-feedback__title {
+  color: var(--color-danger-title);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.answer-feedback__correct {
+  color: var(--color-danger-title);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.answer-feedback__explanation {
+  color: var(--color-danger-title);
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

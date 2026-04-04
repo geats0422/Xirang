@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import DocumentDeleteConfirmModal from "../components/documents/DocumentDeleteConfirmModal.vue";
@@ -6,7 +6,15 @@ import AppSidebar from "../components/layout/AppSidebar.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
-import { batchDeleteDocuments, deleteDocument, listDocuments, type DocumentListItem } from "../api/documents";
+import {
+  batchDeleteDocuments,
+  deleteDocument,
+  getDocumentProgress,
+  listDocuments,
+  type DocumentListItem,
+  type DocumentProgressResponse,
+} from "../api/documents";
+import { listMistakes } from "../api/mistakes";
 
 const { t, locale } = useI18n();
 
@@ -24,12 +32,15 @@ type ScrollCard = {
   tone: "teal" | "gold" | "muted";
   accent?: "gold" | "selected";
   mastered?: boolean;
+  disabled?: boolean;
 };
 
 type UploadState = "idle" | "loading" | "success" | "failure";
 
 const documents = ref<DocumentListItem[]>([]);
 const isLoading = ref(true);
+const progressMap = ref<Record<string, DocumentProgressResponse>>({});
+const mistakeCount = ref(0);
 
 const { profileName, profileLevel, uploadAndRefresh, hydrate } = useScholarData();
 
@@ -39,8 +50,17 @@ const isDragging = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 onMounted(async () => {
-  await Promise.all([hydrate(), loadDocuments()]);
+  await Promise.all([hydrate(), loadDocuments(), loadMistakeCount()]);
 });
+
+const loadMistakeCount = async () => {
+  try {
+    const response = await listMistakes();
+    mistakeCount.value = response.total;
+  } catch {
+    mistakeCount.value = 0;
+  }
+};
 
 // Update document title reactively when locale changes
 watch(locale, () => {
@@ -59,6 +79,8 @@ const loadDocuments = async () => {
       const rightTime = Date.parse(right.created_at ?? "") || 0;
       return rightTime - leftTime;
     });
+    // Fetch real progress for processing documents
+    await fetchProgressForProcessingDocuments();
   } catch {
     documents.value = [];
   } finally {
@@ -67,20 +89,97 @@ const loadDocuments = async () => {
   }
 };
 
+const fetchProgressForProcessingDocuments = async () => {
+  const processingDocs = documents.value.filter((doc) => doc.status === "processing");
+  if (processingDocs.length === 0) return;
+
+  // Poll progress for each processing document
+  await Promise.all(
+    processingDocs.map(async (doc) => {
+      try {
+        const progress = await getDocumentProgress(doc.id);
+        progressMap.value[doc.id] = progress;
+      } catch {
+        // Silently ignore progress fetch errors
+      }
+    }),
+  );
+};
+
+const getStatusLabel = (status?: string, stage?: string): string => {
+  switch (status) {
+    case "ready":
+      return t("library.statusReady");
+    case "processing":
+      return stage ? t("library.statusProcessingWithStage", { stage }) : t("library.statusProcessing");
+    case "failed":
+      return t("library.statusFailed");
+    default:
+      return t("library.awaitingSubtitle");
+  }
+};
+
+const getProgressLabel = (status?: string): string => {
+  switch (status) {
+    case "ready":
+      return t("library.progressReady");
+    case "processing":
+      return t("library.progressProcessing");
+    case "failed":
+      return t("library.progressFailed");
+    default:
+      return t("library.notStarted");
+  }
+};
+
+const getProgress = (doc: DocumentListItem): number => {
+  const progress = progressMap.value[doc.id];
+  if (progress) {
+    return progress.progress;
+  }
+  switch (doc.status) {
+    case "ready":
+      return 100;
+    case "processing":
+      return 50;
+    case "failed":
+      return 0;
+    default:
+      return 0;
+  }
+};
+
+const getAction = (status?: string): "continue" | "begin" | "review" => {
+  switch (status) {
+    case "ready":
+      return "begin";
+    case "processing":
+    case "failed":
+    default:
+      return "continue";
+  }
+};
+
+const isDisabled = (status?: string): boolean => status !== "ready";
+
 const getScrollCards = (): ScrollCard[] => {
-  return documents.value.map((doc) => ({
-    id: doc.id,
-    title: doc.title,
-    subtitle: t("library.awaitingSubtitle"),
-    icon: "📖",
-    format: "PDF",
-    size: "",
-    progressLabel: t("library.notStarted"),
-    progressValue: "0%",
-    progress: 0,
-    action: "begin" as const,
-    tone: "muted" as const,
-  }));
+  return documents.value.map((doc) => {
+    const progress = progressMap.value[doc.id];
+    return {
+      id: doc.id,
+      title: doc.title,
+      subtitle: getStatusLabel(doc.status, progress?.stage),
+      icon: "📖",
+      format: "PDF",
+      size: "",
+      progressLabel: getProgressLabel(doc.status),
+      progressValue: progress ? `${progress.progress}%` : "0%",
+      progress: getProgress(doc),
+      action: getAction(doc.status),
+      disabled: isDisabled(doc.status),
+      tone: "muted" as const,
+    };
+  });
 };
 
 const { currentPath, navigateTo, router, routingTarget } = useRouteNavigation();
@@ -96,7 +195,7 @@ const selectedDocumentIds = ref<string[]>([]);
 const selectedCount = computed(() => selectedDocumentIds.value.length);
 
 const openModeSelection = async (card: ScrollCard) => {
-  if (card.action === "continue") {
+  if (card.action === "continue" || card.disabled) {
     return;
   }
 
@@ -118,6 +217,16 @@ const openModeSelection = async (card: ScrollCard) => {
       openingCard.value = null;
     }
   }, 220);
+};
+
+const openMistakeReview = async () => {
+  await router.push({
+    path: ROUTES.gameModes,
+    query: {
+      flow: "review",
+      mistakeReview: "true",
+    },
+  });
 };
 
 const openUploadModal = () => {
@@ -279,7 +388,7 @@ defineExpose({
         </button>
 
         <button class="sort-btn" type="button" @click="toggleBatchDeleteMode">
-          {{ isBatchDeleteMode ? "Cancel Batch" : "Batch Delete" }}
+          {{ isBatchDeleteMode ? t("library.cancelBatch") : t("library.batchDelete") }}
         </button>
 
         <button
@@ -289,7 +398,7 @@ defineExpose({
           :disabled="selectedCount === 0"
           @click="openBatchDeleteConfirm"
         >
-          Delete Selected ({{ selectedCount }})
+          {{ t("library.deleteSelected", { count: selectedCount }) }}
         </button>
 
         <button class="upload-icon-btn" type="button" :aria-label="t('library.upload')">☁</button>
@@ -307,6 +416,33 @@ defineExpose({
       </section>
 
       <section v-else class="card-grid" :aria-label="t('library.cardsAria')">
+        <!-- Mistake Review Card -->
+        <article
+          v-if="mistakeCount > 0"
+          class="scroll-card scroll-card--mistake-review"
+          @click="openMistakeReview"
+        >
+          <div class="scroll-card__head">
+            <span class="scroll-card__icon">📝</span>
+          </div>
+          <div class="scroll-card__meta">
+            <span class="scroll-card__format">{{ t("library.reviewTag") }}</span>
+            <span class="scroll-card__size">{{ t("library.mistakeCount", { count: mistakeCount }) }}</span>
+          </div>
+          <h2>{{ t("library.mistakeReviewTitle") }}</h2>
+          <p class="scroll-card__subtitle">{{ t("library.mistakeReviewSubtitle") }}</p>
+          <div class="scroll-card__progress-track" role="presentation">
+            <span class="scroll-card__progress-fill scroll-card__progress-fill--mistake" style="width: 100%" />
+          </div>
+          <button
+            class="scroll-card__action scroll-card__action--review"
+            type="button"
+          >
+            <span aria-hidden="true">↻</span>
+            <span>{{ t("library.startReview") }}</span>
+          </button>
+        </article>
+
         <article
           v-for="card in getScrollCards()"
           :key="card.id"
@@ -341,7 +477,7 @@ defineExpose({
               </button>
               <div v-if="activeCardMenuId === card.id" class="scroll-card__menu-popover">
                 <button class="scroll-card__menu-action scroll-card__menu-action--danger" type="button" @click="requestDelete(card)">
-                  Delete
+                  {{ t("library.delete") }}
                 </button>
               </div>
             </div>
@@ -373,6 +509,7 @@ defineExpose({
               { 'scroll-card__action--routing': openingCard === card.title },
             ]"
             type="button"
+            :disabled="card.disabled"
             @click="openModeSelection(card)"
           >
             <span aria-hidden="true">{{ card.action === "review" ? "↻" : "▹" }}</span>
@@ -419,7 +556,7 @@ defineExpose({
         @dragleave="handleDragLeave"
         @drop="handleDrop"
       >
-        <button class="upload-modal__close" type="button" aria-label="Close" @click="closeUploadModal">✕</button>
+        <button class="upload-modal__close" type="button" :aria-label="t('common.closeAria')" @click="closeUploadModal">✕</button>
 
         <div class="hero-upload__mascot" aria-hidden="true">
           <img src="/taotie-main.svg" alt="" />
@@ -474,7 +611,7 @@ defineExpose({
     <DocumentDeleteConfirmModal
       :visible="Boolean(pendingDeleteCard) || pendingBatchDeleteIds.length > 0"
       :title="pendingDeleteCard?.title || ''"
-      :message="pendingBatchDeleteIds.length > 0 ? `Are you sure you want to delete ${pendingBatchDeleteIds.length} selected documents?` : ''"
+      :message="pendingBatchDeleteIds.length > 0 ? t('library.deleteSelectedConfirm', { count: pendingBatchDeleteIds.length }) : ''"
       :processing="isDeleting"
       @cancel="closeDeleteModal"
       @confirm="confirmDelete"
@@ -487,7 +624,9 @@ defineExpose({
   display: grid;
   gap: 24px;
   grid-template-columns: 256px minmax(0, 1fr);
+   height: 100vh;
   min-height: 100vh;
+   overflow: hidden;
   padding: 24px;
 }
 
@@ -495,6 +634,8 @@ defineExpose({
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 14px;
+   min-height: 0;
+   overflow-y: auto;
   padding: 18px;
 }
 
@@ -1182,5 +1323,22 @@ defineExpose({
   .card-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Mistake Review Card Styles */
+.scroll-card--mistake-review {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.scroll-card--mistake-review:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(245, 158, 11, 0.25);
+}
+
+.scroll-card__progress-fill--mistake {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
 }
 </style>

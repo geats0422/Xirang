@@ -81,6 +81,10 @@ describe("DungeonScholarLibraryPage", () => {
   });
 
   it("navigates to game modes when clicking begin study", async () => {
+    mocks.listDocuments.mockResolvedValueOnce([
+      { id: "doc-ready-1", title: "ready-scroll.pdf", status: "ready" },
+    ]);
+
     const router = createTestRouter();
     await router.push(ROUTES.library);
     await router.isReady();
@@ -90,7 +94,7 @@ describe("DungeonScholarLibraryPage", () => {
     });
     await flushPromises();
 
-    await wrapper.find(".scroll-card__action--begin").trigger("click");
+    await wrapper.find(".scroll-card__action").trigger("click");
     await flushPromises();
 
     expect(router.currentRoute.value.path).toBe(ROUTES.gameModes);

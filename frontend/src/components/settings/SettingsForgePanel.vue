@@ -19,12 +19,12 @@
       >
         <div class="model-card__content">
           <div class="model-card__header">
-            <div class="model-card__name">{{ activeModel?.name || 'Select a model' }}</div>
-            <div v-if="activeModel?.provider" class="model-card__provider">{{ activeModel.provider }}</div>
+            <div class="model-card__name">{{ localizedActiveModel?.name || t("settings.forge.selectModel") }}</div>
+            <div v-if="localizedActiveModel?.provider" class="model-card__provider">{{ localizedActiveModel.provider }}</div>
           </div>
-          <div v-if="activeModel?.description" class="model-card__description">{{ activeModel.description }}</div>
-          <div v-if="activeModel?.tags && activeModel.tags.length > 0" class="model-card__tags">
-            <span v-for="tag in activeModel.tags" :key="tag" class="model-card__tag">{{ tag }}</span>
+          <div v-if="localizedActiveModel?.description" class="model-card__description">{{ localizedActiveModel.description }}</div>
+          <div v-if="localizedActiveModel?.tags && localizedActiveModel.tags.length > 0" class="model-card__tags">
+            <span v-for="tag in localizedActiveModel.tags" :key="tag" class="model-card__tag">{{ tag }}</span>
           </div>
         </div>
         <div class="model-card__expand-hint">
@@ -43,14 +43,14 @@
           <div class="model-list-controls">
             <button type="button" class="scroll-btn scroll-btn--up" :disabled="!canScrollUp" @click="scrollUp">↑</button>
             <button type="button" class="scroll-btn scroll-btn--down" :disabled="!canScrollDown" @click="scrollDown">↓</button>
-            <button type="button" class="collapse-btn" @click="toggleExpand">收起</button>
+            <button type="button" class="collapse-btn" @click="toggleExpand">{{ t("settings.forge.collapse") }}</button>
           </div>
         </div>
         
         <div ref="scrollAreaRef" class="model-list-scroll-area">
           <div class="model-list" :style="{ transform: `translateY(-${scrollPosition}px)` }">
             <article
-              v-for="model in availableModels"
+              v-for="model in localizedModels"
               :key="model.id"
               class="model-row"
               :class="{ 'model-row--active': model.id === activeModelId }"
@@ -60,7 +60,7 @@
                 <div class="model-row__name">{{ model.name }}</div>
                 <div class="model-row__tags">
                   <span v-if="model.provider" class="model-row__provider">{{ model.provider }}</span>
-                  <span v-if="model.tags.includes('PRO')" class="pro-badge">PRO</span>
+                  <span v-if="model.tags.includes('PRO')" class="pro-badge">{{ t("settings.forge.proBadge") }}</span>
                 </div>
               </div>
             </article>
@@ -87,8 +87,8 @@ const defaultModels: ModelInfo[] = [
   {
     id: "nvidia/nemotron-3-nano-30b-a3b",
     name: "NVIDIA Nemotron",
-    description: "NVIDIA's instruction-tuned model for content generation.",
-    tags: ["NVIDIA", "Primary"],
+    description: "",
+    tags: ["NVIDIA"],
     provider: "nvidia",
   },
 ];
@@ -98,9 +98,21 @@ const activeModelId = ref<string>(defaultModels[0].id);
 const isLoading = ref(false);
 const isExpanded = ref(false);
 
-// Computed property for active model
-const activeModel = computed(() => 
-  availableModels.value.find((m) => m.id === activeModelId.value) || availableModels.value[0]
+const localizedModels = computed<ModelInfo[]>(() =>
+  availableModels.value.map((model) => {
+    if (model.id !== defaultModels[0].id) {
+      return model;
+    }
+    return {
+      ...model,
+      description: t("settings.forge.defaultModelDesc"),
+      tags: ["NVIDIA", t("settings.forge.defaultModelTag")],
+    };
+  }),
+);
+
+const localizedActiveModel = computed(() =>
+  localizedModels.value.find((m) => m.id === activeModelId.value) || localizedModels.value[0],
 );
 
 // Toggle expand/collapse state

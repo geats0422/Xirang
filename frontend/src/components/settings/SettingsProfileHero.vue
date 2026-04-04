@@ -1,14 +1,16 @@
 <script setup lang="ts">
-withDefaults(
-  defineProps<{
-    profileName?: string;
-    profileLevel?: string;
-  }>(),
-  {
-    profileName: "Default user",
-    profileLevel: "Level 1 Scholar",
-  },
-);
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+
+const props = defineProps<{
+  profileName?: string;
+  profileLevel?: string;
+}>();
+
+const { t } = useI18n();
+
+const displayName = computed(() => props.profileName?.trim() || t("settings.profile.defaultName"));
+const displayLevel = computed(() => props.profileLevel?.trim() || t("settings.profile.defaultLevel"));
 
 defineEmits<{
   editProfile: [];
@@ -19,19 +21,19 @@ defineEmits<{
   <section class="profile-hero">
     <div class="profile-hero__avatar-wrap">
       <div class="profile-hero__avatar">🧝</div>
-      <span class="profile-hero__level">{{ profileLevel }}</span>
+      <span class="profile-hero__level">{{ displayLevel }}</span>
     </div>
 
     <div class="profile-hero__body">
       <div class="profile-hero__name-row">
-        <h2>{{ profileName }}</h2>
+        <h2>{{ displayName }}</h2>
         <span class="verified">✓</span>
       </div>
-      <span class="tier-pill">Beta Tier</span>
-      <p>Master of the Azure Archives. Currently exploring the depths of the Python Caverns.</p>
+      <span class="tier-pill">{{ t("settings.profile.tier") }}</span>
+      <p>{{ t("settings.profile.bio") }}</p>
     </div>
 
-    <button class="ghost-btn" type="button" @click="$emit('editProfile')">Edit Profile</button>
+    <button class="ghost-btn" type="button" @click="$emit('editProfile')">{{ t("settings.profile.edit") }}</button>
   </section>
 </template>
 

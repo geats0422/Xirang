@@ -14,6 +14,7 @@ import { useScholarData } from "../composables/useScholarData";
 const { t, locale } = useI18n();
 
 type PreferenceRow = {
+  id?: "sound" | "haptic" | "reminder";
   icon: string;
   title: string;
   description: string;
@@ -50,9 +51,9 @@ const preferenceRows = computed<PreferenceRow[]>(() => [
     title: t("settings.preferences.languageLabel"),
     description: t("settings.preferences.languageDesc"),
     kind: "select",
-    value: "English",
   },
   {
+    id: "sound",
     icon: "🔊",
     title: t("settings.preferences.soundLabel"),
     description: t("settings.preferences.soundDesc"),
@@ -60,6 +61,7 @@ const preferenceRows = computed<PreferenceRow[]>(() => [
     enabled: true,
   },
   {
+    id: "haptic",
     icon: "📳",
     title: t("settings.preferences.hapticLabel"),
     description: t("settings.preferences.hapticDesc"),
@@ -67,6 +69,7 @@ const preferenceRows = computed<PreferenceRow[]>(() => [
     enabled: true,
   },
   {
+    id: "reminder",
     icon: "⏰",
     title: t("settings.preferences.reminderLabel"),
     description: t("settings.preferences.reminderDesc"),

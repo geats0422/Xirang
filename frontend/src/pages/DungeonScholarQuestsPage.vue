@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { listDocuments } from "../api/documents";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import NotificationPopover from "../components/NotificationPopover.vue";
 import { ROUTES } from "../constants/routes";
@@ -36,10 +35,13 @@ type NotificationItem = {
   time: string;
 };
 
-const { profileName, profileLevel, streak, coins, hasCoinBalance, hydrate } = useScholarData();
+const { profileName, profileLevel, streak, coins, hasCoinBalance, documents, runs, hydrate } = useScholarData();
 const { t, locale } = useI18n();
 const notificationVisible = ref(false);
 const notifications = ref<NotificationItem[]>([]);
+
+const MONTHLY_PROGRESS_STORAGE_PREFIX = "xirang:quests:monthly-progress";
+const MONTHLY_PROGRESS_TARGET = 30;
 
 const toggleNotifications = () => {
   notificationVisible.value = !notificationVisible.value;
@@ -49,10 +51,63 @@ const closeNotifications = () => {
   notificationVisible.value = false;
 };
 
+const toDate = (value: unknown): Date | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf()) ? null : parsed;
+};
+
+const isSameLocalDay = (left: Date, right: Date): boolean => {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+};
+
+const getMonthlyStorageKey = (date: Date): string => {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${MONTHLY_PROGRESS_STORAGE_PREFIX}:${date.getFullYear()}-${month}`;
+};
+
+const readMonthlyDailyMap = (date: Date): Record<string, number> => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  const key = getMonthlyStorageKey(date);
+  const raw = window.localStorage.getItem(key);
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.entries(parsed).reduce<Record<string, number>>((acc, [day, count]) => {
+      if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
+        acc[day] = Math.min(MONTHLY_PROGRESS_TARGET, Math.floor(count));
+      }
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+};
+
+const writeMonthlyDailyMap = (date: Date, map: Record<string, number>) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const key = getMonthlyStorageKey(date);
+  window.localStorage.setItem(key, JSON.stringify(map));
+};
+
 onMounted(async () => {
   await hydrate();
   await hydrateDailyQuests();
 });
+
+watch([documents, runs, streak], () => {
+  void hydrateDailyQuests();
+}, { deep: true });
 
 // Update document title reactively when locale changes
 watch(locale, () => {
@@ -81,48 +136,111 @@ const quests = ref<DailyQuest[]>([
   },
 ]);
 
-const hydrateDailyQuests = async () => {
-  try {
-    const documents = await listDocuments();
-    const hasUploadedDocuments = Array.isArray(documents) && documents.length > 0;
+const today = computed(() => new Date());
 
-    quests.value = quests.value.map((quest) => {
-      if (quest.type === "upload") {
-        return {
-          ...quest,
-          completed: hasUploadedDocuments,
-        };
-      }
+const todayUploadCompleted = computed(() => {
+  const now = today.value;
+  return documents.value.some((doc) => {
+    const createdAt = toDate(doc.created_at);
+    return createdAt !== null && isSameLocalDay(createdAt, now);
+  });
+});
 
-      if (quest.type === "abyss") {
-        return {
-          ...quest,
-          locked: !hasUploadedDocuments,
-        };
-      }
+const todayEndlessCompletedCount = computed(() => {
+  const now = today.value;
+  return runs.value.filter((run) => {
+    if (run.status !== "completed" || run.mode !== "endless") {
+      return false;
+    }
+    const endedAt = toDate(run.ended_at ?? null);
+    return endedAt !== null && isSameLocalDay(endedAt, now);
+  }).length;
+});
 
-      return quest;
-    });
-  } catch {
-    quests.value = quests.value.map((quest) => {
-      if (quest.type === "abyss") {
-        return {
-          ...quest,
-          locked: true,
-        };
-      }
-      return quest;
-    });
+const todayStreakCompleted = computed(() => streak.value > 0);
+
+const completedDailyQuestCount = computed(() => {
+  return [todayUploadCompleted.value, todayStreakCompleted.value, todayEndlessCompletedCount.value >= 2].filter(Boolean).length;
+});
+
+const monthlyCompletedCount = computed(() => {
+  const now = today.value;
+  const monthMap = readMonthlyDailyMap(now);
+  const dayKey = String(now.getDate());
+  const currentDayCount = Math.min(MONTHLY_PROGRESS_TARGET, completedDailyQuestCount.value);
+
+  if (monthMap[dayKey] !== currentDayCount) {
+    monthMap[dayKey] = currentDayCount;
+    writeMonthlyDailyMap(now, monthMap);
   }
+
+  const total = Object.values(monthMap).reduce((acc, count) => acc + count, 0);
+  return Math.min(MONTHLY_PROGRESS_TARGET, total);
+});
+
+const monthlyProgressPercent = computed(() => {
+  if (MONTHLY_PROGRESS_TARGET <= 0) {
+    return 0;
+  }
+  return Math.round((monthlyCompletedCount.value / MONTHLY_PROGRESS_TARGET) * 100);
+});
+
+const hydrateDailyQuests = async () => {
+  const hasAnyDocuments = documents.value.length > 0;
+  const uploadCompleted = todayUploadCompleted.value;
+  const streakCompleted = todayStreakCompleted.value;
+  const abyssCompleted = todayEndlessCompletedCount.value >= 2;
+
+  quests.value = quests.value.map((quest) => {
+    if (quest.type === "upload") {
+      return {
+        ...quest,
+        completed: uploadCompleted,
+      };
+    }
+
+    if (quest.type === "streak") {
+      return {
+        ...quest,
+        completed: streakCompleted,
+      };
+    }
+
+    if (quest.type === "abyss") {
+      return {
+        ...quest,
+        completed: abyssCompleted,
+        locked: !hasAnyDocuments,
+      };
+    }
+
+    return quest;
+  });
 };
 
 const streakLabel = computed(() => t("quests.streakLabel", { days: streak.value }));
 const coinLabel = computed(() => {
-  const amount = hasCoinBalance.value ? coins.value.toLocaleString("en-US") : "--";
+  const amount = hasCoinBalance.value
+    ? new Intl.NumberFormat(locale.value).format(coins.value)
+    : "--";
   return t("quests.coinLabel", { amount });
 });
-const monthlyDaysRemaining = computed(() => t("quests.daysRemaining", { days: streak.value > 0 ? 20 : 0 }));
-const refreshInLabel = computed(() => t("quests.refreshIn", { hours: streak.value > 0 ? 13 : 0 }));
+
+const monthlyDaysRemaining = computed(() => {
+  const now = today.value;
+  const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const days = Math.max(0, totalDaysInMonth - now.getDate());
+  return t("quests.daysRemaining", { days });
+});
+
+const refreshInLabel = computed(() => {
+  const now = today.value;
+  const nextReset = new Date(now);
+  nextReset.setHours(24, 0, 0, 0);
+  const diffMs = Math.max(0, nextReset.getTime() - now.getTime());
+  const hours = Math.ceil(diffMs / (1000 * 60 * 60));
+  return t("quests.refreshIn", { hours: Math.max(1, hours) });
+});
 
 const shopRoute = ROUTES.shop;
 
@@ -130,17 +248,20 @@ const missionCards = computed<MissionCard[]>(() =>
   quests.value.map((quest) => {
     if (quest.type === "abyss") {
       const isLocked = quest.locked === true;
+      const completedCount = isLocked ? 0 : Math.min(2, todayEndlessCompletedCount.value);
       return {
         id: quest.id,
         title: t("quests.missionAbyssTitle"),
         icon: "⚔",
         iconTone: "violet",
-        progress: isLocked ? 0 : 50,
-        progressLabel: isLocked ? "0/2" : "1/2",
+        progress: (completedCount / 2) * 100,
+        progressLabel: isLocked
+          ? t("quests.progressRatio", { current: 0, total: 2 })
+          : t("quests.progressRatio", { current: completedCount, total: 2 }),
         reward: t("quests.rewardDoubleCard"),
         rewardIcon: "🎁",
-        action: t("quests.continue"),
-        actionTone: "ghost",
+        action: completedCount >= 2 ? t("quests.claimReward") : t("quests.continue"),
+        actionTone: completedCount >= 2 ? "solid" : "ghost",
         disabled: isLocked,
       };
     }
@@ -152,7 +273,9 @@ const missionCards = computed<MissionCard[]>(() =>
         icon: "✓",
         iconTone: "green",
         progress: quest.completed ? 100 : 0,
-        progressLabel: quest.completed ? t("quests.completed") : "0/1",
+        progressLabel: quest.completed
+          ? t("quests.completed")
+          : t("quests.progressRatio", { current: 0, total: 1 }),
         reward: "+50",
         rewardIcon: "🪙",
         action: quest.completed ? t("quests.claimReward") : t("quests.continue"),
@@ -167,7 +290,9 @@ const missionCards = computed<MissionCard[]>(() =>
       icon: "⤴",
       iconTone: "blue",
       progress: quest.completed ? 100 : 0,
-      progressLabel: quest.completed ? t("quests.completed") : "0/1",
+      progressLabel: quest.completed
+        ? t("quests.completed")
+        : t("quests.progressRatio", { current: 0, total: 1 }),
       reward: t("quests.rewardGoldChest"),
       rewardIcon: "🧰",
       action: quest.completed ? t("quests.claimReward") : t("quests.upload"),
@@ -209,11 +334,11 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
           <p class="monthly-banner__copy">{{ t("quests.monthlyDesc") }}</p>
 
           <div class="monthly-banner__progress-head">
-            <span>{{ t("quests.progressRatio", { current: streak > 0 ? 12 : 0, total: 30 }) }}</span>
+            <span>{{ t("quests.progressRatio", { current: monthlyCompletedCount, total: 30 }) }}</span>
           </div>
 
           <div class="progress-track progress-track--banner" role="presentation">
-            <span class="progress-fill progress-fill--banner" :style="{ width: streak > 0 ? '40%' : '0%' }" />
+            <span class="progress-fill progress-fill--banner" :style="{ width: `${monthlyProgressPercent}%` }" />
           </div>
 
           <div class="monthly-banner__footer">

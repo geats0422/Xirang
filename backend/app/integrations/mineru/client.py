@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-import re
 from pathlib import Path
 from typing import Any
 
@@ -46,8 +46,15 @@ class MinerUClient:
         multipart_file_name = _to_multipart_filename(file_name)
         files = {"files": (multipart_file_name, file_bytes, "application/octet-stream")}
 
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.post(endpoint, data=data, files=files)
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                response = await client.post(endpoint, data=data, files=files)
+        except httpx.TimeoutException as exc:
+            raise MinerUClientError(
+                f"MinerU parse timed out after {self.timeout_seconds}s"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise MinerUClientError(f"MinerU request failed: {exc}") from exc
 
         if response.status_code >= 400:
             raise MinerUClientError(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import signal
 import sys
 import time
@@ -155,6 +156,7 @@ class IngestionQuestionGeneratorProtocol(Protocol):
         *,
         document_id: Any = None,
         model: str | None = None,
+        language_code: str = "en",
     ) -> list[GeneratedQuestion]: ...
 
 
@@ -187,6 +189,7 @@ class HeuristicQuestionGenerator:
         document_id: Any = None,
         game_mode: str | None = None,
         model: str | None = None,
+        language_code: str = "en",
     ) -> list[GeneratedQuestion]:
         chunks = [
             line.strip() for line in context.splitlines() if line.strip() and len(line.strip()) > 20
@@ -195,6 +198,7 @@ class HeuristicQuestionGenerator:
             chunks = ["This document contains important study material that should be reviewed."]
 
         generated: list[GeneratedQuestion] = []
+        use_zh = language_code.strip().lower().startswith("zh")
 
         # Determine question type based on game mode
         if game_mode == "endless-abyss":
@@ -213,14 +217,25 @@ class HeuristicQuestionGenerator:
             if question_type == QuestionType.FILL_IN_BLANK:
                 # Fill-in-blank for Endless Abyss
                 prompt_text = chunk.replace(key_term, "____", 1)
+                prompt_prefix = "补全句子: " if use_zh else "Complete the statement: "
+                starts_with_label = "首字母" if use_zh else "Starts with"
+                letters_label = "字符数" if use_zh else "letters"
+                explanation_text = (
+                    f"术语“{key_term}”与该语境匹配。"
+                    if use_zh
+                    else f"The term '{key_term}' fits this context."
+                )
                 generated.append(
                     GeneratedQuestion(
                         question_type=QuestionType.FILL_IN_BLANK,
-                        prompt=f"Complete the statement: {prompt_text[:120]}",
+                        prompt=f"{prompt_prefix}{prompt_text[:120]}",
                         options=[],
                         correct_answer=key_term,
-                        hints=[f"Starts with '{key_term[0].upper()}'", f"{len(key_term)} letters"],
-                        explanation=f"The term '{key_term}' fits this context.",
+                        hints=[
+                            f"{starts_with_label} '{key_term[0].upper()}'",
+                            f"{letters_label}: {len(key_term)}",
+                        ],
+                        explanation=explanation_text,
                         source_locator="local-heuristic",
                         difficulty=min(5, (index % 5) + 1),
                         metadata={"generator": "heuristic", "answer": key_term},
@@ -229,19 +244,24 @@ class HeuristicQuestionGenerator:
             elif question_type == QuestionType.TRUE_FALSE:
                 # True/False for Speed Survival
                 is_true = index % 2 == 0
+                explanation_text = "基于文档内容。" if use_zh else "Based on the document content."
                 generated.append(
                     GeneratedQuestion(
                         question_type=QuestionType.TRUE_FALSE,
                         prompt=chunk[:150],
                         options=[
-                            {"option_key": "A", "content": "正确 / True", "is_correct": is_true},
+                            {
+                                "option_key": "A",
+                                "content": "正确" if use_zh else "True",
+                                "is_correct": is_true,
+                            },
                             {
                                 "option_key": "B",
-                                "content": "错误 / False",
+                                "content": "错误" if use_zh else "False",
                                 "is_correct": not is_true,
                             },
                         ],
-                        explanation="Based on the document content.",
+                        explanation=explanation_text,
                         source_locator="local-heuristic",
                         difficulty=min(5, (index % 5) + 1),
                         metadata={"generator": "heuristic"},
@@ -250,21 +270,39 @@ class HeuristicQuestionGenerator:
             else:
                 # Single/Multiple choice for Knowledge Draft (displayed as fill-in-blank)
                 prompt_with_blank = chunk.replace(key_term, "____", 1)
+                prompt_text = (
+                    f"哪个术语最适合填空: {prompt_with_blank[:120]}?"
+                    if use_zh
+                    else f"Which term best completes: {prompt_with_blank[:120]}?"
+                )
+                explanation_text = (
+                    f"术语“{key_term}”在该语境中正确。"
+                    if use_zh
+                    else f"The term '{key_term}' is correct in this context."
+                )
                 generated.append(
                     GeneratedQuestion(
                         question_type=QuestionType.SINGLE_CHOICE,
-                        prompt=f"Which term best completes: {prompt_with_blank[:120]}?",
+                        prompt=prompt_text,
                         options=[
                             {"option_key": "A", "content": key_term, "is_correct": True},
                             {
                                 "option_key": "B",
-                                "content": "alternative concept",
+                                "content": "替代概念" if use_zh else "alternative concept",
                                 "is_correct": False,
                             },
-                            {"option_key": "C", "content": "unrelated term", "is_correct": False},
-                            {"option_key": "D", "content": "another option", "is_correct": False},
+                            {
+                                "option_key": "C",
+                                "content": "无关术语" if use_zh else "unrelated term",
+                                "is_correct": False,
+                            },
+                            {
+                                "option_key": "D",
+                                "content": "另一个选项" if use_zh else "another option",
+                                "is_correct": False,
+                            },
                         ],
-                        explanation=f"The term '{key_term}' is correct in this context.",
+                        explanation=explanation_text,
                         source_locator="local-heuristic",
                         difficulty=min(5, (index % 5) + 1),
                         metadata={"generator": "heuristic"},
@@ -306,10 +344,17 @@ class WorkerJobRepository:
         await self._repo.commit()
 
 
-async def _get_user_selected_model(session: Any, user_id: UUID) -> str | None:
-    stmt = select(UserSetting.selected_model).where(UserSetting.user_id == user_id)
+async def _get_user_generation_preferences(session: Any, user_id: UUID) -> tuple[str | None, str]:
+    stmt = select(UserSetting.selected_model, UserSetting.language_code).where(
+        UserSetting.user_id == user_id
+    )
     result = await session.execute(stmt)
-    return cast("str | None", result.scalar_one_or_none())
+    row = result.one_or_none()
+    if row is None:
+        return None, "en"
+    selected_model, language_code = row
+    normalized_language = str(language_code or "en").strip() or "en"
+    return cast("str | None", selected_model), normalized_language
 
 
 def _create_llm_client_for_model(model: str | None) -> OpenAIClient | None:
@@ -328,6 +373,7 @@ async def _get_enriched_context_from_pageindex(
     document_id: str,
     content: str,
 ) -> str:
+    raw_context = content[:12000]
     study_queries = [
         "What are the main concepts, theories, or key points covered in this document?",
         "What are the important definitions, formulas, or technical terms explained?",
@@ -344,22 +390,72 @@ async def _get_enriched_context_from_pageindex(
                 question=query,
                 context_chunks=5,
             )
-            if result.answer and len(result.answer.strip()) > 50:
-                enriched_parts.append(f"Topic: {query}\nAnswer: {result.answer}")
+            answer = getattr(result, "answer", None)
+            if not isinstance(answer, str):
+                continue
+
+            answer_text = answer.strip()
+            if not _is_trustworthy_pageindex_answer(answer_text, raw_context):
+                logger.warning(
+                    "Rejected untrusted PageIndex enrichment for document %s (query=%s)",
+                    document_id,
+                    query,
+                )
+                continue
+
+            enriched_parts.append(f"Topic: {query}\nAnswer: {answer_text[:2000]}")
         except Exception as exc:
             logger.debug("PageIndex.ask failed for query '%s': %s", query, exc)
 
     if enriched_parts:
         enriched_context = "\n\n".join(enriched_parts)
         logger.info(
-            "PageIndex enriched context: %d bytes from %d queries",
+            "PageIndex enrichment appended: %d bytes from %d queries",
             len(enriched_context),
             len(enriched_parts),
         )
-        return enriched_context
+        return f"{raw_context}\n\n[Supplemental retrieval notes]\n{enriched_context}"
 
     logger.debug("PageIndex enrichment unavailable, using raw content")
-    return content[:12000]
+    return raw_context
+
+
+def _is_trustworthy_pageindex_answer(answer: str, raw_context: str) -> bool:
+    if len(answer) <= 50:
+        return False
+    if _looks_like_schema_or_prompt(answer):
+        return False
+
+    answer_tokens = _tokenize_text(answer)
+    if not answer_tokens:
+        return False
+    source_tokens = _tokenize_text(raw_context)
+    overlap_count = len(answer_tokens & source_tokens)
+    overlap_ratio = overlap_count / len(answer_tokens)
+    return overlap_count >= 8 or overlap_ratio >= 0.08
+
+
+def _looks_like_schema_or_prompt(text: str) -> bool:
+    lower_text = text.lower()
+    contamination_markers = (
+        "system prompt",
+        "you are an ai",
+        "role:",
+        "instruction:",
+        "output format",
+        "json schema",
+        '"properties"',
+        '"required"',
+    )
+    if any(marker in lower_text for marker in contamination_markers):
+        return True
+
+    normalized = lower_text.strip()
+    return normalized.startswith("{") and ('"type"' in normalized or '"properties"' in normalized)
+
+
+def _tokenize_text(text: str) -> set[str]:
+    return set(re.findall(r"[a-zA-Z\u4e00-\u9fff]{2,}", text.lower()))
 
 
 def build_job_registry() -> JobRegistry:
@@ -433,7 +529,9 @@ async def _process_document_ingestion(
     if document is None:
         raise ValueError(f"Document not found: {document_id}")
 
-    user_selected_model = await _get_user_selected_model(session, document.owner_user_id)
+    user_selected_model, user_language_code = await _get_user_generation_preferences(
+        session, document.owner_user_id
+    )
     llm_client = _create_llm_client_for_model(user_selected_model) or default_llm_client
 
     if llm_client is not None:
@@ -517,10 +615,12 @@ async def _process_document_ingestion(
                 QuestionType.SINGLE_CHOICE,
                 QuestionType.MULTIPLE_CHOICE,
                 QuestionType.TRUE_FALSE,
+                QuestionType.FILL_IN_BLANK,
             ],
-            count=10,
+            count=15,
             document_id=document_id,
             model=user_selected_model,
+            language_code=user_language_code,
         )
 
         if not questions:

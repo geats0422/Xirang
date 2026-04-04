@@ -77,6 +77,38 @@ async def upload_document(
     }
 
 
+@router.get("/{document_id}/progress")
+async def get_document_progress(
+    document_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    service: Any = Depends(get_document_service),
+) -> dict[str, Any]:
+    """Get document processing progress.
+    Returns estimated percentage based on ingest status.
+    """
+    try:
+        document = await service.get_document(document_id=document_id, owner_user_id=user_id)
+        # Map status to estimated progress percentage
+        status_progress = {
+            "pending": {"progress": 0, "stage": "Waiting to start"},
+            "processing": {"progress": 30, "stage": "Parsing document with MinerU"},
+            "indexing": {"progress": 60, "stage": "Building search index"},
+            "generating": {"progress": 80, "stage": "Generating questions"},
+            "ready": {"progress": 100, "stage": "Complete"},
+            "failed": {"progress": 0, "stage": "Processing failed"},
+        }
+        status_str = str(document.ingest_status).lower()
+        progress_info = status_progress.get(status_str, {"progress": 0, "stage": "Unknown"})
+        return {
+            "document_id": str(document.id),
+            "status": str(document.ingest_status),
+            "progress": progress_info["progress"],
+            "stage": progress_info["stage"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+
+
 @router.post("/batch-delete")
 async def batch_delete_documents(
     payload: dict[str, list[str]],

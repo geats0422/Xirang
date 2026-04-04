@@ -4,6 +4,7 @@ import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from inspect import isawaitable
+from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
@@ -83,6 +84,8 @@ class DocumentRepositoryProtocol(Protocol):
         offset: int,
     ) -> list[Any]: ...
 
+    async def list_document_titles_by_owner(self, owner_user_id: UUID) -> list[str]: ...
+
     async def create_job(
         self,
         *,
@@ -131,6 +134,24 @@ class DocumentService:
     repository: DocumentRepositoryProtocol
     storage: StorageProtocol
 
+    async def _resolve_unique_title(self, *, owner_user_id: UUID, desired_title: str) -> str:
+        normalized_title = desired_title.strip() or "Untitled"
+        existing_titles = set(await self.repository.list_document_titles_by_owner(owner_user_id))
+        if normalized_title not in existing_titles:
+            return normalized_title
+
+        path = Path(normalized_title)
+        suffix = path.suffix
+        stem = path.stem if suffix else normalized_title
+        base_stem = stem or "Untitled"
+
+        counter = 1
+        while True:
+            candidate = f"{base_stem} ({counter}){suffix}"
+            if candidate not in existing_titles:
+                return candidate
+            counter += 1
+
     async def upload(
         self,
         *,
@@ -155,9 +176,14 @@ class DocumentService:
         except Exception as e:
             raise StorageError(f"Failed to store file: {e}") from e
 
+        resolved_title = await self._resolve_unique_title(
+            owner_user_id=owner_user_id,
+            desired_title=title,
+        )
+
         document = await self.repository.create_document(
             owner_user_id=owner_user_id,
-            title=title,
+            title=resolved_title,
             file_name=file_name,
             storage_path=storage_key,
             format=format,

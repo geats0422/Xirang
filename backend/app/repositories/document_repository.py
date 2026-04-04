@@ -117,6 +117,14 @@ class DocumentRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_document_titles_by_owner(self, owner_user_id: UUID) -> list[str]:
+        stmt = select(Document.title).where(
+            Document.owner_user_id == owner_user_id,
+            Document.deleted_at.is_(None),
+        )
+        result = await self._session.execute(stmt)
+        return [title for title in result.scalars().all() if isinstance(title, str)]
+
     async def create_job(
         self,
         *,

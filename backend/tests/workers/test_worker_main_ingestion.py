@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import pytest
 
+import app.workers.main as worker_main
 from app.db.models.documents import (
     DocumentFormat,
     DocumentStatus,
@@ -15,14 +16,16 @@ from app.db.models.documents import (
     QuestionSetStatus,
     TreeStatus,
 )
-from app.db.models.questions import QuestionType
-from app.services.questions.generator import GeneratedQuestion
 from app.workers.main import _process_document_ingestion
+
+if TYPE_CHECKING:
+    from app.db.models.questions import QuestionType
 
 
 @dataclass
 class FakeDocument:
     id: UUID
+    owner_user_id: UUID
     storage_path: str
     ingest_status: DocumentStatus
     format: DocumentFormat
@@ -60,35 +63,78 @@ class FakeIndexBackend:
 
         return Result(document_id)
 
+    async def ask(self, *, document_id: str, question: str, context_chunks: int = 3) -> Any:
+        _ = document_id
+        _ = question
+        _ = context_chunks
+
+        class Result:
+            def __init__(self) -> None:
+                self.answer = (
+                    "This is enriched study context with enough detail to be used for question "
+                    "generation in tests."
+                )
+
+        return Result()
+
 
 class FailingIndexBackend:
     async def index_document(self, *, document_id: str, content: str) -> Any:
         raise RuntimeError("index backend unavailable")
 
+    async def ask(self, *, document_id: str, question: str, context_chunks: int = 3) -> Any:
+        _ = document_id
+        _ = question
+        _ = context_chunks
+        raise RuntimeError("index backend unavailable")
 
-class FakeQuestionGenerator:
+
+class FakeLLMClient:
     async def generate(
         self,
-        context: str,
-        question_types: list[QuestionType],
-        count: int,
-        *,
-        document_id: Any = None,
-    ) -> list[GeneratedQuestion]:
-        return [
-            GeneratedQuestion(
-                question_type=QuestionType.SINGLE_CHOICE,
-                prompt="What is the key topic?",
-                options=[
-                    {"option_key": "A", "content": "Topic A", "is_correct": True},
-                    {"option_key": "B", "content": "Topic B", "is_correct": False},
-                ],
-                explanation="From source text",
-                source_locator="p1",
-                difficulty=1,
-                metadata={"source": "test"},
-            )
-        ]
+        prompt: str,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        _ = prompt
+        _ = kwargs
+        return {
+            "structured_output": {
+                "questions": [
+                    {
+                        "question_type": "fill_in_blank",
+                        "prompt": "Document line ____.",
+                        "options": [],
+                        "correct_answer": "one",
+                        "hints": ["3 letters"],
+                        "explanation": "From source text",
+                        "difficulty": 1,
+                    },
+                    {
+                        "question_type": "single_choice",
+                        "prompt": "What is the key topic?",
+                        "options": [
+                            {"option_key": "A", "content": "Topic A", "is_correct": True},
+                            {"option_key": "B", "content": "Topic B", "is_correct": False},
+                        ],
+                        "explanation": "From source text",
+                        "source_locator": "p1",
+                        "difficulty": 1,
+                        "metadata": {"source": "test"},
+                    },
+                ]
+            }
+        }
+
+
+class FakeSession:
+    async def execute(self, stmt: Any) -> Any:
+        _ = stmt
+
+        class Result:
+            def one_or_none(self) -> tuple[None, str]:
+                return (None, "en")
+
+        return Result()
 
 
 class FakeMinerUClient:
@@ -252,7 +298,10 @@ class FakeRepository:
 
 
 @pytest.mark.asyncio
-async def test_process_document_ingestion_marks_ready_on_success(tmp_path: Path) -> None:
+async def test_process_document_ingestion_marks_ready_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(worker_main, "_create_llm_client_for_model", lambda model: None)
     owner_id = uuid4()
     storage_key = f"{owner_id}/sample.txt"
     file_path = tmp_path / storage_key
@@ -261,6 +310,7 @@ async def test_process_document_ingestion_marks_ready_on_success(tmp_path: Path)
 
     document = FakeDocument(
         id=uuid4(),
+        owner_user_id=owner_id,
         storage_path=storage_key,
         ingest_status=DocumentStatus.PROCESSING,
         format=DocumentFormat.TXT,
@@ -273,8 +323,9 @@ async def test_process_document_ingestion_marks_ready_on_success(tmp_path: Path)
         job,
         repository,
         FakeStorage(tmp_path),
+        session=FakeSession(),
         index_backend=FakeIndexBackend(),
-        question_generator=FakeQuestionGenerator(),
+        default_llm_client=FakeLLMClient(),
         mineru_client=FakeMinerUClient(),
     )
 
@@ -297,6 +348,7 @@ async def test_process_document_ingestion_marks_failed_on_index_error(tmp_path: 
 
     document = FakeDocument(
         id=uuid4(),
+        owner_user_id=owner_id,
         storage_path=storage_key,
         ingest_status=DocumentStatus.PROCESSING,
         format=DocumentFormat.TXT,
@@ -310,8 +362,9 @@ async def test_process_document_ingestion_marks_failed_on_index_error(tmp_path: 
             job,
             repository,
             FakeStorage(tmp_path),
+            session=FakeSession(),
             index_backend=FailingIndexBackend(),
-            question_generator=FakeQuestionGenerator(),
+            default_llm_client=FakeLLMClient(),
             mineru_client=FakeMinerUClient(),
         )
 
@@ -342,10 +395,12 @@ async def test_process_document_ingestion_marks_failed_on_index_error(tmp_path: 
 )
 async def test_process_document_ingestion_uses_mineru_for_non_text_formats(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     doc_format: DocumentFormat,
     file_name: str,
     binary_content: bytes,
 ) -> None:
+    monkeypatch.setattr(worker_main, "_create_llm_client_for_model", lambda model: None)
     owner_id = uuid4()
     storage_key = f"{owner_id}/{file_name}"
     file_path = tmp_path / storage_key
@@ -354,6 +409,7 @@ async def test_process_document_ingestion_uses_mineru_for_non_text_formats(
 
     document = FakeDocument(
         id=uuid4(),
+        owner_user_id=owner_id,
         storage_path=storage_key,
         ingest_status=DocumentStatus.PROCESSING,
         format=doc_format,
@@ -366,8 +422,9 @@ async def test_process_document_ingestion_uses_mineru_for_non_text_formats(
         job,
         repository,
         FakeStorage(tmp_path),
+        session=FakeSession(),
         index_backend=FakeIndexBackend(),
-        question_generator=FakeQuestionGenerator(),
+        default_llm_client=FakeLLMClient(),
         mineru_client=FakeMinerUClient(),
     )
 

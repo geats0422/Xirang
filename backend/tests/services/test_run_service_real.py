@@ -556,3 +556,39 @@ async def test_review_mode_uses_twenty_question_goal_progress() -> None:
     )
     updated = await service.get_run(run.id)
     assert updated.mode_state["goal_current"] == 1
+
+
+@pytest.mark.asyncio
+async def test_review_path_options_returns_empty_when_no_review_questions() -> None:
+    repository = InMemoryRunRepository([])
+    service = RunService(repository=repository)
+
+    options = await service.list_path_options(
+        mode=RunMode.REVIEW,
+        document_id=None,
+        user_id=uuid4(),
+    )
+
+    assert options == []
+
+
+@pytest.mark.asyncio
+async def test_review_path_options_caps_stage_count() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    source = _build_questions(document_id)
+    questions: list[QuestionData] = []
+    for _ in range(54):
+        questions.extend(source)
+
+    repository = InMemoryRunRepository(questions)
+    service = RunService(repository=repository)
+
+    options = await service.list_path_options(
+        mode=RunMode.REVIEW,
+        document_id=document_id,
+        user_id=user_id,
+    )
+
+    assert len(options) == 8
+    assert options[-1]["path_id"] == "review-stage-8"

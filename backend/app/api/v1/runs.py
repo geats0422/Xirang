@@ -79,13 +79,17 @@ async def create_run(
                 detail="document_not_ready",
             )
 
-    result, questions = await service.create_run(
-        user_id=user_id,
-        document_id=document_id,
-        mode=run_mode,
-        question_count=question_count,
-        path_id=request.get("path_id"),
-    )
+    try:
+        result, questions = await service.create_run(
+            user_id=user_id,
+            document_id=document_id,
+            mode=run_mode,
+            question_count=question_count,
+            path_id=request.get("path_id"),
+        )
+    except QuestionNotFoundError as exc:
+        detail = "no_review_questions" if run_mode == RunMode.REVIEW else "question_not_found"
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail) from exc
     return {
         "run_id": str(result.id),
         "mode": str(result.mode),

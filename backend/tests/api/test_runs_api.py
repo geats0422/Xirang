@@ -11,6 +11,7 @@ from app.api.v1 import runs as runs_router
 from app.db.models.documents import DocumentStatus
 from app.db.models.runs import RunMode, RunStatus
 from app.main import create_app
+from app.services.runs.exceptions import QuestionNotFoundError
 from app.services.runs.schemas import AnswerResult, QuestionData, Settlement, SubmitAnswerResult
 
 if TYPE_CHECKING:
@@ -269,6 +270,28 @@ class FakeDocumentRepository:
         )
 
 
+class NoReviewQuestionService(FakeRunService):
+    async def create_run(
+        self,
+        *,
+        user_id: UUID,
+        document_id: UUID | None,
+        mode: RunMode,
+        question_count: int,
+        path_id: str | None = None,
+    ) -> tuple[FakeRun, list[QuestionData]]:
+        _ = (user_id, document_id, question_count, path_id)
+        if mode == RunMode.REVIEW:
+            raise QuestionNotFoundError("No review questions available")
+        return await super().create_run(
+            user_id=user_id,
+            document_id=document_id,
+            mode=mode,
+            question_count=question_count,
+            path_id=path_id,
+        )
+
+
 def create_test_client(user_id: UUID) -> TestClient:
     app = create_app()
     fake_service = FakeRunService()
@@ -447,6 +470,27 @@ class TestRunsAPI:
         body = response.json()
         assert body["mode"] == "review"
         assert body["options"][0]["goal_total"] == 20
+
+    def test_create_run_returns_409_when_review_questions_unavailable(self) -> None:
+        user_id = uuid4()
+        app = create_app()
+        app.dependency_overrides[runs_router.get_current_user_id] = lambda: user_id
+        app.dependency_overrides[runs_router.get_run_service] = lambda: NoReviewQuestionService()
+        app.dependency_overrides[runs_router.get_document_repository] = (
+            lambda: FakeDocumentRepository(user_id)
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/v1/runs",
+            json={
+                "mode": "review",
+                "question_count": 5,
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "no_review_questions"
 
     def test_get_settlement_returns_goal_fields_from_run_state(self) -> None:
         user_id = uuid4()

@@ -3,12 +3,13 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import { ApiError } from "../api/http";
 import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
 import { submitFeedback } from "../api/feedback";
 import { getShopBalance } from "../api/shop";
 import { ROUTES } from "../constants/routes";
 
-type RunStatus = "normal" | "reduced-reward";
+type RunStatus = "normal" | "reduced-reward" | "no-review-questions";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -71,7 +72,12 @@ const pageSubtitle = computed(() =>
     : t("reviewMode.header.documentSubtitle"),
 );
 
-const questionTitle = computed(() => currentQuestion.value?.text ?? t("reviewMode.loadingQuestion"));
+const questionTitle = computed(() => {
+  if (runStatus.value === "no-review-questions") {
+    return t("reviewMode.noReviewQuestionsTitle");
+  }
+  return currentQuestion.value?.text ?? t("reviewMode.loadingQuestion");
+});
 const progressCurrent = computed(() => Math.min(settlementGoalTotal.value, questionIndex.value + 1));
 const progressWidth = computed(
   () => `${Math.min(100, (progressCurrent.value / Math.max(1, settlementGoalTotal.value)) * 100)}%`,
@@ -192,7 +198,18 @@ const bootstrapRun = async () => {
       settlementGoalTotal.value = goalTotal;
     }
     questionStartAt.value = Date.now();
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      const detail =
+        typeof error.detail === "object" && error.detail !== null && "detail" in error.detail
+          ? String((error.detail as { detail: unknown }).detail)
+          : null;
+      if (detail === "no_review_questions") {
+        runStatus.value = "no-review-questions";
+        questions.value = [];
+        return;
+      }
+    }
     runStatus.value = "reduced-reward";
   }
 };
@@ -414,7 +431,7 @@ onMounted(async () => {
         </article>
       </section>
 
-      <section v-if="isChoiceQuestion" class="review-options">
+      <section v-if="runStatus !== 'no-review-questions' && isChoiceQuestion" class="review-options">
         <p class="review-options__prompt">{{ answerPrompt }}</p>
         <div class="review-options__grid">
           <button
@@ -430,7 +447,7 @@ onMounted(async () => {
         </div>
       </section>
 
-      <footer class="answer-zone">
+      <footer v-if="runStatus !== 'no-review-questions'" class="answer-zone">
         <label
           v-if="isFillInBlankQuestion"
           class="answer-input"
@@ -478,6 +495,11 @@ onMounted(async () => {
         <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
           {{ t("reviewMode.reducedRewardNotice") }}
         </div>
+      </footer>
+
+      <footer v-else class="answer-zone answer-zone--empty">
+        <div class="run-status-notice">{{ t("reviewMode.noReviewQuestionsNotice") }}</div>
+        <button class="return-btn" type="button" @click="goBack">{{ t("reviewMode.backToPath") }}</button>
       </footer>
     </section>
 

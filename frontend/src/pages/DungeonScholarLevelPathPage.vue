@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import { ApiError } from "../api/http";
 import { ROUTES } from "../constants/routes";
 import { listRunPathOptions, type RunPathOption } from "../api/runs";
 
@@ -141,6 +142,13 @@ const fallbackNodes = computed<PathNode[]>(() => {
 
 const nodes = ref<PathNode[]>([]);
 
+const noRoutesMessage = computed(() => {
+  if (mode.value === "review") {
+    return t("levelPath.reviewNoQuestions");
+  }
+  return t("levelPath.noRouteSelected");
+});
+
 const mapOptionToNode = (option: RunPathOption): PathNode => {
   if (mode.value === "endless-abyss") {
     const floor = Number(option.path_id.replace("F", ""));
@@ -183,9 +191,17 @@ const loadPathOptions = async () => {
   try {
     const response = await listRunPathOptions(documentId, modeApiMap[mode.value]);
     const mapped = response.options.map(mapOptionToNode);
+    if (mode.value === "review") {
+      nodes.value = mapped;
+      return;
+    }
     nodes.value = mapped.length ? mapped : fallbackNodes.value;
-  } catch {
-    nodes.value = fallbackNodes.value;
+  } catch (error) {
+    if (mode.value === "review" && error instanceof ApiError && error.status === 409) {
+      nodes.value = [];
+      return;
+    }
+    nodes.value = mode.value === "review" ? [] : fallbackNodes.value;
   }
 };
 
@@ -348,9 +364,11 @@ const backToModes = async () => {
         </button>
       </section>
 
+      <p v-if="!nodes.length" class="path-empty">{{ noRoutesMessage }}</p>
+
       <footer class="path-actions">
         <p>{{ selectedSummary }}</p>
-        <button class="path-start" type="button" @click="startLearning">{{ actionLabel }}</button>
+        <button class="path-start" type="button" :disabled="!selectedNode" @click="startLearning">{{ actionLabel }}</button>
       </footer>
     </section>
   </main>
@@ -484,6 +502,12 @@ const backToModes = async () => {
   margin: 0;
 }
 
+.path-empty {
+  color: var(--color-text-muted);
+  margin: 28px 0 0;
+  text-align: center;
+}
+
 .path-start {
   background: linear-gradient(90deg, var(--color-primary-600), var(--color-primary-500));
   border: 0;
@@ -495,5 +519,10 @@ const backToModes = async () => {
   font-weight: 700;
   min-height: 44px;
   padding: 0 20px;
+}
+
+.path-start:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 </style>

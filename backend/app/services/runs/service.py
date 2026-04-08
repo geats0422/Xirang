@@ -282,6 +282,9 @@ class RunService:
         if user_id is not None:
             language_code = await self._repository.get_user_language_code(user_id)
 
+        if mode == RunMode.REVIEW and question_count == 0:
+            return []
+
         path_items = self._generate_dynamic_path_options(
             mode,
             question_count,
@@ -741,6 +744,8 @@ class RunService:
         use_zh = language_family == "zh"
 
         if question_count <= 0:
+            if mode == RunMode.REVIEW:
+                return []
             # Fallback to defaults if no questions available
             return RunService._path_options(mode, language_code)
 
@@ -896,20 +901,7 @@ class RunService:
             return routes
 
         if mode == RunMode.REVIEW:
-            if question_count <= 0:
-                return [
-                    {
-                        "path_id": "review-stage-1",
-                        "label": "S1",
-                        "kind": "review",
-                        "description": "错题回顾起步阶段" if use_zh else "Review stage 1",
-                        "question_count": 20,
-                        "time_left_sec": 1200,
-                        "goal_total": 20,
-                    }
-                ]
-
-            review_units = max(1, math.ceil(question_count / 20))
+            review_units = max(1, min(math.ceil(question_count / 20), 8))
             return [
                 {
                     "path_id": f"review-stage-{index + 1}",
@@ -1006,8 +998,30 @@ class RunService:
                 document_id=document_id
             )
 
+        language_code = "en"
+        if user_id is not None:
+            language_code = await self._repository.get_user_language_code(user_id)
+
         # Generate dynamic options
-        options = self._generate_dynamic_path_options(mode, question_count, knowledge_points)
+        options = self._generate_dynamic_path_options(
+            mode,
+            question_count,
+            knowledge_points,
+            language_code,
+        )
+
+        if mode == RunMode.REVIEW and path_id and options:
+            prefix = "review-stage-"
+            if path_id.startswith(prefix):
+                try:
+                    requested_stage = int(path_id[len(prefix) :])
+                except ValueError:
+                    requested_stage = 1
+                requested_stage = max(1, min(requested_stage, len(options)))
+                clamped_path_id = f"{prefix}{requested_stage}"
+                for option in options:
+                    if option["path_id"] == clamped_path_id:
+                        return option
 
         for option in options:
             if option["path_id"] == path_id:

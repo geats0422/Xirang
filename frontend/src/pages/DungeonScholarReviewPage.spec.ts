@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api/http";
 import { ROUTES } from "../constants/routes";
 import { i18n } from "../i18n";
 import DungeonScholarReviewPage from "./DungeonScholarReviewPage.vue";
@@ -67,5 +68,30 @@ describe("DungeonScholarReviewPage", () => {
     await flushPromises();
 
     expect(mocks.createRun).toHaveBeenCalledWith(undefined, "review", 20, undefined, true);
+  });
+
+  it("shows no-question notice when backend returns no_review_questions", async () => {
+    mocks.createRun.mockRejectedValue(
+      new ApiError("Request failed with status 409", 409, { detail: "no_review_questions" }),
+    );
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: ROUTES.review, component: DungeonScholarReviewPage },
+        { path: ROUTES.levelPath, component: { template: "<div>Path</div>" } },
+        { path: ROUTES.library, component: { template: "<div>Library</div>" } },
+      ],
+    });
+
+    await router.push({ path: ROUTES.review, query: { mode: "review", mistakeReview: "true" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarReviewPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("no mistakes to review");
   });
 });

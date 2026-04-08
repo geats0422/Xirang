@@ -145,4 +145,27 @@ describe("DungeonScholarLevelPathPage", () => {
     expect(router.currentRoute.value.query.mode).toBe("review");
     expect(router.currentRoute.value.query.pathId).toBe("review-stage-1");
   });
+
+  it("shows empty state and disables start when review has no questions", async () => {
+    mocks.listRunPathOptions.mockResolvedValue({
+      mode: "review",
+      options: [],
+    });
+
+    const router = createTestRouter();
+    await router.push({
+      path: ROUTES.levelPath,
+      query: { mode: "review", mistakeReview: "true" },
+    });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLevelPathPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.findAll(".path-node")).toHaveLength(0);
+    expect(wrapper.find(".path-empty").text()).toContain("No mistakes to review yet");
+    expect(wrapper.find(".path-start").attributes("disabled")).toBeDefined();
+  });
 });

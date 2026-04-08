@@ -22,6 +22,7 @@ function createTestRouter() {
       { component: { template: "<div>Endless</div>" }, path: ROUTES.endlessAbyss },
       { component: { template: "<div>Speed</div>" }, path: ROUTES.speedSurvival },
       { component: { template: "<div>Draft</div>" }, path: ROUTES.knowledgeDraft },
+      { component: { template: "<div>Review</div>" }, path: ROUTES.review },
     ],
   });
 }
@@ -115,5 +116,33 @@ describe("DungeonScholarLevelPathPage", () => {
     expect(wrapper.find(".path-start").text()).toBe("进入深渊无尽");
     expect(wrapper.find(".path-actions p").text()).toContain("已选第 1 层");
     expect(wrapper.find(".path-actions p").text()).toContain("夯实基础，稳步推进");
+  });
+
+  it("routes review mode to standalone review page", async () => {
+    mocks.listRunPathOptions.mockResolvedValue({
+      mode: "review",
+      options: [
+        { path_id: "review-stage-1", label: "R1", kind: "review", description: "Mixed mistakes", goal_total: 20 },
+      ],
+    });
+
+    const router = createTestRouter();
+    await router.push({
+      path: ROUTES.levelPath,
+      query: { title: "ready-scroll.pdf", documentId: "doc-1", mode: "review", mistakeReview: "true" },
+    });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLevelPathPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".path-start").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe(ROUTES.review);
+    expect(router.currentRoute.value.query.mode).toBe("review");
+    expect(router.currentRoute.value.query.pathId).toBe("review-stage-1");
   });
 });

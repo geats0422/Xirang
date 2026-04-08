@@ -8,13 +8,13 @@ import { listRunPathOptions, type RunPathOption } from "../api/runs";
 type PathNode = {
   id: string;
   label: string;
-  type: "battle" | "study" | "checkpoint" | "boss" | "speed" | "draft";
+  type: "battle" | "study" | "checkpoint" | "boss" | "speed" | "draft" | "review";
   description: string;
   floor?: number;
   done?: boolean;
 };
 
-type ModeId = "endless-abyss" | "speed-survival" | "knowledge-draft";
+type ModeId = "endless-abyss" | "speed-survival" | "knowledge-draft" | "review";
 
 const route = useRoute();
 const router = useRouter();
@@ -22,7 +22,7 @@ const { t } = useI18n();
 
 const mode = computed<ModeId>(() => {
   const rawMode = route.query.mode;
-  if (rawMode === "speed-survival" || rawMode === "knowledge-draft") {
+  if (rawMode === "speed-survival" || rawMode === "knowledge-draft" || rawMode === "review") {
     return rawMode;
   }
   return "endless-abyss";
@@ -34,18 +34,21 @@ const modeRouteMap: Record<ModeId, string> = {
   "endless-abyss": ROUTES.endlessAbyss,
   "speed-survival": ROUTES.speedSurvival,
   "knowledge-draft": ROUTES.knowledgeDraft,
+  review: ROUTES.review,
 };
 
-const modeApiMap: Record<ModeId, "endless" | "speed" | "draft"> = {
+const modeApiMap: Record<ModeId, "endless" | "speed" | "draft" | "review"> = {
   "endless-abyss": "endless",
   "speed-survival": "speed",
   "knowledge-draft": "draft",
+  review: "review",
 };
 
 const modeLabelMap = computed<Record<ModeId, string>>(() => ({
   "endless-abyss": t("levelPath.modeLabel.endlessAbyss"),
   "speed-survival": t("levelPath.modeLabel.speedSurvival"),
   "knowledge-draft": t("levelPath.modeLabel.knowledgeDraft"),
+  review: t("levelPath.modeLabel.review"),
 }));
 
 const endlessNodes = computed<PathNode[]>(() => [
@@ -101,6 +104,41 @@ const draftNodes = computed<PathNode[]>(() => [
   },
 ]);
 
+const reviewNodes = computed<PathNode[]>(() => [
+  {
+    id: "review-stage-1",
+    label: "R1",
+    type: "review",
+    description: t("levelPath.nodeDescription.review.r1"),
+    done: true,
+  },
+  {
+    id: "review-stage-2",
+    label: "R2",
+    type: "review",
+    description: t("levelPath.nodeDescription.review.r2"),
+  },
+  {
+    id: "review-stage-3",
+    label: "R3",
+    type: "review",
+    description: t("levelPath.nodeDescription.review.r3"),
+  },
+]);
+
+const fallbackNodes = computed<PathNode[]>(() => {
+  if (mode.value === "endless-abyss") {
+    return endlessNodes.value;
+  }
+  if (mode.value === "speed-survival") {
+    return speedNodes.value;
+  }
+  if (mode.value === "knowledge-draft") {
+    return draftNodes.value;
+  }
+  return reviewNodes.value;
+});
+
 const nodes = ref<PathNode[]>([]);
 
 const mapOptionToNode = (option: RunPathOption): PathNode => {
@@ -120,26 +158,34 @@ const mapOptionToNode = (option: RunPathOption): PathNode => {
   return {
     id: option.path_id,
     label: option.label,
-    type: mode.value === "speed-survival" ? "speed" : "draft",
+    type:
+      mode.value === "speed-survival"
+        ? "speed"
+        : mode.value === "knowledge-draft"
+          ? "draft"
+          : "review",
     description: option.description,
-    done: option.path_id.endsWith("focus") || option.path_id.endsWith("classic"),
+    done:
+      option.path_id.endsWith("focus") ||
+      option.path_id.endsWith("classic") ||
+      option.path_id.endsWith("1"),
   };
 };
 
 const loadPathOptions = async () => {
   const rawDocumentId = route.query.documentId;
-  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
-  if (!documentId) {
-    nodes.value = mode.value === "endless-abyss" ? endlessNodes.value : mode.value === "speed-survival" ? speedNodes.value : draftNodes.value;
+  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : undefined;
+  if (!documentId && mode.value !== "review") {
+    nodes.value = fallbackNodes.value;
     return;
   }
 
   try {
     const response = await listRunPathOptions(documentId, modeApiMap[mode.value]);
     const mapped = response.options.map(mapOptionToNode);
-    nodes.value = mapped.length ? mapped : mode.value === "endless-abyss" ? endlessNodes.value : mode.value === "speed-survival" ? speedNodes.value : draftNodes.value;
+    nodes.value = mapped.length ? mapped : fallbackNodes.value;
   } catch {
-    nodes.value = mode.value === "endless-abyss" ? endlessNodes.value : mode.value === "speed-survival" ? speedNodes.value : draftNodes.value;
+    nodes.value = fallbackNodes.value;
   }
 };
 
@@ -172,6 +218,12 @@ onMounted(async () => {
 const selectedNode = computed(() => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null);
 
 const pageEyebrow = computed(() => {
+  if (mode.value === "review") {
+    return flow.value === "review"
+      ? t("levelPath.pageEyebrow.reviewMode")
+      : t("levelPath.pageEyebrow.beginReviewMode");
+  }
+
   if (flow.value === "review") {
     return mode.value === "endless-abyss"
       ? t("levelPath.pageEyebrow.reviewAbyss")
@@ -229,6 +281,7 @@ const nodeIcon = (type: PathNode["type"]) => {
   if (type === "checkpoint") return "✓";
   if (type === "speed") return "⚡";
   if (type === "draft") return "✎";
+  if (type === "review") return "↺";
   return "♛";
 };
 

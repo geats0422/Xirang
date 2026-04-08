@@ -426,6 +426,42 @@ class DocumentRepository:
         job.attempt_count += 1
         await self._session.flush()
 
+    async def get_latest_job_for_document(self, document_id: UUID) -> Job | None:
+        stmt = (
+            select(Job)
+            .where(
+                Job.payload["document_id"].as_string() == str(document_id),
+                Job.job_type == "document_ingestion",
+            )
+            .order_by(Job.created_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_pageindex_tree(self, document_id: UUID) -> DocumentPageIndexTree | None:
+        stmt = (
+            select(DocumentPageIndexTree)
+            .where(DocumentPageIndexTree.document_id == document_id)
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_queue_stats(self, queue_name: str = "default") -> dict[str, int]:
+        from sqlalchemy import func
+
+        stmt = (
+            select(Job.status, func.count())
+            .where(Job.queue_name == queue_name)
+            .group_by(Job.status)
+        )
+        result = await self._session.execute(stmt)
+        stats: dict[str, int] = {}
+        for status, count in result.all():
+            stats[str(status)] = int(count)
+        return stats
+
     async def commit(self) -> None:
         await self._session.commit()
 

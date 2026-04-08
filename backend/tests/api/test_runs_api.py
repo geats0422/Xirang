@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 
 from app.api.v1 import runs as runs_router
+from app.db.models.documents import DocumentStatus
 from app.db.models.runs import RunMode, RunStatus
 from app.main import create_app
 from app.services.runs.schemas import AnswerResult, QuestionData, Settlement, SubmitAnswerResult
@@ -32,6 +33,13 @@ class FakeRun:
     ended_at: datetime | None = None
 
 
+@dataclass
+class FakeDocument:
+    id: UUID
+    owner_user_id: UUID
+    ingest_status: DocumentStatus
+
+
 class FakeRunService:
     def __init__(self) -> None:
         self.runs: dict[UUID, FakeRun] = {}
@@ -43,16 +51,17 @@ class FakeRunService:
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         question_count: int,
         path_id: str | None = None,
     ) -> tuple[FakeRun, list[QuestionData]]:
         run_id = uuid4()
+        effective_document_id = document_id or uuid4()
         questions = [
             QuestionData(
                 id=uuid4(),
-                document_id=document_id,
+                document_id=effective_document_id,
                 question_text=f"Question {i + 1}?",
                 question_type="single_choice",
                 options=[
@@ -113,7 +122,9 @@ class FakeRunService:
         selected_option_ids: list[UUID],
         answer_time_ms: int | None = None,
         owner_user_id: UUID | None = None,
+        text_answer: str | None = None,
     ) -> SubmitAnswerResult:
+        _ = text_answer
         run = await self.get_run(run_id)
         if run.status != RunStatus.RUNNING:
             raise ValueError("Run not running")
@@ -184,6 +195,18 @@ class FakeRunService:
             raise ValueError("Settlement not found")
         return settlement
 
+    async def get_question_info(self, run_id: UUID, question_id: UUID) -> dict[str, object] | None:
+        questions = self.questions.get(run_id, [])
+        question = next((q for q in questions if q.id == question_id), None)
+        if question is None:
+            return None
+        return {
+            "question_id": question.id,
+            "correct_answer": None,
+            "correct_option_ids": [str(v) for v in question.correct_option_ids],
+            "explanation": None,
+        }
+
     async def list_path_options(
         self,
         *,
@@ -213,6 +236,16 @@ class FakeRunService:
                     "goal_total": 8,
                 }
             ]
+        if mode == RunMode.REVIEW:
+            return [
+                {
+                    "path_id": "review-stage-1",
+                    "label": "S1",
+                    "kind": "review",
+                    "description": "Review",
+                    "goal_total": 20,
+                }
+            ]
         return [
             {
                 "path_id": "draft-route-classic",
@@ -224,11 +257,25 @@ class FakeRunService:
         ]
 
 
+class FakeDocumentRepository:
+    def __init__(self, owner_user_id: UUID) -> None:
+        self._owner_user_id = owner_user_id
+
+    async def get_document_by_id(self, document_id: UUID) -> FakeDocument | None:
+        return FakeDocument(
+            id=document_id,
+            owner_user_id=self._owner_user_id,
+            ingest_status=DocumentStatus.READY,
+        )
+
+
 def create_test_client(user_id: UUID) -> TestClient:
     app = create_app()
     fake_service = FakeRunService()
+    fake_document_repo = FakeDocumentRepository(user_id)
     app.dependency_overrides[runs_router.get_current_user_id] = lambda: user_id
     app.dependency_overrides[runs_router.get_run_service] = lambda: fake_service
+    app.dependency_overrides[runs_router.get_document_repository] = lambda: fake_document_repo
     return TestClient(app)
 
 
@@ -367,6 +414,39 @@ class TestRunsAPI:
         body = response.json()
         assert body["mode"] == "endless"
         assert len(body["options"]) == 1
+
+    def test_list_path_options_supports_review_mode(self) -> None:
+        user_id = uuid4()
+        client = create_test_client(user_id)
+        response = client.get(f"/api/v1/runs/path-options?mode=review&document_id={uuid4()}")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["mode"] == "review"
+        assert body["options"][0]["goal_total"] == 20
+
+    def test_create_run_supports_review_mode_without_document_id(self) -> None:
+        user_id = uuid4()
+        client = create_test_client(user_id)
+        response = client.post(
+            "/api/v1/runs",
+            json={
+                "mode": "review",
+                "question_count": 5,
+            },
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["mode"] == "review"
+        assert len(body["questions"]) == 5
+
+    def test_list_path_options_supports_review_mode_without_document_id(self) -> None:
+        user_id = uuid4()
+        client = create_test_client(user_id)
+        response = client.get("/api/v1/runs/path-options?mode=review")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["mode"] == "review"
+        assert body["options"][0]["goal_total"] == 20
 
     def test_get_settlement_returns_goal_fields_from_run_state(self) -> None:
         user_id = uuid4()

@@ -9,6 +9,7 @@ export const ROUTES = {
   endlessAbyss: "/library/game-modes/endless-abyss",
   speedSurvival: "/library/game-modes/speed-survival",
   knowledgeDraft: "/library/game-modes/knowledge-draft",
+  review: "/library/game-modes/review",
   quests: "/quests",
   shop: "/shop",
   leaderboard: "/leaderboard",

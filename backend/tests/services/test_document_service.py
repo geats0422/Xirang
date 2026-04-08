@@ -140,6 +140,13 @@ class FakeDocumentRepository:
         ]
         return docs[offset : offset + limit]
 
+    async def list_document_titles_by_owner(self, owner_user_id: UUID) -> list[str]:
+        return [
+            d.title
+            for d in self.documents.values()
+            if d.owner_user_id == owner_user_id and d.deleted_at is None
+        ]
+
     async def delete_document_for_owner(
         self,
         *,

@@ -10,6 +10,7 @@ const DungeonScholarModeSelectionPage = () => import("../pages/DungeonScholarMod
 const DungeonScholarEndlessAbyssPage = () => import("../pages/DungeonScholarEndlessAbyssPage.vue");
 const DungeonScholarSpeedSurvivalPage = () => import("../pages/DungeonScholarSpeedSurvivalPage.vue");
 const DungeonScholarKnowledgeDraftPage = () => import("../pages/DungeonScholarKnowledgeDraftPage.vue");
+const DungeonScholarReviewPage = () => import("../pages/DungeonScholarReviewPage.vue");
 const DungeonScholarQuestsPage = () => import("../pages/DungeonScholarQuestsPage.vue");
 const DungeonScholarShopPage = () => import("../pages/DungeonScholarShopPage.vue");
 const DungeonScholarLeaderboardPage = () => import("../pages/DungeonScholarLeaderboardPage.vue");
@@ -69,6 +70,11 @@ const router = createRouter({
       path: ROUTES.knowledgeDraft,
       name: "knowledge-draft",
       component: DungeonScholarKnowledgeDraftPage,
+    },
+    {
+      path: ROUTES.review,
+      name: "review",
+      component: DungeonScholarReviewPage,
     },
     {
       path: ROUTES.quests,

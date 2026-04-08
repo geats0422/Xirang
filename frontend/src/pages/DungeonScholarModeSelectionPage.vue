@@ -5,9 +5,10 @@ import { useI18n } from "vue-i18n";
 import { ROUTES } from "../constants/routes";
 
 type ModeFlow = "begin" | "review";
+type ModeId = "endless-abyss" | "speed-survival" | "knowledge-draft" | "review";
 
 type DungeonMode = {
-  id: string;
+  id: ModeId;
   icon: string;
   iconClass: string;
   title: string;
@@ -55,11 +56,20 @@ const modeOptions = computed<DungeonMode[]>(() => [
     description: t("modeSelection.options.knowledgeDraft.description"),
     previewClass: "mode-card__preview--draft",
   },
+  {
+    id: "review",
+    icon: "↺",
+    iconClass: "mode-card__icon--jade",
+    title: t("modeSelection.options.review.title"),
+    tag: t("modeSelection.options.review.tag"),
+    description: t("modeSelection.options.review.description"),
+    previewClass: "mode-card__preview--review",
+  },
 ]);
 
 const router = useRouter();
 const route = useRoute();
-const selectedModeId = ref<string | null>(null);
+const selectedModeId = ref<ModeId | null>(null);
 
 const modeFlow = computed<ModeFlow>(() => (route.query.flow === "review" ? "review" : "begin"));
 
@@ -133,7 +143,25 @@ const modeLabels = computed<Record<string, string>>(() => ({
   "endless-abyss": t("modeSelection.labels.endlessAbyss"),
   "speed-survival": t("modeSelection.labels.speedSurvival"),
   "knowledge-draft": t("modeSelection.labels.knowledgeDraft"),
+  review: t("modeSelection.labels.review"),
 }));
+
+const isMistakeReview = computed(() => route.query.mistakeReview === "true");
+
+watch(
+  () => [modeFlow.value, isMistakeReview.value] as const,
+  ([nextFlow, nextMistakeReview]) => {
+    if (nextFlow === "review" || nextMistakeReview) {
+      selectedModeId.value = "review";
+      return;
+    }
+
+    if (selectedModeId.value === "review") {
+      selectedModeId.value = null;
+    }
+  },
+  { immediate: true },
+);
 
 const enterDungeon = async () => {
   if (!selectedModeId.value) {
@@ -148,6 +176,7 @@ const enterDungeon = async () => {
       title: materialTitle.value,
       subtitle: materialSubtitle.value,
       format: route.query.format || "SCROLL",
+      mistakeReview: isMistakeReview.value ? "true" : undefined,
     },
   });
 };
@@ -442,7 +471,7 @@ const closeModal = async () => {
 .mode-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 24px;
 }
 
@@ -493,6 +522,11 @@ const closeModal = async () => {
 .mode-card__icon--gold {
   background: var(--color-streak-bg);
   color: var(--color-coin-value);
+}
+
+.mode-card__icon--jade {
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
 }
 
 .mode-card h3 {
@@ -586,6 +620,25 @@ const closeModal = async () => {
       color-mix(in srgb, var(--color-badge-blue-text) 66%, var(--color-surface) 34%),
       color-mix(in srgb, var(--color-chip-violet-text) 70%, var(--color-text-primary) 30%) 44%,
       color-mix(in srgb, var(--color-badge-blue-bg) 54%, var(--color-badge-blue-text) 46%)
+    );
+}
+
+.mode-card__preview--review {
+  background: radial-gradient(
+      circle at 24% 28%,
+      color-mix(in srgb, var(--color-primary-100) 94%, transparent),
+      transparent 22%
+    ),
+    radial-gradient(
+      circle at 74% 34%,
+      color-mix(in srgb, var(--color-cyan-100) 88%, transparent),
+      transparent 20%
+    ),
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--color-primary-50) 92%, var(--color-surface) 8%),
+      color-mix(in srgb, var(--color-cyan-50) 88%, var(--color-surface) 12%) 48%,
+      color-mix(in srgb, var(--color-primary-100) 76%, var(--color-surface) 24%)
     );
 }
 

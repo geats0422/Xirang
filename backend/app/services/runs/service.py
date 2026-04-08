@@ -96,7 +96,7 @@ class RunRepositoryProtocol(Protocol):
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         total_questions: int,
         mode_state: Mapping[str, object] | None = None,
@@ -122,12 +122,24 @@ class RunRepositoryProtocol(Protocol):
     async def list_document_questions(
         self,
         *,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         count: int,
         path_id: str | None = None,
         user_id: UUID | None = None,
     ) -> list[QuestionData]: ...
+
+    async def count_review_questions(self, *, document_id: UUID | None, user_id: UUID) -> int: ...
+
+    async def create_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID,
+        run_id: UUID,
+        explanation: str | None = None,
+    ) -> None: ...
 
     async def count_document_questions(self, *, document_id: UUID) -> int: ...
 
@@ -187,13 +199,16 @@ class RunService:
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         question_count: int,
         path_id: str | None = None,
     ) -> tuple[Any, list[QuestionData]]:
         strategy = await self._resolve_path_strategy(
-            mode=mode, path_id=path_id, document_id=document_id
+            mode=mode,
+            path_id=path_id,
+            document_id=document_id,
+            user_id=user_id,
         )
         strategy_path_id = str(strategy.get("path_id") or "")
         strategy_goal_total_raw = strategy.get("goal_total")
@@ -219,6 +234,8 @@ class RunService:
             user_id=user_id,
         )
         if not questions:
+            if mode == RunMode.REVIEW:
+                raise QuestionNotFoundError("No review questions available")
             raise QuestionNotFoundError(f"No questions available for document {document_id}")
 
         run = await self._repository.create_run(
@@ -249,10 +266,16 @@ class RunService:
         question_count = 0
         knowledge_points: list[str] = []
         language_code = "en"
-        if document_id is not None:
+        if mode == RunMode.REVIEW and user_id is not None:
+            question_count = await self._repository.count_review_questions(
+                document_id=document_id,
+                user_id=user_id,
+            )
+        elif document_id is not None:
             question_count = await self._repository.count_document_questions(
                 document_id=document_id
             )
+        if document_id is not None:
             knowledge_points = await self._repository.list_document_knowledge_points(
                 document_id=document_id
             )
@@ -379,7 +402,10 @@ class RunService:
             time_left_sec = max(0, time_left_sec - elapsed_sec)
             study_seconds = study_seconds + elapsed_sec
 
-        goal_current = min(goal_total, study_seconds // 60)
+        if run.mode == RunMode.REVIEW:
+            goal_current = min(goal_total, answered_count)
+        else:
+            goal_current = min(goal_total, study_seconds // 60)
 
         # Mode-specific answer handling
         current_combo = int(mode_state.get("combo_count", 0))
@@ -401,6 +427,8 @@ class RunService:
                 pending_coins = pending_coins + 10
             elif run.mode == RunMode.SPEED:
                 current_combo = current_combo + 1
+            elif run.mode == RunMode.REVIEW:
+                floor = min(floor_total, answered_count + 1)
         else:
             if run.mode == RunMode.ENDLESS:
                 if shield_active and revive_shield_count > 0:
@@ -410,6 +438,15 @@ class RunService:
                     hp = max(0, hp - 1)
             elif run.mode == RunMode.SPEED:
                 current_combo = 0
+
+            if run.document_id is not None:
+                await self._repository.create_mistake(
+                    user_id=run.user_id,
+                    question_id=question_id,
+                    document_id=run.document_id,
+                    run_id=run.id,
+                    explanation=target_question.get("explanation"),
+                )
 
         mode_state["hp"] = hp
         mode_state["floor"] = floor
@@ -630,7 +667,7 @@ class RunService:
             "time_left_sec": time_left_sec,
             "pending_coins": 0,
             "path_id": path_id,
-            "goal_metric": "study_minutes",
+            "goal_metric": "questions_answered" if mode == RunMode.REVIEW else "study_minutes",
             "goal_current": 0,
             "goal_total": max(1, goal_total),
             "study_seconds": 0,
@@ -858,6 +895,38 @@ class RunService:
                 )
             return routes
 
+        if mode == RunMode.REVIEW:
+            if question_count <= 0:
+                return [
+                    {
+                        "path_id": "review-stage-1",
+                        "label": "S1",
+                        "kind": "review",
+                        "description": "错题回顾起步阶段" if use_zh else "Review stage 1",
+                        "question_count": 20,
+                        "time_left_sec": 1200,
+                        "goal_total": 20,
+                    }
+                ]
+
+            review_units = max(1, math.ceil(question_count / 20))
+            return [
+                {
+                    "path_id": f"review-stage-{index + 1}",
+                    "label": f"S{index + 1}",
+                    "kind": "review",
+                    "description": (
+                        f"错题回顾 · 第{index + 1}关"
+                        if use_zh
+                        else f"Mistake review · Stage {index + 1}"
+                    ),
+                    "question_count": 20,
+                    "time_left_sec": 1200,
+                    "goal_total": 20,
+                }
+                for index in range(review_units)
+            ]
+
         # DRAFT mode
         if num_units == 1:
             classic_desc = "均衡组卡线, 覆盖核心考点" if use_zh else "Balanced drafting journey"
@@ -913,15 +982,26 @@ class RunService:
 
     # @staticmethod removed - needs async and repository access
     async def _resolve_path_strategy(
-        self, *, mode: RunMode, path_id: str | None, document_id: UUID | None = None
+        self,
+        *,
+        mode: RunMode,
+        path_id: str | None,
+        document_id: UUID | None = None,
+        user_id: UUID | None = None,
     ) -> dict[str, object]:
         # Get question count for dynamic path generation
         question_count = 0
         knowledge_points: list[str] = []
-        if document_id is not None:
+        if mode == RunMode.REVIEW and user_id is not None:
+            question_count = await self._repository.count_review_questions(
+                document_id=document_id,
+                user_id=user_id,
+            )
+        elif document_id is not None:
             question_count = await self._repository.count_document_questions(
                 document_id=document_id
             )
+        if document_id is not None:
             knowledge_points = await self._repository.list_document_knowledge_points(
                 document_id=document_id
             )
@@ -937,6 +1017,19 @@ class RunService:
     @staticmethod
     def _path_options(mode: RunMode, language_code: str = "en") -> list[dict[str, object]]:
         use_zh = RunService._resolve_language_family(language_code) == "zh"
+
+        if mode == RunMode.REVIEW:
+            return [
+                {
+                    "path_id": "review-stage-1",
+                    "label": "S1",
+                    "kind": "review",
+                    "description": "错题回顾 · 第1关" if use_zh else "Mistake review · Stage 1",
+                    "question_count": 20,
+                    "time_left_sec": 1200,
+                    "goal_total": 20,
+                }
+            ]
         if mode == RunMode.ENDLESS:
             return [
                 {

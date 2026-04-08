@@ -126,4 +126,32 @@ describe("DungeonScholarModeSelectionPage", () => {
     expect(router.currentRoute.value.query.mode).toBe("speed-survival");
     expect(router.currentRoute.value.query.documentId).toBe("doc-1");
   });
+
+  it("preselects standalone review when entering review flow", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: ROUTES.gameModes,
+          component: DungeonScholarModeSelectionPage,
+        },
+        {
+          path: ROUTES.levelPath,
+          component: { template: "<div>Level Path</div>" },
+        },
+      ],
+    });
+
+    await router.push({ path: ROUTES.gameModes, query: { flow: "review", mistakeReview: "true" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarModeSelectionPage, {
+      global: {
+        plugins: [router, i18n],
+      },
+    });
+
+    expect(wrapper.findAll(".mode-card")).toHaveLength(4);
+    expect(wrapper.findAll(".mode-card")[3].classes()).toContain("mode-card--active");
+  });
 });

@@ -7,10 +7,11 @@ from hashlib import sha1
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import func, select
 
 from app.db.models.profile import UserSetting
 from app.db.models.questions import Question, QuestionOption, QuestionType
+from app.db.models.review import Mistake
 from app.db.models.runs import Run, RunAnswer, RunMode, RunQuestion, RunStatus, Settlement
 from app.services.runs.schemas import AnswerResult, QuestionData
 
@@ -320,7 +321,7 @@ class RunRepository:
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         total_questions: int,
         mode_state: dict[str, object] | None = None,
@@ -389,7 +390,7 @@ class RunRepository:
     async def list_document_questions(
         self,
         *,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         count: int,
         path_id: str | None = None,
@@ -399,7 +400,16 @@ class RunRepository:
         if mode == RunMode.DRAFT and user_id is not None:
             language_code = await self.get_user_language_code(user_id)
 
-        stmt: Select[tuple[Question]] = select(Question).where(Question.document_id == document_id)
+        if mode == RunMode.REVIEW and user_id is not None:
+            stmt = select(Question).join(Mistake, Mistake.question_id == Question.id)
+            stmt = stmt.where(Mistake.user_id == user_id)
+            if document_id is not None:
+                stmt = stmt.where(Mistake.document_id == document_id)
+            stmt = stmt.distinct(Question.id)
+        else:
+            if document_id is None:
+                return []
+            stmt = select(Question).where(Question.document_id == document_id)
 
         # Filter by question type based on mode
         if mode == RunMode.SPEED:
@@ -509,6 +519,33 @@ class RunRepository:
             )
 
         return questions
+
+    async def count_review_questions(self, *, document_id: UUID | None, user_id: UUID) -> int:
+        stmt = select(func.count(func.distinct(Mistake.question_id))).select_from(Mistake)
+        stmt = stmt.where(Mistake.user_id == user_id)
+        if document_id is not None:
+            stmt = stmt.where(Mistake.document_id == document_id)
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+    async def create_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID,
+        run_id: UUID,
+        explanation: str | None = None,
+    ) -> None:
+        mistake = Mistake(
+            user_id=user_id,
+            question_id=question_id,
+            document_id=document_id,
+            run_id=run_id,
+            explanation=explanation,
+        )
+        self._session.add(mistake)
+        await self._session.flush()
 
     async def get_user_language_code(self, user_id: UUID) -> str:
         stmt = select(UserSetting.language_code).where(UserSetting.user_id == user_id)

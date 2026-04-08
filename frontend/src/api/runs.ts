@@ -9,8 +9,11 @@ export type RunQuestionOption = {
 export type RunQuestion = {
   id: string;
   text: string;
+  question_type?: string;
   options: RunQuestionOption[];
 };
+
+export type RunMode = "endless" | "speed" | "draft" | "review";
 
 export type CreateRunResponse = {
   run_id: string;
@@ -42,7 +45,7 @@ export type RunPathOption = {
 };
 
 export type RunPathOptionsResponse = {
-  mode: "endless" | "speed" | "draft";
+  mode: RunMode;
   options: RunPathOption[];
 };
 
@@ -92,31 +95,40 @@ export type RunListItem = {
 };
 
 export const createRun = async (
-  documentId: string,
-  mode: "endless" | "speed" | "draft",
+  documentId: string | undefined,
+  mode: RunMode,
   questionCount = 1,
   pathId?: string,
+  mistakeReview?: boolean,
 ): Promise<CreateRunResponse> => {
+  const body: Record<string, unknown> = {
+    mode,
+    question_count: questionCount,
+    path_id: pathId,
+    mistake_review: mistakeReview,
+  };
+
+  if (documentId) {
+    body.document_id = documentId;
+  }
+
   return apiRequest<CreateRunResponse>("/api/v1/runs", {
     method: "POST",
     headers: getAuthHeaders(),
-    body: {
-      document_id: documentId,
-      mode,
-      question_count: questionCount,
-      path_id: pathId,
-    },
+    body,
   });
 };
 
 export const listRunPathOptions = async (
-  documentId: string,
-  mode: "endless" | "speed" | "draft",
+  documentId: string | undefined,
+  mode: RunMode,
 ): Promise<RunPathOptionsResponse> => {
-  const encodedDocumentId = encodeURIComponent(documentId);
   const encodedMode = encodeURIComponent(mode);
+  const documentQuery = documentId
+    ? `&document_id=${encodeURIComponent(documentId)}`
+    : "";
   return apiRequest<RunPathOptionsResponse>(
-    `/api/v1/runs/path-options?mode=${encodedMode}&document_id=${encodedDocumentId}`,
+    `/api/v1/runs/path-options?mode=${encodedMode}${documentQuery}`,
     {
       headers: getAuthHeaders(),
     },

@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import DocumentDeleteConfirmModal from "../components/documents/DocumentDeleteConfirmModal.vue";
 import AppSidebar from "../components/layout/AppSidebar.vue";
@@ -11,6 +11,7 @@ import {
   deleteDocument,
   getDocumentProgress,
   listDocuments,
+  retryDocument,
   type DocumentListItem,
   type DocumentProgressResponse,
 } from "../api/documents";
@@ -28,7 +29,7 @@ type ScrollCard = {
   progressLabel: string;
   progressValue: string;
   progress: number;
-  action: "continue" | "begin" | "review";
+  action: "continue" | "begin" | "review" | "retry";
   tone: "teal" | "gold" | "muted";
   accent?: "gold" | "selected";
   mastered?: boolean;
@@ -41,6 +42,12 @@ const documents = ref<DocumentListItem[]>([]);
 const isLoading = ref(true);
 const progressMap = ref<Record<string, DocumentProgressResponse>>({});
 const mistakeCount = ref(0);
+let progressPollingInterval: ReturnType<typeof setInterval> | null = null;
+
+// Search and filter state
+const searchQuery = ref("");
+const sortBy = ref<"newest" | "oldest" | "name" | "progress">("newest");
+const isFilterDropdownOpen = ref(false);
 
 const { profileName, profileLevel, uploadAndRefresh, hydrate } = useScholarData();
 
@@ -51,7 +58,28 @@ const fileInput = ref<HTMLInputElement | null>(null);
 
 onMounted(async () => {
   await Promise.all([hydrate(), loadDocuments(), loadMistakeCount()]);
+  startProgressPolling();
 });
+
+onUnmounted(() => {
+  stopProgressPolling();
+});
+
+const startProgressPolling = () => {
+  stopProgressPolling();
+  progressPollingInterval = setInterval(async () => {
+    const processingDocs = documents.value.filter((doc) => doc.status === "processing");
+    if (processingDocs.length === 0) return;
+    await fetchProgressForProcessingDocuments();
+  }, 2000);
+};
+
+const stopProgressPolling = () => {
+  if (progressPollingInterval !== null) {
+    clearInterval(progressPollingInterval);
+    progressPollingInterval = null;
+  }
+};
 
 const loadMistakeCount = async () => {
   try {
@@ -99,6 +127,13 @@ const fetchProgressForProcessingDocuments = async () => {
       try {
         const progress = await getDocumentProgress(doc.id);
         progressMap.value[doc.id] = progress;
+        // Update local document status if it changed
+        if (progress.status !== doc.status) {
+          const docIndex = documents.value.findIndex((d) => d.id === doc.id);
+          if (docIndex !== -1) {
+            documents.value[docIndex] = { ...documents.value[docIndex], status: progress.status };
+          }
+        }
       } catch {
         // Silently ignore progress fetch errors
       }
@@ -149,28 +184,78 @@ const getProgress = (doc: DocumentListItem): number => {
   }
 };
 
-const getAction = (status?: string): "continue" | "begin" | "review" => {
+const getAction = (status?: string): "continue" | "begin" | "review" | "retry" => {
   switch (status) {
     case "ready":
       return "begin";
-    case "processing":
     case "failed":
+      return "retry";
+    case "processing":
     default:
       return "continue";
   }
 };
 
-const isDisabled = (status?: string): boolean => status !== "ready";
+const isDisabled = (status?: string): boolean => {
+  return status !== "ready" && status !== "failed";
+};
+
+const getDocumentFormat = (fileName: string): string => {
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const formatMap: Record<string, string> = {
+    pdf: "PDF",
+    doc: "DOC",
+    docx: "DOCX",
+    ppt: "PPT",
+    pptx: "PPTX",
+    txt: "TXT",
+    md: "MD",
+    markdown: "MD",
+  };
+  return formatMap[ext] ?? ext.toUpperCase();
+};
 
 const getScrollCards = (): ScrollCard[] => {
-  return documents.value.map((doc) => {
+  let filtered = [...documents.value];
+
+  // Apply search filter
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase().trim();
+    filtered = filtered.filter((doc) => doc.title.toLowerCase().includes(query));
+  }
+
+  // Apply sorting
+  filtered.sort((left, right) => {
+    switch (sortBy.value) {
+      case "oldest": {
+        const leftTime = Date.parse(left.created_at ?? "") || 0;
+        const rightTime = Date.parse(right.created_at ?? "") || 0;
+        return leftTime - rightTime;
+      }
+      case "name":
+        return left.title.localeCompare(right.title, "zh-CN");
+      case "progress": {
+        const leftProgress = getProgress(left);
+        const rightProgress = getProgress(right);
+        return rightProgress - leftProgress;
+      }
+      case "newest":
+      default: {
+        const leftTime = Date.parse(left.created_at ?? "") || 0;
+        const rightTime = Date.parse(right.created_at ?? "") || 0;
+        return rightTime - leftTime;
+      }
+    }
+  });
+
+  return filtered.map((doc) => {
     const progress = progressMap.value[doc.id];
     return {
       id: doc.id,
       title: doc.title,
       subtitle: getStatusLabel(doc.status, progress?.stage),
       icon: "📖",
-      format: "PDF",
+      format: getDocumentFormat(doc.title),
       size: "",
       progressLabel: getProgressLabel(doc.status),
       progressValue: progress ? `${progress.progress}%` : "0%",
@@ -180,6 +265,29 @@ const getScrollCards = (): ScrollCard[] => {
       tone: "muted" as const,
     };
   });
+};
+
+const toggleFilterDropdown = () => {
+  isFilterDropdownOpen.value = !isFilterDropdownOpen.value;
+};
+
+const setSortBy = (sort: "newest" | "oldest" | "name" | "progress") => {
+  sortBy.value = sort;
+  isFilterDropdownOpen.value = false;
+};
+
+const getSortLabel = (): string => {
+  switch (sortBy.value) {
+    case "oldest":
+      return t("library.sortOldest");
+    case "name":
+      return t("library.sortName");
+    case "progress":
+      return t("library.sortProgress");
+    case "newest":
+    default:
+      return t("library.sortNewest");
+  }
 };
 
 const { currentPath, navigateTo, router, routingTarget } = useRouteNavigation();
@@ -219,11 +327,39 @@ const openModeSelection = async (card: ScrollCard) => {
   }, 220);
 };
 
+const handleCardAction = async (card: ScrollCard) => {
+  if (card.action === "retry") {
+    await handleRetryDocument(card);
+  } else {
+    await openModeSelection(card);
+  }
+};
+
+const handleRetryDocument = async (card: ScrollCard) => {
+  openingCard.value = card.title;
+  try {
+    await retryDocument(card.id);
+    // Refresh document list to show updated status
+    await loadDocuments();
+  } catch (error) {
+    console.error("Failed to retry document:", error);
+  } finally {
+    window.setTimeout(() => {
+      if (openingCard.value === card.title) {
+        openingCard.value = null;
+      }
+    }, 220);
+  }
+};
+
 const openMistakeReview = async () => {
   await router.push({
-    path: ROUTES.gameModes,
+    path: ROUTES.levelPath,
     query: {
       flow: "review",
+      mode: "review",
+      title: t("library.mistakeReviewTitle"),
+      subtitle: t("library.mistakeReviewSubtitle"),
       mistakeReview: "true",
     },
   });
@@ -378,14 +514,63 @@ defineExpose({
       <section class="library-toolbar" :aria-label="t('library.controlsAria')">
         <label class="search-box">
           <span class="search-box__icon" aria-hidden="true">⌕</span>
-          <input type="text" :placeholder="t('library.searchPlaceholder')" />
+          <input
+            v-model="searchQuery"
+            type="text"
+            :placeholder="t('library.searchPlaceholder')"
+          />
+          <button
+            v-if="searchQuery"
+            type="button"
+            class="search-box__clear"
+            :aria-label="t('library.clearSearch')"
+            @click="searchQuery = ''"
+          >
+            ✕
+          </button>
         </label>
 
-        <button class="sort-btn" type="button">
-          <span class="sort-btn__label">{{ t("library.sortBy") }}</span>
-          <span class="sort-btn__value">{{ t("library.sortUnfinished") }}</span>
-          <span class="sort-btn__caret" aria-hidden="true">▾</span>
-        </button>
+        <div class="filter-dropdown-wrapper">
+          <button class="sort-btn" type="button" @click="toggleFilterDropdown">
+            <span class="sort-btn__label">{{ t("library.sortBy") }}</span>
+            <span class="sort-btn__value">{{ getSortLabel() }}</span>
+            <span class="sort-btn__caret" aria-hidden="true">▾</span>
+          </button>
+
+          <div v-if="isFilterDropdownOpen" class="filter-dropdown">
+            <div class="filter-dropdown__section">
+              <p class="filter-dropdown__title">{{ t("library.sortBy") }}</p>
+              <button
+                class="filter-dropdown__item"
+                :class="{ 'filter-dropdown__item--active': sortBy === 'newest' }"
+                @click="setSortBy('newest')"
+              >
+                {{ t("library.sortNewest") }}
+              </button>
+              <button
+                class="filter-dropdown__item"
+                :class="{ 'filter-dropdown__item--active': sortBy === 'oldest' }"
+                @click="setSortBy('oldest')"
+              >
+                {{ t("library.sortOldest") }}
+              </button>
+              <button
+                class="filter-dropdown__item"
+                :class="{ 'filter-dropdown__item--active': sortBy === 'name' }"
+                @click="setSortBy('name')"
+              >
+                {{ t("library.sortName") }}
+              </button>
+              <button
+                class="filter-dropdown__item"
+                :class="{ 'filter-dropdown__item--active': sortBy === 'progress' }"
+                @click="setSortBy('progress')"
+              >
+                {{ t("library.sortProgress") }}
+              </button>
+            </div>
+          </div>
+        </div>
 
         <button class="sort-btn" type="button" @click="toggleBatchDeleteMode">
           {{ isBatchDeleteMode ? t("library.cancelBatch") : t("library.batchDelete") }}
@@ -404,141 +589,145 @@ defineExpose({
         <button class="upload-icon-btn" type="button" :aria-label="t('library.upload')">☁</button>
       </section>
 
-      <section
-        v-if="isLoading"
-        class="card-grid card-grid--loading"
-        :aria-label="t('library.uploadingAria')"
-      >
-        <div class="library-loading">
-          <div class="library-loading__spinner" :aria-label="t('library.uploadingAria')" />
-          <p>{{ t("library.processingScroll") }}</p>
-        </div>
-      </section>
-
-      <section v-else class="card-grid" :aria-label="t('library.cardsAria')">
-        <!-- Mistake Review Card -->
-        <article
-          v-if="mistakeCount > 0"
-          class="scroll-card scroll-card--mistake-review"
-          @click="openMistakeReview"
+      <div class="library-content">
+        <section
+          v-if="isLoading"
+          class="card-grid card-grid--loading"
+          :aria-label="t('library.uploadingAria')"
         >
-          <div class="scroll-card__head">
-            <span class="scroll-card__icon">📝</span>
+          <div class="library-loading">
+            <div class="library-loading__spinner" :aria-label="t('library.uploadingAria')" />
+            <p>{{ t("library.processingScroll") }}</p>
           </div>
-          <div class="scroll-card__meta">
-            <span class="scroll-card__format">{{ t("library.reviewTag") }}</span>
-            <span class="scroll-card__size">{{ t("library.mistakeCount", { count: mistakeCount }) }}</span>
-          </div>
-          <h2>{{ t("library.mistakeReviewTitle") }}</h2>
-          <p class="scroll-card__subtitle">{{ t("library.mistakeReviewSubtitle") }}</p>
-          <div class="scroll-card__progress-track" role="presentation">
-            <span class="scroll-card__progress-fill scroll-card__progress-fill--mistake" style="width: 100%" />
-          </div>
-          <button
-            class="scroll-card__action scroll-card__action--review"
-            type="button"
+        </section>
+
+        <section v-else class="card-grid" :aria-label="t('library.cardsAria')">
+          <!-- Mistake Review Card -->
+          <article
+            v-if="mistakeCount > 0"
+            class="scroll-card scroll-card--mistake-review"
+            @click="openMistakeReview"
           >
-            <span aria-hidden="true">↻</span>
-            <span>{{ t("library.startReview") }}</span>
-          </button>
-        </article>
+            <div class="scroll-card__head">
+              <span class="scroll-card__icon">📝</span>
+            </div>
+            <div class="scroll-card__meta">
+              <span class="scroll-card__format">{{ t("library.reviewTag") }}</span>
+              <span class="scroll-card__size">{{ t("library.mistakeCount", { count: mistakeCount }) }}</span>
+            </div>
+            <h2>{{ t("library.mistakeReviewTitle") }}</h2>
+            <p class="scroll-card__subtitle">{{ t("library.mistakeReviewSubtitle") }}</p>
+            <div class="scroll-card__progress-track" role="presentation">
+              <span class="scroll-card__progress-fill scroll-card__progress-fill--mistake" style="width: 100%" />
+            </div>
+            <button
+              class="scroll-card__action scroll-card__action--review"
+              type="button"
+            >
+              <span aria-hidden="true">↻</span>
+              <span>{{ t("library.startReview") }}</span>
+            </button>
+          </article>
 
-        <article
-          v-for="card in getScrollCards()"
-          :key="card.id"
-          class="scroll-card"
-          :class="{
-            'scroll-card--gold': card.accent === 'gold',
-            'scroll-card--selected': card.accent === 'selected',
-            'scroll-card--mastered': card.mastered,
-          }"
-        >
-          <p v-if="card.mastered" class="mastered-stamp">{{ t("library.mastered") }}</p>
+          <article
+            v-for="card in getScrollCards()"
+            :key="card.id"
+            class="scroll-card"
+            :class="{
+              'scroll-card--gold': card.accent === 'gold',
+              'scroll-card--selected': card.accent === 'selected',
+              'scroll-card--mastered': card.mastered,
+            }"
+          >
+            <p v-if="card.mastered" class="mastered-stamp">{{ t("library.mastered") }}</p>
 
-          <div class="scroll-card__head" :class="{ 'scroll-card__head--batch': isBatchDeleteMode }">
-            <span class="scroll-card__icon">{{ card.icon }}</span>
-            <label v-if="isBatchDeleteMode" class="scroll-card__check-wrap">
-              <input
-                type="checkbox"
-                class="scroll-card__check batch-select-checkbox"
-                :checked="selectedDocumentIds.includes(card.id)"
-                @change="toggleDocumentSelection(card.id)"
-              />
-            </label>
-            <div class="scroll-card__menu-wrap">
-              <button
-                v-if="!isBatchDeleteMode"
-                class="scroll-card__edit"
-                type="button"
-                :aria-label="t('library.edit')"
-                @click.stop="toggleCardMenu(card.id)"
-              >
-                ✎
-              </button>
-              <div v-if="activeCardMenuId === card.id" class="scroll-card__menu-popover">
-                <button class="scroll-card__menu-action scroll-card__menu-action--danger" type="button" @click="requestDelete(card)">
-                  {{ t("library.delete") }}
+            <div class="scroll-card__head" :class="{ 'scroll-card__head--batch': isBatchDeleteMode }">
+              <span class="scroll-card__icon">{{ card.icon }}</span>
+              <label v-if="isBatchDeleteMode" class="scroll-card__check-wrap">
+                <input
+                  type="checkbox"
+                  class="scroll-card__check batch-select-checkbox"
+                  :checked="selectedDocumentIds.includes(card.id)"
+                  @change="toggleDocumentSelection(card.id)"
+                />
+              </label>
+              <div class="scroll-card__menu-wrap">
+                <button
+                  v-if="!isBatchDeleteMode"
+                  class="scroll-card__edit"
+                  type="button"
+                  :aria-label="t('library.edit')"
+                  @click.stop="toggleCardMenu(card.id)"
+                >
+                  ✎
                 </button>
+                <div v-if="activeCardMenuId === card.id" class="scroll-card__menu-popover">
+                  <button class="scroll-card__menu-action scroll-card__menu-action--danger" type="button" @click="requestDelete(card)">
+                    {{ t("library.delete") }}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="scroll-card__meta">
-            <span class="scroll-card__format">{{ card.format }}</span>
-            <span class="scroll-card__size">{{ card.size }}</span>
-          </div>
+            <div class="scroll-card__meta">
+              <span class="scroll-card__format">{{ card.format }}</span>
+              <span class="scroll-card__size">{{ card.size }}</span>
+            </div>
 
-          <h2>{{ card.title }}</h2>
-          <p class="scroll-card__subtitle">{{ card.subtitle }}</p>
+            <h2>{{ card.title }}</h2>
+            <p class="scroll-card__subtitle">{{ card.subtitle }}</p>
 
-          <div class="scroll-card__progress-head">
-            <span>{{ card.progressLabel }}</span>
-            <span class="scroll-card__progress-value" :class="`scroll-card__progress-value--${card.tone}`">
-              {{ card.progressValue }}
-            </span>
-          </div>
+            <div class="scroll-card__progress-head">
+              <span>{{ card.progressLabel }}</span>
+              <span class="scroll-card__progress-value" :class="`scroll-card__progress-value--${card.tone}`">
+                {{ card.progressValue }}
+              </span>
+            </div>
 
-          <div class="scroll-card__progress-track" role="presentation">
-            <span class="scroll-card__progress-fill" :style="{ width: `${card.progress}%` }" />
-          </div>
+            <div class="scroll-card__progress-track" role="presentation">
+              <span class="scroll-card__progress-fill" :style="{ width: `${card.progress}%` }" />
+            </div>
 
-          <button
-            class="scroll-card__action"
-            :class="[
-              `scroll-card__action--${card.action}`,
-              { 'scroll-card__action--routing': openingCard === card.title },
-            ]"
+            <button
+              class="scroll-card__action"
+              :class="[
+                `scroll-card__action--${card.action}`,
+                { 'scroll-card__action--routing': openingCard === card.title },
+              ]"
+              type="button"
+              :disabled="card.disabled"
+              @click="handleCardAction(card)"
+            >
+              <span aria-hidden="true">{{ card.action === "review" ? "↻" : card.action === "retry" ? "↺" : "▹" }}</span>
+              <span>
+                {{
+                  card.action === "continue"
+                    ? t("library.continueJourney")
+                    : card.action === "begin"
+                      ? t("library.beginStudy")
+                      : card.action === "retry"
+                        ? t("library.reprocessDocument")
+                        : t("library.review")
+                }}
+              </span>
+            </button>
+          </article>
+
+          <article
+            class="scroll-card scroll-card--add"
             type="button"
-            :disabled="card.disabled"
-            @click="openModeSelection(card)"
+            @click="openUploadModal"
           >
-            <span aria-hidden="true">{{ card.action === "review" ? "↻" : "▹" }}</span>
-            <span>
-              {{
-                card.action === "continue"
-                  ? t("library.continueJourney")
-                  : card.action === "begin"
-                    ? t("library.beginStudy")
-                    : t("library.review")
-              }}
-            </span>
-          </button>
-        </article>
-
-        <article
-          class="scroll-card scroll-card--add"
-          type="button"
-          @click="openUploadModal"
-        >
-          <p class="scroll-card__add-icon">＋</p>
-          <h2>{{ t("library.addNewScroll") }}</h2>
-          <p class="scroll-card__add-text">{{ t("library.addScrollDesc") }}</p>
-          <p class="scroll-card__add-disclaimer">
-            <span class="scroll-card__beta-tag">BETA</span>
-            {{ t("library.betaDisclaimer") }}
-          </p>
-        </article>
-      </section>
+            <p class="scroll-card__add-icon">＋</p>
+            <h2>{{ t("library.addNewScroll") }}</h2>
+            <p class="scroll-card__add-text">{{ t("library.addScrollDesc") }}</p>
+            <p class="scroll-card__add-disclaimer">
+              <span class="scroll-card__beta-tag">BETA</span>
+              {{ t("library.betaDisclaimer") }}
+            </p>
+          </article>
+        </section>
+      </div>
     </main>
 
     <!-- Upload Modal -->
@@ -624,9 +813,9 @@ defineExpose({
   display: grid;
   gap: 24px;
   grid-template-columns: 256px minmax(0, 1fr);
-   height: 100vh;
+  height: 100vh;
   min-height: 100vh;
-   overflow: hidden;
+  overflow: hidden;
   padding: 24px;
 }
 
@@ -634,9 +823,16 @@ defineExpose({
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 14px;
-   min-height: 0;
-   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   padding: 18px;
+}
+
+.library-content {
+  flex: 1;
+  min-height: 0;
 }
 
 .library-toolbar {
@@ -674,6 +870,80 @@ defineExpose({
 
 .search-box input::placeholder {
   color: var(--color-text-muted);
+}
+
+.search-box__clear {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  width: 20px;
+}
+
+.search-box__clear:hover {
+  color: var(--color-text-secondary);
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+}
+
+.filter-dropdown {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  padding: 8px 0;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+}
+
+.filter-dropdown__section {
+  padding: 8px 12px;
+}
+
+.filter-dropdown__section + .filter-dropdown__section {
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.filter-dropdown__title {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.filter-dropdown__item {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: block;
+  font-size: 14px;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.filter-dropdown__item:hover {
+  background: var(--color-surface-alt);
+}
+
+.filter-dropdown__item--active {
+  background: var(--color-primary-50);
+  color: var(--color-primary-600);
+  font-weight: 600;
 }
 
 .sort-btn {
@@ -729,7 +999,27 @@ defineExpose({
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  height: 100%;
   margin-top: 16px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.card-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.card-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.card-grid::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+.card-grid::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
 }
 
 .scroll-card {
@@ -879,19 +1169,23 @@ defineExpose({
 }
 
 .scroll-card__menu-action {
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  color: #1e293b;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 10px;
-}
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: #1e293b;
+    cursor: pointer;
+    display: flex;
+    font-size: 13px;
+    font-weight: 600;
+    gap: 6px;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
 
-.scroll-card__menu-action--danger {
-  color: #dc2626;
-}
+  .scroll-card__menu-action--danger {
+    color: #dc2626;
+  }
 
 .scroll-card__meta {
   align-items: center;
@@ -1001,11 +1295,17 @@ defineExpose({
 }
 
 .scroll-card__action--review {
-  background: var(--color-border-soft);
-  color: var(--color-text-muted);
-}
+    background: var(--color-border-soft);
+    color: var(--color-text-muted);
+  }
 
-.scroll-card--add {
+  .scroll-card__action--retry {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
+  }
+
+  .scroll-card--add {
   align-items: center;
   background: var(--color-surface-alt);
   border: 2px dashed var(--color-border);

@@ -7,7 +7,7 @@ from app.db.models.runs import RunMode, RunStatus
 
 
 class RunCreateRequest(BaseModel):
-    document_id: UUID
+    document_id: UUID | None = None
     mode: RunMode
     question_count: int = Field(ge=1, le=50)
 
@@ -31,7 +31,7 @@ class RunCreateResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     run_id: UUID
-    document_id: UUID
+    document_id: UUID | None
     mode: RunMode
     status: RunStatus
     questions: list[QuestionResponse]

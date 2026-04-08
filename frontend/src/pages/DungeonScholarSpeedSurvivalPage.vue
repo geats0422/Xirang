@@ -162,36 +162,38 @@ const refreshBalance = async () => {
   }
 };
 
-const bootstrapRun = async () => {
-  await refreshBalance();
-  const rawDocumentId = route.query.documentId;
-  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
-  const rawPathId = route.query.pathId;
-  const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
-  if (!documentId) {
-    return;
-  }
+const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
 
-  try {
-    const created = await createRun(documentId, "speed", 8, pathId);
-    runId.value = created.run_id;
-    questions.value = created.questions;
-    questionIndex.value = 0;
-    combo.value = 0;
-    applyRunState(created.run_state);
-    questionStartAt.value = Date.now();
-    startTicker();
-  } catch {
-    runStatus.value = "reduced-reward";
-  }
-};
+  const bootstrapRun = async () => {
+    await refreshBalance();
+    const rawDocumentId = route.query.documentId;
+    const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+    const rawPathId = route.query.pathId;
+    const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+    if (!documentId) {
+      return;
+    }
 
-const goBack = async () => {
-  await router.push({
-    path: route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
-    query: route.query,
-  });
-};
+    try {
+      const created = await createRun(documentId, "speed", 8, pathId, isMistakeReview);
+      runId.value = created.run_id;
+      questions.value = created.questions;
+      questionIndex.value = 0;
+      combo.value = 0;
+      applyRunState(created.run_state);
+      questionStartAt.value = Date.now();
+      startTicker();
+    } catch {
+      runStatus.value = "reduced-reward";
+    }
+  };
+
+  const goBack = async () => {
+    await router.push({
+      path: isMistakeReview ? ROUTES.gameModes : route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
+      query: route.query,
+    });
+  };
 
 const goLibrary = async () => {
   await router.push(ROUTES.library);
@@ -226,24 +228,25 @@ const chooseAnswer = async (answerChoice: "false" | "true") => {
       showFeedback.value = false;
       combo.value = (combo.value ?? 0) + 1;
       runStatus.value = elapsedMs <= 1500 ? "fast-answer" : "normal";
-    } else {
-      combo.value = 0;
-      runStatus.value = "normal";
-      // Show feedback on wrong answer
-      showFeedback.value = true;
-      if (result.settlement) {
-        settlementXp.value = result.settlement.xp_earned;
-        settlementCoins.value = result.settlement.coins_earned;
-        settlementCombo.value = result.settlement.combo_max;
-        settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
-        settlementGoalTotal.value = result.settlement.goal_total ?? 8;
-        settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
-        showSettlement.value = true;
-        stopTicker();
-        await refreshBalance();
+      } else {
+        combo.value = 0;
+        runStatus.value = "normal";
+        // Show feedback on wrong answer
+        showFeedback.value = true;
+        isSubmittingAnswer.value = false;
+        if (result.settlement) {
+          settlementXp.value = result.settlement.xp_earned;
+          settlementCoins.value = result.settlement.coins_earned;
+          settlementCombo.value = result.settlement.combo_max;
+          settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+          settlementGoalTotal.value = result.settlement.goal_total ?? 8;
+          settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
+          showSettlement.value = true;
+          stopTicker();
+          await refreshBalance();
+        }
+        return;
       }
-      return;
-    }
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;

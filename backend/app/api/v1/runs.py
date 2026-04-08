@@ -13,7 +13,12 @@ from app.db.session import get_db_session
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.run_repository import RunRepository
 from app.repositories.wallet_repository import WalletRepository
-from app.services.runs.exceptions import InvalidRunStateError, RunNotFoundError
+from app.services.runs.exceptions import (
+    DuplicateAnswerError,
+    InvalidRunStateError,
+    QuestionNotFoundError,
+    RunNotFoundError,
+)
 from app.services.runs.service import RunService
 from app.services.wallet.service import InsufficientBalanceError, WalletService
 
@@ -25,40 +30,58 @@ async def get_run_service(session: AsyncSession = Depends(get_db_session)) -> Ru
     return RunService(repository=RunRepository(session), wallet_service=wallet_service)
 
 
+async def get_document_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> DocumentRepository:
+    return DocumentRepository(session)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_run(
     request: dict[str, Any],
     user_id: UUID = Depends(get_current_user_id),
     service: Any = Depends(get_run_service),
-    session: AsyncSession = Depends(get_db_session),
+    document_repo: DocumentRepository = Depends(get_document_repository),
 ) -> dict[str, Any]:
     """Create a new run."""
-    question_count = request.get("question_count", 5)
-    if not isinstance(question_count, int) or question_count < 0:
+    question_count = request.get("questionCount", request.get("question_count", 5))
+    if not isinstance(question_count, int) or question_count < 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="question_count"
         )
 
-    mode = request.get("mode", RunMode.ENDLESS.value)
+    mode_raw = request.get("mode", RunMode.ENDLESS.value)
+    mode_aliases = {
+        "endless-abyss": RunMode.ENDLESS.value,
+        "speed-survival": RunMode.SPEED.value,
+        "knowledge-draft": RunMode.DRAFT.value,
+        "mistake-review": RunMode.REVIEW.value,
+    }
+    mode = mode_aliases.get(mode_raw, mode_raw)
     run_mode = RunMode(mode)
 
-    document_id = request.get("document_id")
-    if not isinstance(document_id, str):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id")
+    raw_document_id = request.get("documentId", request.get("document_id"))
+    document_id = UUID(raw_document_id) if isinstance(raw_document_id, str) else None
 
-    document_repo = DocumentRepository(session)
-    document = await document_repo.get_document_by_id(UUID(document_id))
-    if document is None or document.owner_user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document_not_found")
-    if document.ingest_status != DocumentStatus.READY:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="document_not_ready",
-        )
+    if run_mode != RunMode.REVIEW or document_id is not None:
+        if document_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="document_id",
+            )
+
+        document = await document_repo.get_document_by_id(document_id)
+        if document is None or document.owner_user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document_not_found")
+        if document.ingest_status != DocumentStatus.READY:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="document_not_ready",
+            )
 
     result, questions = await service.create_run(
         user_id=user_id,
-        document_id=UUID(document_id),
+        document_id=document_id,
         mode=run_mode,
         question_count=question_count,
         path_id=request.get("path_id"),
@@ -72,6 +95,7 @@ async def create_run(
             {
                 "id": str(q.id),
                 "text": q.question_text,
+                "question_type": q.question_type,
                 "options": [{"id": str(o["id"]), "text": o["text"]} for o in q.options],
             }
             for q in questions
@@ -82,22 +106,28 @@ async def create_run(
 @router.get("/path-options")
 async def list_path_options(
     mode: str,
-    document_id: str,
+    document_id: str | None = None,
     user_id: UUID = Depends(get_current_user_id),
     service: Any = Depends(get_run_service),
-    session: AsyncSession = Depends(get_db_session),
+    document_repo: DocumentRepository = Depends(get_document_repository),
 ) -> dict[str, Any]:
-    document_repo = DocumentRepository(session)
-    document = await document_repo.get_document_by_id(UUID(document_id))
-    if document is None or document.owner_user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document_not_found")
-    if document.ingest_status != DocumentStatus.READY:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="document_not_ready")
-
     run_mode = RunMode(mode)
+    parsed_document_id = UUID(document_id) if document_id else None
+    if run_mode != RunMode.REVIEW or parsed_document_id is not None:
+        if parsed_document_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="document_id",
+            )
+        document = await document_repo.get_document_by_id(parsed_document_id)
+        if document is None or document.owner_user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document_not_found")
+        if document.ingest_status != DocumentStatus.READY:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="document_not_ready")
+
     options = await service.list_path_options(
         mode=run_mode,
-        document_id=UUID(document_id),
+        document_id=parsed_document_id,
         user_id=user_id,
     )
     return {
@@ -134,19 +164,45 @@ async def submit_answer(
     service: Any = Depends(get_run_service),
 ) -> dict[str, Any]:
     """Submit an answer."""
-    result = await service.submit_answer(
-        run_id=run_id,
-        question_id=UUID(request.get("question_id")),
-        selected_option_ids=[UUID(oid) for oid in request.get("selected_option_ids", [])],
-        answer_time_ms=request.get("answer_time_ms"),
-        owner_user_id=user_id,
-        text_answer=request.get("text_answer"),  # For FILL_IN_BLANK questions
+    question_id_raw = request.get("questionId", request.get("question_id"))
+    selected_option_ids_raw = request.get(
+        "selectedOptionIds", request.get("selected_option_ids", [])
     )
+    answer_time_ms = request.get("answerTimeMs", request.get("answer_time_ms"))
+    text_answer = request.get("textAnswer", request.get("text_answer"))
 
-    # Get question details for feedback (correct answer, explanation)
+    if not isinstance(question_id_raw, str):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="question_id")
+    if not isinstance(selected_option_ids_raw, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="selected_option_ids"
+        )
+
+    try:
+        parsed_question_id = UUID(question_id_raw)
+        parsed_option_ids = [UUID(str(oid)) for oid in selected_option_ids_raw]
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="selected_option_ids"
+        ) from exc
+
+    try:
+        result = await service.submit_answer(
+            run_id=run_id,
+            question_id=parsed_question_id,
+            selected_option_ids=parsed_option_ids,
+            answer_time_ms=answer_time_ms,
+            owner_user_id=user_id,
+            text_answer=text_answer,
+        )
+    except (RunNotFoundError, QuestionNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (DuplicateAnswerError, InvalidRunStateError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
     question_info = await service.get_question_info(
         run_id=run_id,
-        question_id=UUID(request.get("question_id")),
+        question_id=parsed_question_id,
     )
 
     # Build feedback data

@@ -88,3 +88,15 @@ export const batchDeleteDocuments = async (
     body: { document_ids: documentIds },
   });
 };
+
+type RetryDocumentResponse = {
+  id: string;
+  status: string;
+};
+
+export const retryDocument = async (documentId: string): Promise<RetryDocumentResponse> => {
+  return apiRequest<RetryDocumentResponse>(`/api/v1/documents/${documentId}/retry`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+};

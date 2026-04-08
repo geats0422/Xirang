@@ -17,7 +17,7 @@ from app.services.runs.service import RunService
 class FakeRun:
     id: UUID
     user_id: UUID
-    document_id: UUID
+    document_id: UUID | None
     mode: RunMode
     status: RunStatus
     score: int
@@ -54,7 +54,7 @@ class InMemoryRunRepository:
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         total_questions: int,
         mode_state: dict[str, object] | None = None,
@@ -113,7 +113,7 @@ class InMemoryRunRepository:
     async def list_document_questions(
         self,
         *,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         count: int,
         path_id: str | None = None,
@@ -122,9 +122,17 @@ class InMemoryRunRepository:
         _ = mode
         _ = path_id
         _ = user_id
+        if document_id is None:
+            return self._source_questions[:count]
         return [q for q in self._source_questions if q.document_id == document_id][:count]
 
     async def count_document_questions(self, *, document_id: UUID) -> int:
+        return sum(1 for q in self._source_questions if q.document_id == document_id)
+
+    async def count_review_questions(self, *, document_id: UUID | None, user_id: UUID) -> int:
+        _ = user_id
+        if document_id is None:
+            return len(self._source_questions)
         return sum(1 for q in self._source_questions if q.document_id == document_id)
 
     async def list_document_knowledge_points(
@@ -517,3 +525,34 @@ async def test_fill_in_blank_accepts_semantic_equivalent_answer() -> None:
     )
 
     assert submit_result.answer.is_correct is True
+
+
+@pytest.mark.asyncio
+async def test_review_mode_uses_twenty_question_goal_progress() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    questions = _build_questions(document_id)
+    for question in questions:
+        question.correct_option_ids = [UUID(question.options[0]["id"])]
+
+    repository = InMemoryRunRepository(questions)
+    service = RunService(repository=repository)
+
+    run, generated = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.REVIEW,
+        question_count=3,
+        path_id="review-stage-1",
+    )
+
+    assert run.mode_state["goal_metric"] == "questions_answered"
+    assert run.mode_state["goal_total"] == 20
+
+    await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[generated[0].correct_option_ids[0]],
+    )
+    updated = await service.get_run(run.id)
+    assert updated.mode_state["goal_current"] == 1

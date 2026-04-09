@@ -6,50 +6,30 @@ import NotificationPopover from "../components/NotificationPopover.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
+import { getQuests, claimQuestReward, type QuestAssignment, type MonthlyProgress } from "../api/quests";
+import {
+  getNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  type NotificationItem as ApiNotificationItem,
+} from "../api/notifications";
 
-type DailyQuest = {
-  id: string;
-  title: string;
-  type: "upload" | "streak" | "abyss";
-  completed: boolean;
-  locked?: boolean;
-};
-
-type MissionCard = {
-  id: string;
-  title: string;
-  icon: string;
-  iconTone: "violet" | "green" | "blue";
-  progress: number;
-  progressLabel: string;
-  reward: string;
-  rewardIcon: string;
-  action: string;
-  actionTone: "ghost" | "solid";
-  disabled: boolean;
-};
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  time: string;
-};
-
-const { profileName, profileLevel, streak, coins, hasCoinBalance, documents, runs, hydrate } = useScholarData();
+const { profileName, profileLevel, coins, hasCoinBalance, hydrate } = useScholarData();
 const { t, locale } = useI18n();
 const notificationVisible = ref(false);
-const notifications = ref<NotificationItem[]>([]);
+const notifications = ref<ApiNotificationItem[]>([]);
+const unreadCount = ref(0);
 
-const MONTHLY_PROGRESS_STORAGE_PREFIX = "xirang:quests:monthly-progress";
-const MONTHLY_PROGRESS_TARGET = 30;
+const questsData = ref<{
+  daily_quests: QuestAssignment[];
+  daily_refresh_at: string;
+  monthly_progress: MonthlyProgress;
+  streak_days: number;
+} | null>(null);
+const isLoading = ref(false);
+const claimingQuestId = ref<string | null>(null);
 
-const toggleNotifications = () => {
-  notificationVisible.value = !notificationVisible.value;
-};
-
-const closeNotifications = () => {
-  notificationVisible.value = false;
-};
+const shopRoute = ROUTES.shop;
 
 const toDate = (value: unknown): Date | null => {
   if (typeof value !== "string") {
@@ -59,166 +39,65 @@ const toDate = (value: unknown): Date | null => {
   return Number.isNaN(parsed.valueOf()) ? null : parsed;
 };
 
-const isSameLocalDay = (left: Date, right: Date): boolean => {
-  return left.getFullYear() === right.getFullYear()
-    && left.getMonth() === right.getMonth()
-    && left.getDate() === right.getDate();
+const formatTimeAgo = (dateStr: string): string => {
+  const date = toDate(dateStr);
+  if (!date) return "";
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return t("home.lastVisitedNow");
+  if (diffMins < 60) return `${diffMins}m`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d`;
 };
 
-const getMonthlyStorageKey = (date: Date): string => {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${MONTHLY_PROGRESS_STORAGE_PREFIX}:${date.getFullYear()}-${month}`;
-};
-
-const readMonthlyDailyMap = (date: Date): Record<string, number> => {
-  if (typeof window === "undefined") {
-    return {};
-  }
-  const key = getMonthlyStorageKey(date);
-  const raw = window.localStorage.getItem(key);
-  if (!raw) {
-    return {};
-  }
+const loadQuests = async () => {
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return Object.entries(parsed).reduce<Record<string, number>>((acc, [day, count]) => {
-      if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
-        acc[day] = Math.min(MONTHLY_PROGRESS_TARGET, Math.floor(count));
-      }
-      return acc;
-    }, {});
-  } catch {
-    return {};
+    isLoading.value = true;
+    questsData.value = await getQuests();
+  } catch (error) {
+    console.error("Failed to load quests:", error);
+  } finally {
+    isLoading.value = false;
   }
 };
 
-const writeMonthlyDailyMap = (date: Date, map: Record<string, number>) => {
-  if (typeof window === "undefined") {
-    return;
+const loadNotifications = async () => {
+  try {
+    const data = await getNotifications();
+    notifications.value = data.notifications;
+    unreadCount.value = data.unread_count;
+  } catch (error) {
+    console.error("Failed to load notifications:", error);
   }
-  const key = getMonthlyStorageKey(date);
-  window.localStorage.setItem(key, JSON.stringify(map));
 };
 
 onMounted(async () => {
   await hydrate();
-  await hydrateDailyQuests();
+  await Promise.all([loadQuests(), loadNotifications()]);
 });
 
-watch([documents, runs, streak], () => {
-  void hydrateDailyQuests();
-}, { deep: true });
-
-// Update document title reactively when locale changes
 watch(locale, () => {
   document.title = t("quests.metaTitle");
 });
 
-const quests = ref<DailyQuest[]>([
-  {
-    id: "quest-upload",
-    title: t("quests.missionUploadTitle"),
-    type: "upload",
-    completed: false,
-  },
-  {
-    id: "quest-streak",
-    title: t("quests.missionStreakTitle"),
-    type: "streak",
-    completed: false,
-  },
-  {
-    id: "quest-abyss",
-    title: t("quests.missionAbyssTitle"),
-    type: "abyss",
-    completed: false,
-    locked: true,
-  },
-]);
+const dailyQuests = computed(() => questsData.value?.daily_quests ?? []);
+const monthlyProgress = computed(() => questsData.value?.monthly_progress);
 
-const today = computed(() => new Date());
-
-const todayUploadCompleted = computed(() => {
-  const now = today.value;
-  return documents.value.some((doc) => {
-    const createdAt = toDate(doc.created_at);
-    return createdAt !== null && isSameLocalDay(createdAt, now);
-  });
-});
-
-const todayEndlessCompletedCount = computed(() => {
-  const now = today.value;
-  return runs.value.filter((run) => {
-    if (run.status !== "completed" || run.mode !== "endless") {
-      return false;
-    }
-    const endedAt = toDate(run.ended_at ?? null);
-    return endedAt !== null && isSameLocalDay(endedAt, now);
-  }).length;
-});
-
-const todayStreakCompleted = computed(() => streak.value > 0);
-
-const completedDailyQuestCount = computed(() => {
-  return [todayUploadCompleted.value, todayStreakCompleted.value, todayEndlessCompletedCount.value >= 2].filter(Boolean).length;
-});
-
-const monthlyCompletedCount = computed(() => {
-  const now = today.value;
-  const monthMap = readMonthlyDailyMap(now);
-  const dayKey = String(now.getDate());
-  const currentDayCount = Math.min(MONTHLY_PROGRESS_TARGET, completedDailyQuestCount.value);
-
-  if (monthMap[dayKey] !== currentDayCount) {
-    monthMap[dayKey] = currentDayCount;
-    writeMonthlyDailyMap(now, monthMap);
-  }
-
-  const total = Object.values(monthMap).reduce((acc, count) => acc + count, 0);
-  return Math.min(MONTHLY_PROGRESS_TARGET, total);
-});
-
+const monthlyCompletedCount = computed(() => monthlyProgress.value?.current ?? 0);
+const monthlyTarget = computed(() => monthlyProgress.value?.target ?? 30);
 const monthlyProgressPercent = computed(() => {
-  if (MONTHLY_PROGRESS_TARGET <= 0) {
-    return 0;
-  }
-  return Math.round((monthlyCompletedCount.value / MONTHLY_PROGRESS_TARGET) * 100);
+  if (monthlyTarget.value <= 0) return 0;
+  return Math.round((monthlyCompletedCount.value / monthlyTarget.value) * 100);
 });
 
-const hydrateDailyQuests = async () => {
-  const hasAnyDocuments = documents.value.length > 0;
-  const uploadCompleted = todayUploadCompleted.value;
-  const streakCompleted = todayStreakCompleted.value;
-  const abyssCompleted = todayEndlessCompletedCount.value >= 2;
+const daysRemaining = computed(() => {
+  return monthlyProgress.value?.days_remaining ?? 0;
+});
 
-  quests.value = quests.value.map((quest) => {
-    if (quest.type === "upload") {
-      return {
-        ...quest,
-        completed: uploadCompleted,
-      };
-    }
-
-    if (quest.type === "streak") {
-      return {
-        ...quest,
-        completed: streakCompleted,
-      };
-    }
-
-    if (quest.type === "abyss") {
-      return {
-        ...quest,
-        completed: abyssCompleted,
-        locked: !hasAnyDocuments,
-      };
-    }
-
-    return quest;
-  });
-};
-
-const streakLabel = computed(() => t("quests.streakLabel", { days: streak.value }));
+const streakLabel = computed(() => t("quests.streakLabel", { days: questsData.value?.streak_days ?? 0 }));
 const coinLabel = computed(() => {
   const amount = hasCoinBalance.value
     ? new Intl.NumberFormat(locale.value).format(coins.value)
@@ -226,83 +105,94 @@ const coinLabel = computed(() => {
   return t("quests.coinLabel", { amount });
 });
 
-const monthlyDaysRemaining = computed(() => {
-  const now = today.value;
-  const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const days = Math.max(0, totalDaysInMonth - now.getDate());
-  return t("quests.daysRemaining", { days });
-});
+const monthlyDaysRemainingText = computed(() => t("quests.daysRemaining", { days: daysRemaining.value }));
 
 const refreshInLabel = computed(() => {
-  const now = today.value;
-  const nextReset = new Date(now);
-  nextReset.setHours(24, 0, 0, 0);
-  const diffMs = Math.max(0, nextReset.getTime() - now.getTime());
+  if (!questsData.value?.daily_refresh_at) return "";
+  const refreshDate = toDate(questsData.value.daily_refresh_at);
+  if (!refreshDate) return "";
+  const now = new Date();
+  const diffMs = Math.max(0, refreshDate.getTime() - now.getTime());
   const hours = Math.ceil(diffMs / (1000 * 60 * 60));
   return t("quests.refreshIn", { hours: Math.max(1, hours) });
 });
 
-const shopRoute = ROUTES.shop;
-
-const missionCards = computed<MissionCard[]>(() =>
-  quests.value.map((quest) => {
-    if (quest.type === "abyss") {
-      const isLocked = quest.locked === true;
-      const completedCount = isLocked ? 0 : Math.min(2, todayEndlessCompletedCount.value);
-      return {
-        id: quest.id,
-        title: t("quests.missionAbyssTitle"),
-        icon: "⚔",
-        iconTone: "violet",
-        progress: (completedCount / 2) * 100,
-        progressLabel: isLocked
-          ? t("quests.progressRatio", { current: 0, total: 2 })
-          : t("quests.progressRatio", { current: completedCount, total: 2 }),
-        reward: t("quests.rewardDoubleCard"),
-        rewardIcon: "🎁",
-        action: completedCount >= 2 ? t("quests.claimReward") : t("quests.continue"),
-        actionTone: completedCount >= 2 ? "solid" : "ghost",
-        disabled: isLocked,
-      };
-    }
-
-    if (quest.type === "streak") {
-      return {
-        id: quest.id,
-        title: t("quests.missionStreakTitle"),
-        icon: "✓",
-        iconTone: "green",
-        progress: quest.completed ? 100 : 0,
-        progressLabel: quest.completed
-          ? t("quests.completed")
-          : t("quests.progressRatio", { current: 0, total: 1 }),
-        reward: "+50",
-        rewardIcon: "🪙",
-        action: quest.completed ? t("quests.claimReward") : t("quests.continue"),
-        actionTone: quest.completed ? "solid" : "ghost",
-        disabled: false,
-      };
-    }
-
-    return {
-      id: quest.id,
-      title: t("quests.missionUploadTitle"),
-      icon: "⤴",
-      iconTone: "blue",
-      progress: quest.completed ? 100 : 0,
-      progressLabel: quest.completed
-        ? t("quests.completed")
-        : t("quests.progressRatio", { current: 0, total: 1 }),
-      reward: t("quests.rewardGoldChest"),
-      rewardIcon: "🧰",
-      action: quest.completed ? t("quests.claimReward") : t("quests.upload"),
-      actionTone: "solid",
-      disabled: false,
-    };
-  }),
+const notificationItems = computed(() =>
+  notifications.value.map((n) => ({
+    id: n.id,
+    title: t(n.title_i18n_key),
+    time: formatTimeAgo(n.created_at),
+  })),
 );
 
+const toggleNotifications = () => {
+  notificationVisible.value = !notificationVisible.value;
+};
+
+const closeNotifications = async () => {
+  notificationVisible.value = false;
+};
+
+const handleNotificationClick = async (item: { id: string }) => {
+  try {
+    await markNotificationAsRead(item.id);
+    const notification = notifications.value.find((n) => n.id === item.id);
+    if (notification) {
+      notification.is_read = true;
+    }
+    unreadCount.value = Math.max(0, unreadCount.value - 1);
+  } catch (error) {
+    console.error("Failed to mark notification as read:", error);
+  }
+};
+
+const handleMarkAllRead = async () => {
+  try {
+    await markAllNotificationsAsRead();
+    notifications.value.forEach((n) => {
+      n.is_read = true;
+    });
+    unreadCount.value = 0;
+  } catch (error) {
+    console.error("Failed to mark all as read:", error);
+  }
+};
+
 const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
+
+const handleQuestAction = async (quest: QuestAssignment) => {
+  if (quest.action_type === "navigate" && quest.navigate_to) {
+    navigateTo(quest.navigate_to);
+    return;
+  }
+
+  if (quest.action_type === "claim" && quest.status === "completed") {
+    try {
+      claimingQuestId.value = quest.id;
+      await claimQuestReward(quest.id);
+      await loadQuests();
+      await loadNotifications();
+    } catch (error) {
+      console.error("Failed to claim reward:", error);
+    } finally {
+      claimingQuestId.value = null;
+    }
+  }
+};
+
+const getQuestProgressPercent = (quest: QuestAssignment): number => {
+  if (quest.target_value <= 0) return 0;
+  return Math.min(100, (quest.progress_value / quest.target_value) * 100);
+};
+
+const getQuestProgressLabel = (quest: QuestAssignment): string => {
+  if (quest.status === "claimed") return t("quests.completed");
+  return t("quests.progressRatio", { current: quest.progress_value, total: quest.target_value });
+};
+
+const isQuestActionable = (quest: QuestAssignment): boolean => {
+  return quest.action_type === "navigate" || (quest.action_type === "claim" && quest.status === "completed");
+};
 </script>
 
 <template>
@@ -322,11 +212,17 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
           <button class="status-pill status-pill--coins" type="button" @click="navigateTo(shopRoute)">🪙 {{ coinLabel }}</button>
           <button class="notify-btn" type="button" :aria-label="t('quests.notifications')" @click="toggleNotifications">
             🔔
-            <span class="notify-btn__dot" aria-hidden="true" />
+            <span v-if="unreadCount > 0" class="notify-btn__dot" aria-hidden="true" />
           </button>
         </header>
 
-        <NotificationPopover :items="notifications" :visible="notificationVisible" @close="closeNotifications" />
+        <NotificationPopover
+          :items="notificationItems"
+          :visible="notificationVisible"
+          @close="closeNotifications"
+          @item-click="handleNotificationClick"
+          @mark-all-read="handleMarkAllRead"
+        />
 
         <section class="monthly-banner" :aria-label="t('quests.monthlyAria')">
           <p class="monthly-banner__eyebrow">{{ t("quests.monthlyEyebrow") }}</p>
@@ -334,7 +230,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
           <p class="monthly-banner__copy">{{ t("quests.monthlyDesc") }}</p>
 
           <div class="monthly-banner__progress-head">
-            <span>{{ t("quests.progressRatio", { current: monthlyCompletedCount, total: 30 }) }}</span>
+            <span>{{ t("quests.progressRatio", { current: monthlyCompletedCount, total: monthlyTarget }) }}</span>
           </div>
 
           <div class="progress-track progress-track--banner" role="presentation">
@@ -342,7 +238,7 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
           </div>
 
           <div class="monthly-banner__footer">
-            <span>{{ monthlyDaysRemaining }}</span>
+            <span>{{ monthlyDaysRemainingText }}</span>
           </div>
         </section>
 
@@ -352,37 +248,49 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
             <span>{{ refreshInLabel }}</span>
           </div>
 
-          <div class="mission-list">
-            <article v-for="mission in missionCards" :key="mission.id" class="mission-card">
+          <div v-if="isLoading" class="loading-state">
+            <span>Loading...</span>
+          </div>
+
+          <div v-else class="mission-list">
+            <article
+              v-for="quest in dailyQuests"
+              :key="quest.id"
+              class="mission-card"
+              :class="{ 'mission-card--locked': quest.locked }"
+            >
               <div class="mission-card__left">
-                <div class="mission-card__icon" :class="`mission-card__icon--${mission.iconTone}`">{{ mission.icon }}</div>
+                <div class="mission-card__icon" :class="`mission-card__icon--${quest.icon_tone}`">{{ quest.icon }}</div>
 
                 <div class="mission-card__body">
-                  <h3>{{ mission.title }}</h3>
+                  <h3>{{ t(quest.title_i18n_key) }}</h3>
 
                   <div class="mission-card__progress-row">
                     <div class="progress-track progress-track--mission" role="presentation">
-                      <span class="progress-fill" :style="{ width: `${mission.progress}%` }" />
+                      <span class="progress-fill" :style="{ width: `${getQuestProgressPercent(quest)}%` }" />
                     </div>
-                    <span :class="{ 'mission-card__progress-label--done': mission.progress === 100 }">
-                      {{ mission.progressLabel }}
+                    <span :class="{ 'mission-card__progress-label--done': quest.status === 'claimed' }">
+                      {{ getQuestProgressLabel(quest) }}
                     </span>
                   </div>
                 </div>
               </div>
 
               <div class="mission-card__right">
-                <p class="mission-card__reward"><span>{{ mission.rewardIcon }}</span>{{ mission.reward }}</p>
+                <p class="mission-card__reward">
+                  <span>{{ quest.reward_icon }}</span>{{ t(quest.reward_i18n_key) }}
+                </p>
                 <button
                   class="mission-card__action"
                   :class="{
-                    'mission-card__action--solid': mission.actionTone === 'solid',
-                    'mission-card__action--disabled': mission.disabled,
+                    'mission-card__action--solid': isQuestActionable(quest),
+                    'mission-card__action--disabled': quest.locked || claimingQuestId === quest.id,
                   }"
                   type="button"
-                  :disabled="mission.disabled"
+                  :disabled="quest.locked || claimingQuestId === quest.id"
+                  @click="handleQuestAction(quest)"
                 >
-                  {{ mission.action }}
+                  {{ claimingQuestId === quest.id ? "..." : t(quest.action_i18n_key) }}
                 </button>
               </div>
             </article>
@@ -586,6 +494,14 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
   font-weight: 700;
 }
 
+.loading-state {
+  align-items: center;
+  color: var(--color-text-secondary);
+  display: flex;
+  justify-content: center;
+  padding: 48px;
+}
+
 .mission-list {
   display: grid;
   gap: 14px;
@@ -600,6 +516,10 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
   display: flex;
   justify-content: space-between;
   padding: 18px 20px;
+}
+
+.mission-card--locked {
+  opacity: 0.6;
 }
 
 .mission-card__left {
@@ -631,6 +551,10 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 .mission-card__icon--blue {
   background: var(--color-icon-blue);
+}
+
+.mission-card__icon--amber {
+  background: var(--color-icon-amber);
 }
 
 .mission-card__body {

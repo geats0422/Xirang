@@ -203,7 +203,14 @@ const messages = {
       metaTitle: "Xi Rang Quests",
       rewardDoubleCard: "Experience Double Card",
       rewardGoldChest: "Gold Chest",
+      rewardCoins50: "+50",
       missionAbyssTitle: "Complete 2 challenges in 'Endless Abyss' mode",
+      notification: {
+        questClaimed: "Reward claimed!",
+        questRewardReceived: "Quest reward received: {reward}",
+        streakMaintained: "Streak maintained for {days} days!",
+        monthlyProgress: "Monthly progress: {current}/{target}",
+      },
       missionStreakTitle: "Maintain your learning streak",
       missionUploadTitle: "Upload and parse 1 new document in the Scroll Archive",
       completed: "Completed",
@@ -442,6 +449,7 @@ const messages = {
       popover: {
         title: "Notifications",
         empty: "No pending items",
+        markAllRead: "Mark all read",
       },
     },
     modeSelection: {
@@ -937,7 +945,8 @@ const messages = {
       metaTitle: "息壤任务",
       rewardDoubleCard: "经验双倍卡",
       rewardGoldChest: "黄金宝箱",
-      missionAbyssTitle: "在“无尽深渊”模式完成 2 次挑战",
+      rewardCoins50: "+50",
+      missionAbyssTitle: "在\"无尽深渊\"模式完成 2 次挑战",
       missionStreakTitle: "保持学习连胜",
       missionUploadTitle: "在卷轴档案中上传并解析 1 份新文档",
       completed: "已完成",
@@ -958,6 +967,12 @@ const messages = {
       refreshIn: "↻ {hours} 小时后刷新",
       progressRatio: "{current} / {total}",
       rewardCoins: "+{amount}",
+      notification: {
+        questClaimed: "奖励已领取！",
+        questRewardReceived: "获得任务奖励：{reward}",
+        streakMaintained: "保持连胜 {days} 天！",
+        monthlyProgress: "本月进度：{current}/{target}",
+      },
     },
     leaderboard: {
       metaTitle: "息壤排行榜",
@@ -1175,6 +1190,7 @@ const messages = {
       popover: {
         title: "消息通知",
         empty: "无待处理工作",
+        markAllRead: "全部已读",
       },
     },
     modeSelection: {

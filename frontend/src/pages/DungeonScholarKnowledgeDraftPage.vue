@@ -512,6 +512,24 @@ const submitFilledAnswer = async () => {
     feedbackCorrectAnswer.value = result.feedback?.correct_answer ?? null;
     feedbackExplanation.value = result.feedback?.explanation ?? null;
 
+    if (!result.is_correct) {
+      showNotice.value = true;
+      showFeedback.value = true;
+      awaitingCorrection.value = true;
+      expectedCorrectOptionIds.value = resolveExpectedCorrectOptionIds({
+        correctOptionIds: result.feedback?.correct_option_ids ?? [],
+        correctAnswerText: result.feedback?.correct_answer ?? null,
+        options: currentQuestion.value.options,
+      });
+      isSubmittingAnswer.value = false;
+      return;
+    }
+
+    showNotice.value = false;
+    showFeedback.value = false;
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
       settlementCoins.value = result.settlement.coins_earned;
@@ -524,23 +542,6 @@ const submitFilledAnswer = async () => {
       await refreshBalance();
       return;
     }
-
-    if (!result.is_correct) {
-      showNotice.value = true;
-      showFeedback.value = true;
-      awaitingCorrection.value = true;
-      expectedCorrectOptionIds.value = resolveExpectedCorrectOptionIds({
-        correctOptionIds: result.feedback?.correct_option_ids ?? [],
-        correctAnswerText: result.feedback?.correct_answer ?? null,
-        options: currentQuestion.value.options,
-      });
-      return;
-    }
-
-    showNotice.value = false;
-    showFeedback.value = false;
-    awaitingCorrection.value = false;
-    expectedCorrectOptionIds.value = [];
 
     questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
     syncProgress();

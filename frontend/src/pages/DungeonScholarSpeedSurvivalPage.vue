@@ -7,6 +7,7 @@ import { ROUTES } from "../constants/routes";
 import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
 import { submitFeedback } from "../api/feedback";
 import { getShopBalance } from "../api/shop";
+import { getDailyGoal } from "../api/user";
 
 const { t, locale } = useI18n();
 
@@ -240,9 +241,18 @@ const chooseAnswer = async (answerChoice: "false" | "true") => {
       settlementXp.value = result.settlement.xp_earned;
       settlementCoins.value = result.settlement.coins_earned;
       settlementCombo.value = result.settlement.combo_max;
-      settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
-      settlementGoalTotal.value = result.settlement.goal_total ?? 8;
       settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
+
+      // Fetch real daily goal data from API
+      try {
+        const dailyGoal = await getDailyGoal();
+        settlementGoalCurrent.value = dailyGoal.goal_current;
+        settlementGoalTotal.value = dailyGoal.goal_total;
+      } catch {
+        settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+        settlementGoalTotal.value = result.settlement.goal_total ?? 8;
+      }
+
       showSettlement.value = true;
       stopTicker();
       await refreshBalance();

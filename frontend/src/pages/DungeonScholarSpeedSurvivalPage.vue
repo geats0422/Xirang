@@ -229,24 +229,12 @@ const chooseAnswer = async (answerChoice: "false" | "true") => {
       combo.value = (combo.value ?? 0) + 1;
       runStatus.value = elapsedMs <= 1500 ? "fast-answer" : "normal";
       } else {
-        combo.value = 0;
-        runStatus.value = "normal";
-        // Show feedback on wrong answer
-        showFeedback.value = true;
-        isSubmittingAnswer.value = false;
-        if (result.settlement) {
-          settlementXp.value = result.settlement.xp_earned;
-          settlementCoins.value = result.settlement.coins_earned;
-          settlementCombo.value = result.settlement.combo_max;
-          settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
-          settlementGoalTotal.value = result.settlement.goal_total ?? 8;
-          settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
-          showSettlement.value = true;
-          stopTicker();
-          await refreshBalance();
-        }
-        return;
-      }
+      combo.value = 0;
+      runStatus.value = "normal";
+      showFeedback.value = true;
+      isSubmittingAnswer.value = false;
+      return;
+    }
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;

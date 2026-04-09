@@ -1,7 +1,10 @@
 """API routes for shop."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from app.repositories.effect_repository import EffectRepository
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +13,13 @@ from app.api.dependencies.auth import get_current_user_id
 from app.db.session import get_db_session
 from app.repositories.shop_repository import ShopRepository
 from app.repositories.wallet_repository import WalletRepository
-from app.schemas.shop import PurchaseRequest
+from app.schemas.shop import (
+    ActiveEffect,
+    ActiveEffectsResponse,
+    PurchaseRequest,
+    UseItemRequest,
+    UseItemResponse,
+)
 from app.services.shop.service import (
     OfferNotActiveError,
     OfferNotFoundError,
@@ -35,6 +44,14 @@ async def get_wallet_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> WalletRepository:
     return WalletRepository(session)
+
+
+async def get_effect_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> "EffectRepository":
+    from app.repositories.effect_repository import EffectRepository
+
+    return EffectRepository(session)
 
 
 @router.get("/items")
@@ -107,3 +124,27 @@ async def get_ledger(
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.post("/use-item", response_model=UseItemResponse)
+async def use_item(
+    request: UseItemRequest,
+    user_id: UUID = Depends(get_current_user_id),
+    service: ShopService = Depends(get_shop_service),
+    effect_repo: "EffectRepository" = Depends(get_effect_repository),
+) -> UseItemResponse:
+    try:
+        result = await service.use_item(user_id, request, effect_repo)
+        return result
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.get("/active-effects", response_model=ActiveEffectsResponse)
+async def get_active_effects(
+    user_id: UUID = Depends(get_current_user_id),
+    effect_repo: "EffectRepository" = Depends(get_effect_repository),
+) -> ActiveEffectsResponse:
+    await effect_repo.delete_expired_effects(user_id)
+    effects = await effect_repo.list_active_effects(user_id)
+    return ActiveEffectsResponse(effects=[ActiveEffect.model_validate(e) for e in effects])

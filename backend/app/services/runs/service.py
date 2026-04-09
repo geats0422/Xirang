@@ -189,11 +189,20 @@ class RunRepositoryProtocol(Protocol):
 
 class RunService:
     REVIVE_COIN_COST = 10
-    REVIVE_SHIELD_SECONDS = 60
+    REVIVE_SHIELD_SECONDS = 180
 
-    def __init__(self, *, repository: Any, wallet_service: Any | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        repository: Any,
+        wallet_service: Any | None = None,
+        effect_repo: Any | None = None,
+        shop_repo: Any | None = None,
+    ) -> None:
         self._repository = cast("RunRepositoryProtocol", repository)
         self._wallet_service = wallet_service
+        self._effect_repo = effect_repo
+        self._shop_repo = shop_repo
 
     async def create_run(
         self,
@@ -505,10 +514,7 @@ class RunService:
 
     async def use_revive(
         self, *, run_id: UUID, owner_user_id: UUID | None = None
-    ) -> tuple[Any, int]:
-        if self._wallet_service is None:
-            raise InvalidRunStateError("wallet_service_unavailable")
-
+    ) -> tuple[Any, int, int]:
         run = await self._repository.get_run(run_id)
         if run is None:
             raise RunNotFoundError(f"Run {run_id} not found")
@@ -528,15 +534,28 @@ class RunService:
         if run.status not in (RunStatus.ABORTED, RunStatus.RUNNING):
             raise InvalidRunStateError("run_not_revivable")
 
-        await self._wallet_service.debit(
-            user_id=run.user_id,
-            amount=self.REVIVE_COIN_COST,
-            asset_code="COIN",
-            reason_code="run_revive_purchase",
-            source_type="run",
-            source_id=run.id,
-            idempotency_key=f"run:{run.id}:revive:{await self._repository.count_answers(run.id)}",
-        )
+        use_revival_from_inventory = False
+        coin_cost = 0
+
+        if self._shop_repo is not None:
+            inventory = await self._shop_repo.get_inventory(run.user_id)
+            inv_item = next((i for i in inventory if i.item_code == "revival"), None)
+            use_revival_from_inventory = inv_item is not None and inv_item.quantity > 0
+
+        if use_revival_from_inventory and self._shop_repo is not None:
+            await self._shop_repo.upsert_inventory(run.user_id, "revival", -1)
+            coin_cost = 0
+        elif self._wallet_service is not None:
+            coin_cost = self.REVIVE_COIN_COST
+            await self._wallet_service.debit(
+                user_id=run.user_id,
+                amount=self.REVIVE_COIN_COST,
+                asset_code="COIN",
+                reason_code="run_revive_purchase",
+                source_type="run",
+                source_id=run.id,
+                idempotency_key=f"run:{run.id}:revive:{await self._repository.count_answers(run.id)}",
+            )
 
         mode_state["hp"] = min(max_hp, hp + 1)
         mode_state["revive_shield_count"] = 1
@@ -552,8 +571,11 @@ class RunService:
         )
         await self._repository.commit()
         refreshed_run = await self.get_run(run_id)
-        balance = await self._wallet_service.get_balance(run.user_id, asset_code="COIN")
-        return refreshed_run, balance.balance
+        balance = 0
+        if self._wallet_service is not None:
+            bal = await self._wallet_service.get_balance(run.user_id, asset_code="COIN")
+            balance = bal.balance
+        return refreshed_run, balance, coin_cost
 
     async def get_settlement(self, run_id: UUID) -> Settlement:
         run = await self._repository.get_run(run_id)
@@ -602,6 +624,7 @@ class RunService:
             answered_count=total_count,
             combo_count=combo_max,
         )
+        xp_gained = await self._calculate_settlement_xp(user_id, score)
         accuracy = (correct_count / total_count) if total_count > 0 else 0.0
         coins = max(0, score // 10)
         if mode == RunMode.ENDLESS and pending_coins is not None:
@@ -610,7 +633,7 @@ class RunService:
         await self._repository.upsert_settlement(
             run_id=run_id,
             user_id=user_id,
-            xp_gained=score,
+            xp_gained=xp_gained,
             coin_reward=coins,
             combo_count=combo_max,
             accuracy_pct=accuracy,
@@ -636,7 +659,7 @@ class RunService:
             )
             await self._wallet_service.credit(
                 user_id=user_id,
-                amount=score,
+                amount=xp_gained,
                 asset_code="XP",
                 reason_code="run_settlement",
                 source_type="run",
@@ -645,13 +668,28 @@ class RunService:
             )
         return Settlement(
             run_id=run_id,
-            xp_earned=score,
+            xp_earned=xp_gained,
             coins_earned=coins,
             combo_max=combo_max,
             accuracy=accuracy,
             correct_count=correct_count,
             total_count=total_count,
         )
+
+    async def _calculate_settlement_xp(self, user_id: UUID, base_xp: int) -> int:
+        if self._effect_repo is None:
+            return base_xp
+        now = datetime.now(tz=UTC)
+        active = await self._effect_repo.list_active_effects(user_id)
+        xp_boosts = [
+            e
+            for e in active
+            if e.effect_type == "xp_boost" and (e.expires_at is None or e.expires_at > now)
+        ]
+        if xp_boosts:
+            max_mult = max((float(e.multiplier or 1.0) for e in xp_boosts), default=1.0)
+            return int(base_xp * max_mult)
+        return base_xp
 
     @staticmethod
     def _build_initial_mode_state(

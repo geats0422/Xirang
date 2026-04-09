@@ -11,7 +11,9 @@ from app.db.models.documents import DocumentStatus
 from app.db.models.runs import RunMode
 from app.db.session import get_db_session
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.effect_repository import EffectRepository
 from app.repositories.run_repository import RunRepository
+from app.repositories.shop_repository import ShopRepository
 from app.repositories.wallet_repository import WalletRepository
 from app.services.runs.exceptions import (
     DuplicateAnswerError,
@@ -27,7 +29,12 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 
 async def get_run_service(session: AsyncSession = Depends(get_db_session)) -> RunService:
     wallet_service = WalletService(repository=WalletRepository(session))
-    return RunService(repository=RunRepository(session), wallet_service=wallet_service)
+    return RunService(
+        repository=RunRepository(session),
+        wallet_service=wallet_service,
+        effect_repo=EffectRepository(session),
+        shop_repo=ShopRepository(session),
+    )
 
 
 async def get_document_repository(
@@ -255,7 +262,9 @@ async def use_revive(
     service: Any = Depends(get_run_service),
 ) -> dict[str, Any]:
     try:
-        refreshed_run, balance = await service.use_revive(run_id=run_id, owner_user_id=user_id)
+        refreshed_run, balance, coin_cost = await service.use_revive(
+            run_id=run_id, owner_user_id=user_id
+        )
     except RunNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except InsufficientBalanceError as exc:
@@ -270,7 +279,7 @@ async def use_revive(
             "state": refreshed_run.mode_state,
         },
         "coin_balance": balance,
-        "revive_cost": service.REVIVE_COIN_COST,
+        "revive_cost": coin_cost,
     }
 
 

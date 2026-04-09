@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -13,6 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,6 +51,7 @@ class QuotaType(StrEnum):
 class ItemType(StrEnum):
     COIN_PACK = "coin_pack"
     STREAK_FREEZE = "streak_freeze"
+    XP_BOOST = "xp_boost"
     TIME_TREASURE = "time_treasure"
     REVIVAL = "revival"
 
@@ -238,3 +243,39 @@ class LeaderboardSnapshot(UUIDPrimaryKeyMixin, Base):
     xp_total: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
     rank_position: Mapped[int | None] = mapped_column()
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+
+
+class ActiveEffect(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "active_effects"
+    __table_args__ = (
+        UniqueConstraint("user_id", "effect_type", name="uq_active_effects_user_type"),
+        Index("ix_active_effects_user_expires", "user_id", "expires_at"),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    effect_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    multiplier: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_item_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    source_use_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class UseRecord(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "use_records"
+    __table_args__ = (Index("ix_use_records_user_used_at", "user_id", "used_at"),)
+
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    item_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    inventory_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("inventories.id", ondelete="SET NULL"), nullable=True
+    )
+    effect_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )

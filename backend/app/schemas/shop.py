@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -16,6 +17,7 @@ class QuotaType(StrEnum):
 class ItemType(StrEnum):
     COIN_PACK = "coin_pack"
     STREAK_FREEZE = "streak_freeze"
+    XP_BOOST = "xp_boost"
     TIME_TREASURE = "time_treasure"
     REVIVAL = "revival"
 
@@ -92,3 +94,31 @@ class LeaderboardEntryResponse(BaseModel):
     display_name: str | None
     total_xp: int
     rank: int
+
+
+class UseItemRequest(BaseModel):
+    item_code: str
+    context: dict[str, Any] | None = None
+
+
+class UseItemResponse(BaseModel):
+    success: bool
+    item_code: str
+    quantity_remaining: int
+    effect_applied: dict[str, Any] | None = None
+
+
+class ActiveEffect(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    effect_type: str
+    multiplier: float | None = None
+    expires_at: datetime | None = None
+    source_item_code: str | None = None
+    context: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class ActiveEffectsResponse(BaseModel):
+    effects: list[ActiveEffect]

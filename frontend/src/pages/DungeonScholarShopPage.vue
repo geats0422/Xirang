@@ -1,8 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { getShopBalance as getBalance, listShopItems, purchaseShopItem, type ShopOffer } from "../api/shop";
+import {
+  getShopBalance as getBalance,
+  listShopItems,
+  purchaseShopItem,
+  useItem,
+  type ShopOffer,
+} from "../api/shop";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import ShopHeader from "../components/shop/ShopHeader.vue";
+import ShopItemCard from "../components/shop/ShopItemCard.vue";
+import CoinPackTopUpModal from "../components/shop/modals/CoinPackTopUpModal.vue";
+import ItemUseConfirmModal from "../components/shop/modals/ItemUseConfirmModal.vue";
+import { useInventory } from "../composables/useInventory";
 
 type ShopItem = {
   offerId: string;
@@ -13,6 +24,7 @@ type ShopItem = {
   description: string;
   accent: "teal" | "violet" | "rose" | "amber";
   itemCode: string;
+  isCoinPack?: boolean;
 };
 
 const router = useRouter();
@@ -24,20 +36,24 @@ const rawOffers = ref<ShopOffer[]>([]);
 const purchaseError = ref<string | null>(null);
 const isLoading = ref(false);
 const isPurchasing = ref(false);
-const showInsufficientModal = ref(false);
+const showTopUpModal = ref(false);
+const showBagModal = ref(false);
 const selectedItem = ref<ShopItem | null>(null);
+const showUseConfirmModal = ref(false);
+const selectedInventoryItem = ref<{ itemCode: string; name: string; description: string; quantity: number } | null>(null);
 
+const { inventory, refresh: refreshInventory, quantityOf } = useInventory();
 
-// Icon mapping based on item_code
 const iconMap: Record<string, string> = {
-  streak_freeze: "",
-  xp_boost: "",
-  revival: "",
-  time_treasure: "",
-  coin_pack: "",
+  streak_freeze: "🛡️",
+  xp_boost_1_5x: "⚡",
+  xp_boost_2x: "⚡",
+  xp_boost_3x: "⚡",
+  revival: "🔄",
+  time_treasure: "⏳",
+  coin_pack: "💎",
 };
 
-// Accent color mapping based on rarity
 const rarityAccentMap: Record<string, "teal" | "violet" | "rose" | "amber"> = {
   common: "teal",
   uncommon: "violet",
@@ -47,59 +63,47 @@ const rarityAccentMap: Record<string, "teal" | "violet" | "rose" | "amber"> = {
 
 const rarityLabel = (rarity: string): string => {
   const rarityLower = rarity.toLowerCase();
-  if (rarityLower === "uncommon") {
-    return t("shop.items.uncommon");
-  }
-  if (rarityLower === "rare") {
-    return t("shop.items.rare");
-  }
-  if (rarityLower === "legendary") {
-    return t("shop.items.rescue");
-  }
+  if (rarityLower === "uncommon") return t("shop.items.uncommon");
+  if (rarityLower === "rare") return t("shop.items.rare");
+  if (rarityLower === "legendary") return t("shop.items.rescue");
   return t("shop.items.common");
 };
 
 const itemLocalization = (itemCode: string): { name: string; description: string } => {
-  if (itemCode === "streak_freeze") {
-    return {
-      name: t("shop.items.streakFreeze.name"),
-      description: t("shop.items.streakFreeze.desc"),
-    };
-  }
-  if (itemCode === "xp_boost") {
-    return {
-      name: t("shop.items.xpBoost.name"),
-      description: t("shop.items.xpBoost.desc"),
-    };
-  }
-  if (itemCode === "revival") {
-    return {
-      name: t("shop.items.abyssRevive.name"),
-      description: t("shop.items.abyssRevive.desc"),
-    };
-  }
-  if (itemCode === "coin_pack") {
-    return {
-      name: t("shop.items.coinPack.name"),
-      description: t("shop.items.coinPack.desc"),
-    };
-  }
-  return { name: itemCode, description: "" };
+  const key = itemCode.replace(/_[\d]?x$/, "_boost").replace(/_/g, ".");
+  const names: Record<string, string> = {
+    "streak.freeze": t("shop.items.streakFreeze.name"),
+    "xp.boost": t("shop.items.xpBoost.name"),
+    "abyss.revive": t("shop.items.abyssRevive.name"),
+    "coin.pack": t("shop.items.coinPack.name"),
+  };
+  const descs: Record<string, string> = {
+    "streak.freeze": t("shop.items.streakFreeze.desc"),
+    "xp.boost": t("shop.items.xpBoost.desc"),
+    "abyss.revive": t("shop.items.abyssRevive.desc"),
+    "coin.pack": t("shop.items.coinPack.desc"),
+  };
+  return {
+    name: names[key] || t(`shop.items.${key.replace(/\./g, "")}.name`) || itemCode,
+    description: descs[key] || t(`shop.items.${key.replace(/\./g, "")}.desc`) || "",
+  };
 };
 
 const mapOfferToShopItem = (offer: ShopOffer): ShopItem => {
   const itemCode = offer.item_code || "";
   const rarityLower = (offer.rarity || "common").toLowerCase();
+  const isCoinPack = itemCode.startsWith("coin_pack");
   const localized = itemLocalization(itemCode);
   return {
     offerId: offer.id,
     name: localized.name || offer.display_name || itemCode,
     rarity: rarityLabel(offer.rarity || "common"),
     price: offer.price_amount || 0,
-    icon: iconMap[itemCode] || "",
+    icon: iconMap[itemCode] || (isCoinPack ? "💎" : "📦"),
     description: localized.description,
-    accent: rarityAccentMap[rarityLower] || "teal",
+    accent: isCoinPack ? "amber" : (rarityAccentMap[rarityLower] || "teal"),
     itemCode,
+    isCoinPack,
   };
 };
 
@@ -118,7 +122,6 @@ const fetchBalance = async () => {
   }
 };
 
-
 const fetchShopItems = async () => {
   isLoading.value = true;
   try {
@@ -133,46 +136,42 @@ const fetchShopItems = async () => {
     isLoading.value = false;
   }
 };
+
 onMounted(async () => {
   document.title = t("shop.metaTitle");
-  await Promise.all([fetchBalance(), fetchShopItems()]);
+  await Promise.all([fetchBalance(), fetchShopItems(), refreshInventory()]);
 });
 
-// Update document title reactively when locale changes
 watch(locale, () => {
   document.title = t("shop.metaTitle");
   rebuildShopItems();
 });
-
-
-// Top-up item for real-money purchases (not from shop API)
-const topUpItem = computed<ShopItem>(() => ({
-  offerId: "top_up",
-  name: t("shop.items.coinPack.name"),
-  rarity: t("shop.items.rescue"),
-  price: 199,
-  icon: "💎",
-  description: t("shop.items.coinPack.desc"),
-  accent: "amber",
-  itemCode: "coin_pack",
-}));
-
 
 const goBack = async () => {
   if (window.history.length > 1) {
     router.back();
     return;
   }
-
   await router.push("/home");
+};
+
+const handlePurchaseItemCode = async (itemCode: string) => {
+  const item = shopItems.value.find((i) => i.itemCode === itemCode);
+  if (!item) return;
+  await handlePurchase(item);
 };
 
 const handlePurchase = async (item: ShopItem) => {
   if (isPurchasing.value) return;
 
+  if (item.isCoinPack) {
+    showTopUpModal.value = true;
+    return;
+  }
+
   if (walletBalance.value < item.price) {
     selectedItem.value = item;
-    showInsufficientModal.value = true;
+    showTopUpModal.value = true;
     return;
   }
 
@@ -184,7 +183,7 @@ const handlePurchase = async (item: ShopItem) => {
       offerId: item.offerId,
       idempotencyKey: "purchase-" + Date.now() + "-" + item.offerId,
     });
-    await fetchBalance();
+    await Promise.all([fetchBalance(), fetchShopItems(), refreshInventory()]);
   } catch (error) {
     console.error("Purchase failed:", error);
     purchaseError.value = t("shop.errors.purchaseFailed");
@@ -193,15 +192,67 @@ const handlePurchase = async (item: ShopItem) => {
   }
 };
 
-const closeInsufficientModal = () => {
-  showInsufficientModal.value = false;
-  selectedItem.value = null;
+const handleTopUpPurchase = async (offerId: string) => {
+  isPurchasing.value = true;
+  try {
+    await purchaseShopItem({
+      offerId,
+      idempotencyKey: "purchase-" + Date.now() + "-" + offerId,
+    });
+    showTopUpModal.value = false;
+    await Promise.all([fetchBalance(), fetchShopItems()]);
+  } catch (error) {
+    console.error("Top-up failed:", error);
+    purchaseError.value = t("shop.errors.purchaseFailed");
+  } finally {
+    isPurchasing.value = false;
+  }
 };
 
-const buyRescuePack = () => {
-  walletBalance.value += 1000;
-  closeInsufficientModal();
+const openBag = async () => {
+  await refreshInventory();
+  showBagModal.value = true;
 };
+
+const handleUseItem = (itemCode: string, name: string, description: string) => {
+  selectedInventoryItem.value = {
+    itemCode,
+    name,
+    description,
+    quantity: quantityOf(itemCode),
+  };
+  showUseConfirmModal.value = true;
+};
+
+const confirmUseItem = async () => {
+  if (!selectedInventoryItem.value) return;
+  try {
+    await useItem({ itemCode: selectedInventoryItem.value.itemCode });
+    showUseConfirmModal.value = false;
+    selectedInventoryItem.value = null;
+    await refreshInventory();
+  } catch (error) {
+    console.error("Use item failed:", error);
+  }
+};
+
+const inventoryItems = computed(() => {
+  return inventory.value
+    .filter((i) => i.quantity > 0)
+    .map((i) => {
+      const localized = itemLocalization(i.item_code);
+      return {
+        itemCode: i.item_code,
+        name: localized.name || i.item_code,
+        description: localized.description,
+        quantity: i.quantity,
+        icon: iconMap[i.item_code] || "📦",
+      };
+    });
+});
+
+const coinPacks = computed(() => shopItems.value.filter((i) => i.isCoinPack));
+const toolItems = computed(() => shopItems.value.filter((i) => !i.isCoinPack));
 
 defineExpose({
   walletBalance,
@@ -211,38 +262,17 @@ defineExpose({
 <template>
   <main class="shop-page">
     <section class="shop-shell" :aria-label="t('shop.heroEyebrow')">
-      <header class="shop-header">
-        <div class="shop-brand">
-          <div class="shop-brand__icon">
-            <img src="/taotie-logo.svg" alt="" aria-hidden="true" />
-          </div>
-          <div class="shop-brand__copy">
-            <span>{{ t("shop.brand") }}</span>
-          </div>
-        </div>
-
-        <div class="shop-wallet-group">
-          <div class="wallet-pill">
-            <span class="wallet-pill__coin">🪙</span>
-            <strong>{{ walletBalance.toLocaleString() }}</strong>
-            <small>{{ t("shop.coins") }}</small>
-          </div>
-          <button class="bag-btn" type="button" :aria-label="t('shop.inventoryBag')">👜</button>
-        </div>
-      </header>
+      <ShopHeader :wallet-balance="walletBalance" :on-open-bag="openBag" />
 
       <section class="shop-hero">
         <div>
           <p class="shop-hero__eyebrow">{{ t("shop.heroEyebrow") }}</p>
           <h1>{{ t("shop.heroTitle") }}</h1>
-          <p>
-            {{ t("shop.heroDesc") }}
-          </p>
+          <p>{{ t("shop.heroDesc") }}</p>
         </div>
 
         <div class="shop-hero__actions">
           <button class="back-btn" type="button" :aria-label="t('shop.goBack')" @click="goBack">←</button>
-
           <div class="shop-filters">
             <span class="filter-chip filter-chip--teal">✦ {{ t("shop.newArrivals") }}</span>
             <span class="filter-chip filter-chip--amber">🔥 {{ t("shop.hotItems") }}</span>
@@ -253,96 +283,32 @@ defineExpose({
       <div class="shop-divider" />
 
       <section class="shop-grid" :aria-label="t('shop.itemsAria')">
-        <!-- Top Up Card -->
-        <article class="shop-card shop-card--amber shop-card--topup">
-          <div class="shop-card__head">
-            <span class="rarity-tag rarity-tag--amber">{{ t("shop.topUp") }}</span>
-            <span class="price-tag price-tag--usd">$1.99</span>
-          </div>
-
-          <div class="shop-card__icon shop-card__icon--amber">{{ topUpItem.icon }}</div>
-
-          <div class="shop-card__body">
-            <h2>{{ topUpItem.name }}</h2>
-            <p>{{ topUpItem.description }}</p>
-          </div>
-
-          <footer class="shop-card__footer">
-            <div>
-              <small>{{ t("shop.type") }}</small>
-              <strong class="shop-card__rarity--amber">{{ topUpItem.rarity }}</strong>
-            </div>
-            <button class="purchase-btn purchase-btn--amber" type="button" @click="handlePurchase(topUpItem)">
-              {{ t("shop.buyNow") }} →
-            </button>
-          </footer>
-        </article>
-
-        <!-- Regular Shop Items -->
-        <article
-          v-for="item in shopItems"
-          :key="item.name"
-          class="shop-card"
-          :class="`shop-card--${item.accent}`"
-        >
-          <div class="shop-card__head">
-            <span class="rarity-tag" :class="`rarity-tag--${item.accent}`">{{
-              item.accent === "rose" ? t("shop.items.rareTag") : ""
-            }}</span>
-            <span class="price-tag">{{ item.price }} 🪙</span>
-          </div>
-
-          <div class="shop-card__icon" :class="`shop-card__icon--${item.accent}`">{{ item.icon }}</div>
-
-          <div class="shop-card__body">
-            <h2>{{ item.name }}</h2>
-            <p>{{ item.description }}</p>
-          </div>
-
-          <footer class="shop-card__footer">
-            <div>
-              <small>{{ t("shop.rarity") }}</small>
-              <strong :class="`shop-card__rarity--${item.accent}`">{{ item.rarity }}</strong>
-            </div>
-            <button
-              class="purchase-btn"
-              :class="`purchase-btn--${item.accent}`"
-              type="button"
-              @click="handlePurchase(item)"
-            >
-              {{ t("shop.purchase") }} →
-            </button>
-          </footer>
-        </article>
+        <ShopItemCard
+          v-for="item in coinPacks"
+          :key="item.offerId"
+          :name="item.name"
+          :price="item.price"
+          :icon="item.icon"
+          :accent="item.accent"
+          :item-code="item.itemCode"
+          :price-is-cash="true"
+          :tag="t('shop.topUp')"
+          :description="item.description"
+          @purchase="handlePurchaseItemCode"
+        />
+        <ShopItemCard
+          v-for="item in toolItems"
+          :key="item.offerId"
+          :name="item.name"
+          :price="item.price"
+          :icon="item.icon"
+          :accent="item.accent"
+          :item-code="item.itemCode"
+          :tag="item.rarity"
+          :description="item.description"
+          @purchase="handlePurchaseItemCode"
+        />
       </section>
-
-      <!-- Insufficient Balance Modal -->
-      <transition name="modal-fade">
-        <div v-if="showInsufficientModal" class="insufficient-modal-overlay" @click="closeInsufficientModal">
-          <section class="insufficient-modal" @click.stop>
-            <header class="insufficient-modal__header">
-              <h2>⚠ {{ t("shop.insufficientTitle") }}</h2>
-            </header>
-
-            <div class="insufficient-modal__body">
-              <p>{{ t("shop.insufficientNeedMore", { item: selectedItem?.name }) }}</p>
-              <p class="insufficient-modal__balance">
-                {{ t("shop.yourBalance") }}: <span>🪙 {{ walletBalance.toLocaleString() }}</span>
-              </p>
-              <p class="insufficient-modal__price">
-                {{ t("shop.itemPrice") }}: <span>🪙 {{ selectedItem?.price }}</span>
-              </p>
-            </div>
-
-            <footer class="insufficient-modal__actions">
-              <button class="rescue-btn" type="button" @click="buyRescuePack">
-                💎 {{ t("shop.buyCoinPack") }} ($1.99) →
-              </button>
-              <button class="cancel-btn" type="button" @click="closeInsufficientModal">{{ t("shop.cancel") }}</button>
-            </footer>
-          </section>
-        </div>
-      </transition>
 
       <footer class="shop-footer">
         <small>{{ t("shop.copyright") }}</small>
@@ -353,6 +319,59 @@ defineExpose({
         </nav>
       </footer>
     </section>
+
+    <CoinPackTopUpModal
+      :visible="showTopUpModal"
+      :offers="coinPacks.map((c) => ({ id: c.offerId, coin_amount: c.price * 10, price_usd: c.price, label: c.name }))"
+      @purchase="handleTopUpPurchase"
+      @close="showTopUpModal = false"
+    />
+
+    <ItemUseConfirmModal
+      :visible="showUseConfirmModal"
+      :item-name="selectedInventoryItem?.name || ''"
+      :item-description="selectedInventoryItem?.description || ''"
+      :quantity="selectedInventoryItem?.quantity || 0"
+      @confirm="confirmUseItem"
+      @cancel="showUseConfirmModal = false"
+      @close="showUseConfirmModal = false"
+    />
+
+    <transition name="modal-fade">
+      <div v-if="showBagModal" class="bag-modal-overlay" @click="showBagModal = false">
+        <section class="bag-modal" @click.stop>
+          <header class="bag-modal__header">
+            <h2>{{ t("shop.inventoryBag") }}</h2>
+            <button class="close-btn" type="button" @click="showBagModal = false">✕</button>
+          </header>
+          <div class="bag-modal__body">
+            <div v-if="inventoryItems.length === 0" class="bag-empty">
+              <p>{{ t("shop.bagEmpty") }}</p>
+            </div>
+            <div v-else class="bag-grid">
+              <article
+                v-for="item in inventoryItems"
+                :key="item.itemCode"
+                class="bag-item"
+              >
+                <span class="bag-item__icon">{{ item.icon }}</span>
+                <div class="bag-item__info">
+                  <strong>{{ item.name }}</strong>
+                  <span>{{ t("shop.inInventory", { n: item.quantity }) }}</span>
+                </div>
+                <button
+                  class="use-btn"
+                  type="button"
+                  @click="handleUseItem(item.itemCode, item.name, item.description)"
+                >
+                  {{ t("shop.use") }}
+                </button>
+              </article>
+            </div>
+          </div>
+        </section>
+      </div>
+    </transition>
   </main>
 </template>
 
@@ -369,13 +388,6 @@ defineExpose({
   min-height: calc(100vh - 32px);
 }
 
-.shop-header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  padding: 14px 20px;
-}
-
 .back-btn {
   align-items: center;
   background: #ffffff;
@@ -388,85 +400,6 @@ defineExpose({
   height: 40px;
   justify-content: center;
   width: 40px;
-}
-
-.shop-brand {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-}
-
-.shop-brand__icon {
-  align-items: center;
-  background: transparent;
-  border-radius: 14px;
-  display: inline-flex;
-  height: 36px;
-  justify-content: center;
-  overflow: hidden;
-  width: 36px;
-}
-
-.shop-brand__icon img {
-  display: block;
-  height: 100%;
-  width: 100%;
-}
-
-.shop-brand__copy {
-  align-items: baseline;
-  color: #2c3848;
-  display: flex;
-  font-family: var(--font-serif);
-  font-size: 20px;
-  gap: 4px;
-}
-
-.shop-brand__copy strong {
-  color: #1696a2;
-}
-
-.shop-wallet-group {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-}
-
-.wallet-pill {
-  align-items: center;
-  background: #ffffff;
-  border: 1px solid #dde1e4;
-  border-radius: 18px;
-  box-shadow: 0 2px 8px rgba(32, 45, 64, 0.04);
-  display: inline-flex;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 16px;
-}
-
-.wallet-pill__coin {
-  font-size: 16px;
-}
-
-.wallet-pill strong {
-  color: #46556a;
-  font-size: 16px;
-}
-
-.wallet-pill small {
-  color: #9aa4b2;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.bag-btn {
-  background: #ffffff;
-  border: 1px solid #dde1e4;
-  border-radius: 999px;
-  cursor: pointer;
-  height: 42px;
-  width: 42px;
 }
 
 .shop-hero {
@@ -550,151 +483,6 @@ defineExpose({
   padding: 38px;
 }
 
-.shop-card {
-  background: rgba(255, 255, 255, 0.58);
-  border: 1px solid #e4e4e1;
-  border-radius: 18px;
-  box-shadow: 0 8px 20px rgba(31, 41, 55, 0.04);
-  min-height: 396px;
-  padding: 18px;
-}
-
-.shop-card--rose {
-  border-color: #f4c7cd;
-}
-
-.shop-card__head,
-.shop-card__footer {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-}
-
-.rarity-tag {
-  min-width: 48px;
-}
-
-.rarity-tag--rose {
-  background: #fff1f2;
-  border-radius: 999px;
-  color: #e11d48;
-  display: inline-flex;
-  font-size: 10px;
-  font-weight: 800;
-  justify-content: center;
-  letter-spacing: 0.08em;
-  padding: 4px 8px;
-}
-
-.price-tag {
-  align-items: center;
-  background: #ffffff;
-  border-radius: 14px;
-  color: #64748b;
-  display: inline-flex;
-  font-size: 13px;
-  font-weight: 700;
-  min-height: 30px;
-  padding: 0 12px;
-}
-
-.shop-card__icon {
-  align-items: center;
-  background: #ffffff;
-  border-radius: 999px;
-  box-shadow: 0 16px 24px rgba(31, 41, 55, 0.06);
-  display: inline-flex;
-  font-size: 54px;
-  height: 104px;
-  justify-content: center;
-  margin: 28px auto 0;
-  width: 104px;
-}
-
-.shop-card__icon--teal {
-  color: #0891b2;
-}
-
-.shop-card__icon--violet {
-  color: #7c3aed;
-}
-
-.shop-card__icon--rose {
-  color: #e11d48;
-}
-
-.shop-card__body h2 {
-  color: #475569;
-  font-size: 20px;
-  line-height: 1.15;
-  margin: 88px 0 0;
-}
-
-.shop-card--rose .shop-card__body h2 {
-  color: #e11d48;
-}
-
-.shop-card__body p {
-  color: #7a8089;
-  font-size: 13px;
-  line-height: 1.45;
-  margin: 12px 0 0;
-}
-
-.shop-card__footer {
-  margin-top: 26px;
-}
-
-.shop-card__footer small {
-  color: #a1a1aa;
-  display: block;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.shop-card__footer strong {
-  display: block;
-  font-size: 13px;
-  margin-top: 4px;
-}
-
-.shop-card__rarity--teal {
-  color: #0891b2;
-}
-
-.shop-card__rarity--violet {
-  color: #7c3aed;
-}
-
-.shop-card__rarity--rose {
-  color: #e11d48;
-}
-
-.purchase-btn {
-  border: 0;
-  border-radius: 999px;
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 800;
-  height: 36px;
-  min-width: 110px;
-  padding: 0 18px;
-}
-
-.purchase-btn--teal {
-  background: linear-gradient(90deg, #1098a5, #14b8a6);
-}
-
-.purchase-btn--violet {
-  background: linear-gradient(90deg, #7c3aed, #6366f1);
-}
-
-.purchase-btn--rose {
-  background: linear-gradient(90deg, #f43f5e, #ef4444);
-}
-
 .shop-footer {
   align-items: center;
   border-top: 1px solid #d8dddf;
@@ -716,6 +504,105 @@ defineExpose({
   text-decoration: none;
 }
 
+.bag-modal-overlay {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.5);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 1000;
+}
+
+.bag-modal {
+  background: #ffffff;
+  border-radius: 18px;
+  max-width: 480px;
+  padding: 24px;
+  width: 90%;
+}
+
+.bag-modal__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.bag-modal__header h2 {
+  color: #2c3848;
+  font-size: 20px;
+  margin: 0;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: #9aa4b2;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.bag-modal__body {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.bag-empty {
+  color: #9aa4b2;
+  padding: 40px;
+  text-align: center;
+}
+
+.bag-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bag-item {
+  align-items: center;
+  background: #f7f7f5;
+  border-radius: 12px;
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.bag-item__icon {
+  font-size: 32px;
+}
+
+.bag-item__info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.bag-item__info strong {
+  color: #2c3848;
+  font-size: 14px;
+}
+
+.bag-item__info span {
+  color: #9aa4b2;
+  font-size: 12px;
+}
+
+.use-btn {
+  background: linear-gradient(90deg, #1098a5, #14b8a6);
+  border: none;
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+}
+
 @media (max-width: 1100px) {
   .shop-grid {
     grid-template-columns: 1fr;
@@ -727,7 +614,6 @@ defineExpose({
     padding: 10px;
   }
 
-  .shop-header,
   .shop-hero,
   .shop-grid {
     padding-left: 16px;

@@ -73,6 +73,39 @@ export type ShopInventoryResponse = {
   items: ShopInventoryItem[];
 };
 
+export type UseItemInput = {
+  itemCode: string;
+  context?: Record<string, unknown>;
+};
+
+export type UseItemResponse = {
+  success: boolean;
+  item_code: string;
+  quantity_remaining: number;
+  effect_applied: {
+    type: string;
+    multiplier?: number;
+    expires_at?: string;
+    shield_seconds?: number;
+    extended_by_minutes?: number;
+    new_expires_at?: string;
+  } | null;
+};
+
+export type ActiveEffect = {
+  id: string;
+  effect_type: string;
+  multiplier: number | null;
+  expires_at: string | null;
+  source_item_code: string | null;
+  context: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type ActiveEffectsResponse = {
+  effects: ActiveEffect[];
+};
+
 export type ListShopItemsParams = {
   userTier?: TierRequired;
   experimentFlags?: string[];
@@ -119,6 +152,20 @@ export const getShopInventory = async (): Promise<ShopInventoryItem[]> => {
 
 export const getShopLedger = async (): Promise<ShopLedgerEntry[]> => {
   return apiRequest<ShopLedgerEntry[]>("/api/v1/shop/ledger", {
+    headers: getAuthHeaders(),
+  });
+};
+
+export const useItem = async (input: UseItemInput): Promise<UseItemResponse> => {
+  return apiRequest<UseItemResponse>("/api/v1/shop/use-item", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: { item_code: input.itemCode, context: input.context ?? null },
+  });
+};
+
+export const getActiveEffects = async (): Promise<ActiveEffectsResponse> => {
+  return apiRequest<ActiveEffectsResponse>("/api/v1/shop/active-effects", {
     headers: getAuthHeaders(),
   });
 };

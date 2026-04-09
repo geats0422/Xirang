@@ -27,6 +27,8 @@ Thumbs.db
 
 # Tools
 .playwright-mcp/
+playwright-report/
+test-results/
 
 # Environment
 .env

@@ -1,7 +1,82 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { clearAuthSessionStorage, deleteAccount, logoutApi } from "../../api/auth";
+import { clearGameData } from "../../api/settings";
+import { ROUTES } from "../../constants/routes";
+import { useRouteNavigation } from "../../composables/useRouteNavigation";
+import DangerConfirmModal from "./DangerConfirmModal.vue";
 
 const { t } = useI18n();
+const { navigateTo } = useRouteNavigation();
+
+type DangerAction = "clearData" | "deleteAccount" | "logout" | null;
+
+const activeAction = ref<DangerAction>(null);
+const processing = ref(false);
+
+const dialogConfig: Record<
+  Exclude<DangerAction, null>,
+  { heading: () => string; message: () => string; confirmLabel: () => string; tone: "danger" | "warning" | "default" }
+> = {
+  clearData: {
+    heading: () => t("settings.danger.resetConfirmTitle"),
+    message: () => t("settings.danger.resetConfirmMessage"),
+    confirmLabel: () => t("settings.danger.resetButton"),
+    tone: "warning",
+  },
+  deleteAccount: {
+    heading: () => t("settings.danger.deleteConfirmTitle"),
+    message: () => t("settings.danger.deleteConfirmMessage"),
+    confirmLabel: () => t("settings.danger.deleteAccountButton"),
+    tone: "danger",
+  },
+  logout: {
+    heading: () => t("settings.danger.logoutConfirmTitle"),
+    message: () => t("settings.danger.logoutConfirmMessage"),
+    confirmLabel: () => t("settings.danger.logoutButton"),
+    tone: "default",
+  },
+};
+
+const currentDialog = () => {
+  if (!activeAction.value) return null;
+  return dialogConfig[activeAction.value];
+};
+
+const openDialog = (action: DangerAction) => {
+  activeAction.value = action;
+};
+
+const closeDialog = () => {
+  if (processing.value) return;
+  activeAction.value = null;
+};
+
+const onConfirm = async () => {
+  processing.value = true;
+  try {
+    switch (activeAction.value) {
+      case "clearData":
+        await clearGameData();
+        activeAction.value = null;
+        break;
+      case "deleteAccount":
+        await deleteAccount();
+        clearAuthSessionStorage();
+        await navigateTo(ROUTES.login);
+        break;
+      case "logout":
+        await logoutApi();
+        clearAuthSessionStorage();
+        await navigateTo(ROUTES.login);
+        break;
+    }
+  } finally {
+    processing.value = false;
+    activeAction.value = null;
+  }
+};
 </script>
 
 <template>
@@ -13,7 +88,9 @@ const { t } = useI18n();
         <p class="danger-row__title">{{ t("settings.danger.resetTitle") }}</p>
         <p class="danger-row__desc">{{ t("settings.danger.resetDesc") }}</p>
       </div>
-      <button class="danger-btn danger-btn--ghost" type="button">{{ t("settings.danger.resetButton") }}</button>
+      <button class="danger-btn danger-btn--ghost" type="button" @click="openDialog('clearData')">
+        {{ t("settings.danger.resetButton") }}
+      </button>
     </div>
 
     <div class="danger-row">
@@ -21,7 +98,9 @@ const { t } = useI18n();
         <p class="danger-row__title">{{ t("settings.danger.deleteAccountTitle") }}</p>
         <p class="danger-row__desc">{{ t("settings.danger.deleteAccountDesc") }}</p>
       </div>
-      <button class="danger-btn danger-btn--solid" type="button">{{ t("settings.danger.deleteAccountButton") }}</button>
+      <button class="danger-btn danger-btn--solid" type="button" @click="openDialog('deleteAccount')">
+        {{ t("settings.danger.deleteAccountButton") }}
+      </button>
     </div>
 
     <div class="danger-row">
@@ -29,8 +108,22 @@ const { t } = useI18n();
         <p class="danger-row__title">{{ t("settings.danger.logoutTitle") }}</p>
         <p class="danger-row__desc">{{ t("settings.danger.logoutDesc") }}</p>
       </div>
-      <button class="danger-btn danger-btn--logout" type="button">↪ {{ t("settings.danger.logoutButton") }}</button>
+      <button class="danger-btn danger-btn--logout" type="button" @click="openDialog('logout')">
+        ↪ {{ t("settings.danger.logoutButton") }}
+      </button>
     </div>
+
+    <DangerConfirmModal
+      v-if="currentDialog()"
+      :visible="!!activeAction"
+      :heading="currentDialog()!.heading()"
+      :message="currentDialog()!.message()"
+      :confirm-label="currentDialog()!.confirmLabel()"
+      :processing="processing"
+      :tone="currentDialog()!.tone"
+      @confirm="onConfirm"
+      @cancel="closeDialog"
+    />
   </section>
 </template>
 

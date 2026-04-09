@@ -244,3 +244,32 @@ async def get_me(
             failure_reason="invalid_token",
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    authorization: Annotated[str | None, Header()] = None,
+    service: Any = Depends(get_auth_service),
+    x_request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
+) -> Response:
+    started_at = time.perf_counter()
+    token = parse_bearer_token(authorization)
+    try:
+        user = await service.get_current_user(access_token=token)
+        await service.delete_account(user_id=user.id)
+        log_auth_event(
+            endpoint="/api/v1/auth/me",
+            status_code=status.HTTP_204_NO_CONTENT,
+            started_at=started_at,
+            request_id=x_request_id,
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except InvalidTokenError as e:
+        log_auth_event(
+            endpoint="/api/v1/auth/me",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            started_at=started_at,
+            request_id=x_request_id,
+            failure_reason="invalid_token",
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e

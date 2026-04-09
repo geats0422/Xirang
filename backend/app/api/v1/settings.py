@@ -5,15 +5,19 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies.auth import get_current_user_id
 from app.core.config import get_settings
 from app.db.models.profile import LeaderboardScope, ThemeKey
 from app.db.session import get_db_session
+from app.repositories.auth_repository import AuthRepository
 from app.repositories.settings_repository import SettingsRepository
 from app.schemas.settings import SettingsResponse, SettingsUpdateRequest
+from app.services.auth.passwords import PasswordService
+from app.services.auth.service import AuthService
+from app.services.auth.tokens import TokenService
 from app.services.settings.service import SettingsNotFoundError, SettingsService
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -21,6 +25,21 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 async def get_settings_service(session: AsyncSession = Depends(get_db_session)) -> SettingsService:
     return SettingsService(repository=SettingsRepository(session))
+
+
+async def get_account_service(session: AsyncSession = Depends(get_db_session)) -> AuthService:
+    settings = get_settings()
+    token_service = TokenService(
+        secret_key=settings.secret_key,
+        access_token_expire_minutes=settings.access_token_expire_minutes,
+        refresh_token_expire_days=settings.refresh_token_expire_days,
+        algorithm=settings.jwt_algorithm,
+    )
+    return AuthService(
+        repository=AuthRepository(session),
+        password_service=PasswordService(),
+        token_service=token_service,
+    )
 
 
 @router.get("", response_model=SettingsResponse)
@@ -58,6 +77,15 @@ async def update_settings(
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.post("/clear-game-data", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_game_data(
+    user_id: UUID = Depends(get_current_user_id),
+    service: AuthService = Depends(get_account_service),
+) -> Response:
+    await service.clear_game_data(user_id=user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 FEATURED_MODEL_KEYWORDS = [

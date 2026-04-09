@@ -93,6 +93,10 @@ class AuthRepositoryProtocol(Protocol):
 
     async def update_last_login(self, *, user_id: UUID, last_login_at: datetime) -> Any: ...
 
+    async def soft_delete_user(self, *, user_id: UUID) -> Any | None: ...
+
+    async def hard_delete_user_game_data(self, *, user_id: UUID) -> None: ...
+
     async def commit(self) -> None: ...
 
     async def rollback(self) -> None: ...
@@ -249,6 +253,20 @@ class AuthService:
                 revoked_at=datetime.now(UTC),
             )
             await self.repository.commit()
+
+    async def delete_account(self, *, user_id: UUID) -> None:
+        user = await self.repository.get_user_by_id(user_id)
+        if not user:
+            raise InvalidTokenError("User not found")
+        await self.repository.soft_delete_user(user_id=user_id)
+        await self.repository.commit()
+
+    async def clear_game_data(self, *, user_id: UUID) -> None:
+        user = await self.repository.get_user_by_id(user_id)
+        if not user:
+            raise InvalidTokenError("User not found")
+        await self.repository.hard_delete_user_game_data(user_id=user_id)
+        await self.repository.commit()
 
     async def refresh(self, refresh_token: str) -> RefreshResult:
         try:

@@ -170,3 +170,17 @@ export const clearAuthSessionStorage = (): void => {
   window.localStorage.removeItem("xirang:isAuthenticated");
 };
 
+export const logoutApi = async (): Promise<void> => {
+  return apiRequest<void>("/api/v1/auth/logout", {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+};
+
+export const deleteAccount = async (): Promise<void> => {
+  return apiRequest<void>("/api/v1/auth/me", {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+};
+

@@ -57,3 +57,10 @@ export const updateSettings = async (
     body: payload,
   });
 };
+
+export const clearGameData = async (): Promise<void> => {
+  return apiRequest<void>("/api/v1/settings/clear-game-data", {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+};

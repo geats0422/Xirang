@@ -15,6 +15,7 @@ from app.db.models.economy import (
     Wallet,
     WalletLedger,
 )
+from app.db.models.learning_path import LearningPath, LearningPathStage
 from app.db.models.profile import Profile, UserSetting
 from app.db.models.questions import Question, QuestionOption
 from app.db.models.review import (
@@ -40,6 +41,8 @@ __all__ = [
     "Inventory",
     "Job",
     "LeaderboardSnapshot",
+    "LearningPath",
+    "LearningPathStage",
     "Mistake",
     "MistakeEmbedding",
     "PaymentTransaction",

@@ -13,6 +13,7 @@ type PathNode = {
   description: string;
   floor?: number;
   done?: boolean;
+  status: "locked" | "unlocked" | "completed";
 };
 
 type ModeId = "endless-abyss" | "speed-survival" | "knowledge-draft" | "review";
@@ -53,12 +54,12 @@ const modeLabelMap = computed<Record<ModeId, string>>(() => ({
 }));
 
 const endlessNodes = computed<PathNode[]>(() => [
-  { id: "F1", label: "F1", floor: 1, type: "battle", description: t("levelPath.nodeDescription.endless.f1"), done: true },
-  { id: "F2", label: "F2", floor: 2, type: "study", description: t("levelPath.nodeDescription.endless.f2"), done: true },
-  { id: "F3", label: "F3", floor: 3, type: "checkpoint", description: t("levelPath.nodeDescription.endless.f3") },
-  { id: "F4", label: "F4", floor: 4, type: "study", description: t("levelPath.nodeDescription.endless.f4") },
-  { id: "F5", label: "F5", floor: 5, type: "battle", description: t("levelPath.nodeDescription.endless.f5") },
-  { id: "F6", label: "F6", floor: 6, type: "boss", description: t("levelPath.nodeDescription.endless.f6") },
+  { id: "F1", label: "F1", floor: 1, type: "battle", description: t("levelPath.nodeDescription.endless.f1"), done: true, status: "completed" },
+  { id: "F2", label: "F2", floor: 2, type: "study", description: t("levelPath.nodeDescription.endless.f2"), done: true, status: "completed" },
+  { id: "F3", label: "F3", floor: 3, type: "checkpoint", description: t("levelPath.nodeDescription.endless.f3"), status: "unlocked" },
+  { id: "F4", label: "F4", floor: 4, type: "study", description: t("levelPath.nodeDescription.endless.f4"), status: "locked" },
+  { id: "F5", label: "F5", floor: 5, type: "battle", description: t("levelPath.nodeDescription.endless.f5"), status: "locked" },
+  { id: "F6", label: "F6", floor: 6, type: "boss", description: t("levelPath.nodeDescription.endless.f6"), status: "locked" },
 ]);
 
 const speedNodes = computed<PathNode[]>(() => [
@@ -68,18 +69,21 @@ const speedNodes = computed<PathNode[]>(() => [
     type: "speed",
     description: t("levelPath.nodeDescription.speed.r1"),
     done: true,
+    status: "completed",
   },
   {
     id: "speed-route-burst",
     label: "R2",
     type: "speed",
     description: t("levelPath.nodeDescription.speed.r2"),
+    status: "locked",
   },
   {
     id: "speed-route-endurance",
     label: "R3",
     type: "speed",
     description: t("levelPath.nodeDescription.speed.r3"),
+    status: "locked",
   },
 ]);
 
@@ -90,18 +94,21 @@ const draftNodes = computed<PathNode[]>(() => [
     type: "draft",
     description: t("levelPath.nodeDescription.draft.r1"),
     done: true,
+    status: "completed",
   },
   {
     id: "draft-route-theory",
     label: "R2",
     type: "draft",
     description: t("levelPath.nodeDescription.draft.r2"),
+    status: "locked",
   },
   {
     id: "draft-route-memory",
     label: "R3",
     type: "draft",
     description: t("levelPath.nodeDescription.draft.r3"),
+    status: "locked",
   },
 ]);
 
@@ -112,18 +119,21 @@ const reviewNodes = computed<PathNode[]>(() => [
     type: "review",
     description: t("levelPath.nodeDescription.review.r1"),
     done: true,
+    status: "completed",
   },
   {
     id: "review-stage-2",
     label: "R2",
     type: "review",
     description: t("levelPath.nodeDescription.review.r2"),
+    status: "locked",
   },
   {
     id: "review-stage-3",
     label: "R3",
     type: "review",
     description: t("levelPath.nodeDescription.review.r3"),
+    status: "locked",
   },
 ]);
 
@@ -153,15 +163,22 @@ const mapOptionToNode = (option: RunPathOption): PathNode => {
   if (mode.value === "endless-abyss") {
     const floor = Number(option.path_id.replace("F", ""));
     const validFloor = Number.isFinite(floor) ? floor : 1;
+    const isDone = option.path_id === "F1";
     return {
       id: option.path_id,
       label: option.label,
       floor: validFloor,
       type: option.kind === "floor" ? "battle" : "checkpoint",
       description: option.description,
-      done: option.path_id === "F1",
+      done: isDone,
+      status: isDone ? "completed" : "unlocked",
     };
   }
+
+  const isDone =
+    option.path_id.endsWith("focus") ||
+    option.path_id.endsWith("classic") ||
+    option.path_id.endsWith("1");
 
   return {
     id: option.path_id,
@@ -173,10 +190,8 @@ const mapOptionToNode = (option: RunPathOption): PathNode => {
           ? "draft"
           : "review",
     description: option.description,
-    done:
-      option.path_id.endsWith("focus") ||
-      option.path_id.endsWith("classic") ||
-      option.path_id.endsWith("1"),
+    done: isDone,
+    status: isDone ? "completed" : "unlocked",
   };
 };
 
@@ -353,6 +368,9 @@ const backToModes = async () => {
             `path-node--${node.type}`,
             {
               'path-node--done': node.done,
+              'path-node--locked': node.status === 'locked',
+              'path-node--unlocked': node.status === 'unlocked',
+              'path-node--completed': node.status === 'completed',
               'path-node--active': selectedNodeId === node.id,
             },
           ]"
@@ -471,6 +489,31 @@ const backToModes = async () => {
 
 .path-node--done {
   border-color: var(--color-primary-500);
+}
+
+.path-node--locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.path-node--unlocked {
+  border-color: var(--color-primary-500);
+  animation: pulse 2s infinite;
+}
+
+.path-node--completed {
+  border-color: var(--color-success);
+  animation: glow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.2); }
+  50% { box-shadow: 0 0 0 8px rgba(0, 0, 0, 0); }
+}
+
+@keyframes glow {
+  from { box-shadow: 0 0 4px var(--color-success); }
+  to { box-shadow: 0 0 12px var(--color-success); }
 }
 
 .path-node--active {

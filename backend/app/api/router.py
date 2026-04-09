@@ -9,7 +9,9 @@ from app.api.v1.feedback import router as feedback_router
 from app.api.v1.jobs import router as jobs_router
 from app.api.v1.leaderboard import router as leaderboard_router
 from app.api.v1.learning_paths import router as learning_paths_router
+from app.api.v1.notifications import router as notifications_router
 from app.api.v1.profile import router as profile_router
+from app.api.v1.quests import router as quests_router
 from app.api.v1.review import router as review_router
 from app.api.v1.runs import router as runs_router
 from app.api.v1.settings import router as settings_router
@@ -27,7 +29,9 @@ def build_api_router() -> APIRouter:
     api_router.include_router(jobs_router)
     api_router.include_router(leaderboard_router)
     api_router.include_router(learning_paths_router)
+    api_router.include_router(notifications_router)
     api_router.include_router(profile_router)
+    api_router.include_router(quests_router)
     api_router.include_router(review_router)
     api_router.include_router(runs_router)
     api_router.include_router(settings_router)

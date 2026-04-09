@@ -16,7 +16,9 @@ from app.db.models.economy import (
     WalletLedger,
 )
 from app.db.models.learning_path import LearningPath, LearningPathStage
+from app.db.models.notification import Notification
 from app.db.models.profile import Profile, UserSetting
+from app.db.models.quest import QuestAssignment
 from app.db.models.questions import Question, QuestionOption
 from app.db.models.review import (
     AuditLog,
@@ -45,9 +47,11 @@ __all__ = [
     "LearningPathStage",
     "Mistake",
     "MistakeEmbedding",
+    "Notification",
     "PaymentTransaction",
     "Profile",
     "PurchaseRecord",
+    "QuestAssignment",
     "Question",
     "QuestionFeedback",
     "QuestionOption",

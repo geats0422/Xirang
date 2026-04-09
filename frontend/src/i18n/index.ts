@@ -300,7 +300,8 @@ const messages = {
     },
     shop: {
       metaTitle: "Xi Rang Scholar Shop",
-      brand: "XI Rang Scholar",
+      brand: "Xi Rang",
+      bagAria: "Inventory bag",
       coins: "COINS",
       inventoryBag: "Inventory bag",
       heroEyebrow: "Virtual Item Shop Interface",
@@ -1033,7 +1034,8 @@ const messages = {
     },
     shop: {
       metaTitle: "息壤学者商店",
-      brand: "息壤学者",
+      brand: "息壤",
+      bagAria: "背包",
       coins: "金币",
       inventoryBag: "背包",
       heroEyebrow: "虚拟道具商店界面",
@@ -1669,7 +1671,8 @@ const messages = {
     },
     shop: {
       metaTitle: "息壤學者商店",
-      brand: "息壤學者",
+      brand: "息壤",
+      bagAria: "背包",
       coins: "金幣",
       inventoryBag: "背包",
       heroEyebrow: "虛擬道具商店介面",

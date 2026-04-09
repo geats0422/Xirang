@@ -15,6 +15,7 @@ from app.api.v1.runs import router as runs_router
 from app.api.v1.settings import router as settings_router
 from app.api.v1.shop import router as shop_router
 from app.api.v1.system import router as system_router
+from app.api.v1.user import router as user_router
 
 
 def build_api_router() -> APIRouter:
@@ -32,6 +33,7 @@ def build_api_router() -> APIRouter:
     api_router.include_router(settings_router)
     api_router.include_router(shop_router)
     api_router.include_router(system_router)
+    api_router.include_router(user_router)
     return api_router
 
 

@@ -189,4 +189,34 @@ describe("DungeonScholarLeaderboardPage", () => {
     expect(mocks.getLeaderboardSnapshot).toHaveBeenNthCalledWith(2, 25, 0, "friends");
     expect(wrapper.text()).toContain("Friend Scholar");
   });
+
+  it("displays username when display_name is null", async () => {
+    mocks.getLeaderboardSnapshot.mockResolvedValueOnce(
+      createSnapshot({
+        entries: [
+          {
+            user_id: "00000000-0000-0000-0000-000000000001",
+            display_name: null,
+            total_xp: 2500,
+            rank: 1,
+            level: 6,
+            energy_points: 0,
+            is_current_user: false,
+          },
+        ],
+      }),
+    );
+
+    const router = createTestRouter();
+    await router.push(ROUTES.leaderboard);
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLeaderboardPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Default User");
+    expect(wrapper.text()).not.toContain("Scholar 000000");
+  });
 });

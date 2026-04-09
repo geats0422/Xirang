@@ -41,7 +41,7 @@ const viewerLevel = ref(1);
 const viewerRank = ref(0);
 const viewerEnergyPoints = ref(0);
 const viewerDailyFocus = ref<DailyFocusItem[]>([]);
-const refreshIntervalMs = 30_000;
+const refreshIntervalMs = 30 * 60 * 1000;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 const toStandingRow = (entry: LeaderboardEntry): StandingRow => {

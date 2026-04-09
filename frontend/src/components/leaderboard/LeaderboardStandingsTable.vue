@@ -16,14 +16,12 @@ type StandingRow = {
 defineProps<{
   statusClass: (row: StandingRow) => string;
   standings: StandingRow[];
-  activeScope: "global" | "friends";
   hasMore: boolean;
   isLoading: boolean;
 }>();
 
 const emit = defineEmits<{
   loadMore: [];
-  scopeChange: [scope: "global" | "friends"];
 }>();
 </script>
 
@@ -33,24 +31,6 @@ const emit = defineEmits<{
       <div>
         <h2>{{ t("leaderboard.table.title") }}</h2>
         <p>{{ t("leaderboard.table.subtitle") }}</p>
-      </div>
-      <div class="switches" role="group" :aria-label="t('leaderboard.table.scopeAria')">
-        <button
-          class="scope-btn"
-          :class="{ 'scope-btn--active': activeScope === 'global' }"
-          type="button"
-          @click="emit('scopeChange', 'global')"
-        >
-          {{ t("leaderboard.table.global") }}
-        </button>
-        <button
-          class="scope-btn"
-          :class="{ 'scope-btn--active': activeScope === 'friends' }"
-          type="button"
-          @click="emit('scopeChange', 'friends')"
-        >
-          {{ t("leaderboard.table.friends") }}
-        </button>
       </div>
     </header>
 

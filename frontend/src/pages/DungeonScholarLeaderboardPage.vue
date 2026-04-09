@@ -32,7 +32,6 @@ type StandingRow = {
 const leaderboardData = ref<LeaderboardEntry[]>([]);
 const isLoading = ref(false);
 const hasMore = ref(false);
-const scope = ref<"global" | "friends">("global");
 const pageSize = 25;
 
 const viewerName = ref<string>("");
@@ -82,7 +81,7 @@ const fetchLeaderboard = async (reset = false) => {
   isLoading.value = true;
   try {
     const offset = reset ? 0 : leaderboardData.value.length;
-    const snapshot = await getLeaderboardSnapshot(pageSize, offset, scope.value);
+    const snapshot = await getLeaderboardSnapshot(pageSize, offset);
 
     viewerName.value = snapshot.viewer.display_name;
     viewerXp.value = snapshot.viewer.total_xp;
@@ -104,11 +103,6 @@ const fetchLeaderboard = async (reset = false) => {
   } finally {
     isLoading.value = false;
   }
-};
-
-const handleScopeChange = async (nextScope: "global" | "friends") => {
-  scope.value = nextScope;
-  await fetchLeaderboard(true);
 };
 
 const handleLoadMore = async () => {
@@ -253,10 +247,8 @@ const statusClass = (row: StandingRow) => {
         <LeaderboardStandingsTable
           :standings="standings"
           :status-class="statusClass"
-          :active-scope="scope"
           :has-more="hasMore"
           :is-loading="isLoading"
-          @scope-change="handleScopeChange"
           @load-more="handleLoadMore"
         />
       </section>

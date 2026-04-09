@@ -40,15 +40,13 @@ export type LeaderboardSnapshot = {
 export const getLeaderboardSnapshot = async (
   limit = 25,
   offset = 0,
-  scope: "global" | "friends" = "global",
 ): Promise<LeaderboardSnapshot> => {
-  const encodedScope = encodeURIComponent(scope);
   return apiRequest<LeaderboardSnapshot>(
-    `/api/v1/leaderboard?limit=${limit}&offset=${offset}&scope=${encodedScope}`,
+    `/api/v1/leaderboard?limit=${limit}&offset=${offset}`,
   );
 };
 
 export const getLeaderboard = async (limit = 50): Promise<LeaderboardEntry[]> => {
-  const snapshot = await getLeaderboardSnapshot(limit, 0, "global");
+  const snapshot = await getLeaderboardSnapshot(limit, 0);
   return snapshot.entries;
 };

@@ -94,7 +94,7 @@ describe("DungeonScholarLeaderboardPage", () => {
     expect(wrapper.text()).toContain('Practice "Art of War"');
     expect(wrapper.text()).toContain("Art of War");
     expect(wrapper.text()).toContain("Progress: 3/5");
-    expect(mocks.getLeaderboardSnapshot).toHaveBeenCalledWith(25, 0, "global");
+    expect(mocks.getLeaderboardSnapshot).toHaveBeenCalledWith(25, 0);
   });
 
   it("loads next page when clicking load more", async () => {
@@ -145,49 +145,11 @@ describe("DungeonScholarLeaderboardPage", () => {
     await wrapper.get(".load-more").trigger("click");
     await flushPromises();
 
-    expect(mocks.getLeaderboardSnapshot).toHaveBeenNthCalledWith(1, 25, 0, "global");
-    expect(mocks.getLeaderboardSnapshot).toHaveBeenNthCalledWith(2, 25, 1, "global");
+    expect(mocks.getLeaderboardSnapshot).toHaveBeenNthCalledWith(1, 25, 0);
+    expect(mocks.getLeaderboardSnapshot).toHaveBeenNthCalledWith(2, 25, 1);
     expect(wrapper.text()).toContain("Alpha");
     expect(wrapper.text()).toContain("Beta");
     expect(wrapper.get(".load-more").text()).toContain("All scholars loaded");
-  });
-
-  it("resets pagination when switching scope", async () => {
-    mocks.getLeaderboardSnapshot
-      .mockResolvedValueOnce(createSnapshot({ scope: "global" }))
-      .mockResolvedValueOnce(
-        createSnapshot({
-          scope: "friends",
-          entries: [
-            {
-              user_id: "00000000-0000-0000-0000-000000000010",
-              display_name: "Friend Scholar",
-              total_xp: 999,
-              rank: 1,
-              level: 2,
-              energy_points: 0,
-              is_current_user: false,
-            },
-          ],
-        }),
-      );
-
-    const router = createTestRouter();
-    await router.push(ROUTES.leaderboard);
-    await router.isReady();
-
-    const wrapper = mount(DungeonScholarLeaderboardPage, {
-      global: { plugins: [router, i18n] },
-    });
-    await flushPromises();
-
-    const scopeButtons = wrapper.findAll(".scope-btn");
-    await scopeButtons[1].trigger("click");
-    await flushPromises();
-
-    expect(mocks.getLeaderboardSnapshot).toHaveBeenNthCalledWith(1, 25, 0, "global");
-    expect(mocks.getLeaderboardSnapshot).toHaveBeenNthCalledWith(2, 25, 0, "friends");
-    expect(wrapper.text()).toContain("Friend Scholar");
   });
 
   it("displays username when display_name is null", async () => {

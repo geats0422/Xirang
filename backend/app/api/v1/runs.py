@@ -68,7 +68,17 @@ async def create_run(
     run_mode = RunMode(mode)
 
     raw_document_id = request.get("documentId", request.get("document_id"))
-    document_id = UUID(raw_document_id) if isinstance(raw_document_id, str) else None
+    document_id: UUID | None = None
+    if isinstance(raw_document_id, str):
+        normalized_document_id = raw_document_id.strip()
+        if normalized_document_id:
+            try:
+                document_id = UUID(normalized_document_id)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="document_id",
+                ) from exc
 
     if run_mode != RunMode.REVIEW or document_id is not None:
         if document_id is None:
@@ -124,7 +134,17 @@ async def list_path_options(
     document_repo: DocumentRepository = Depends(get_document_repository),
 ) -> dict[str, Any]:
     run_mode = RunMode(mode)
-    parsed_document_id = UUID(document_id) if document_id else None
+    parsed_document_id: UUID | None = None
+    if document_id:
+        normalized_document_id = document_id.strip()
+        if normalized_document_id:
+            try:
+                parsed_document_id = UUID(normalized_document_id)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="document_id",
+                ) from exc
     if run_mode != RunMode.REVIEW or parsed_document_id is not None:
         if parsed_document_id is None:
             raise HTTPException(

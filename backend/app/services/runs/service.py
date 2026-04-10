@@ -145,6 +145,14 @@ class RunRepositoryProtocol(Protocol):
         explanation: str | None = None,
     ) -> None: ...
 
+    async def remove_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID | None = None,
+    ) -> None: ...
+
     async def count_document_questions(self, *, document_id: UUID) -> int: ...
 
     async def list_document_knowledge_points(
@@ -464,6 +472,11 @@ class RunService:
                 current_combo = current_combo + 1
             elif run.mode == RunMode.REVIEW:
                 floor = min(floor_total, answered_count + 1)
+                await self._repository.remove_mistake(
+                    user_id=run.user_id,
+                    question_id=question_id,
+                    document_id=run.document_id,
+                )
         else:
             if run.mode == RunMode.ENDLESS:
                 if shield_active and revive_shield_count > 0:

@@ -49,6 +49,7 @@ class InMemoryRunRepository:
         self._run_questions: dict[UUID, list[dict[str, Any]]] = {}
         self._answers: dict[UUID, list[AnswerResult]] = {}
         self._settlements: dict[UUID, FakeSettlementRow] = {}
+        self._mistakes: set[tuple[UUID, UUID, UUID | None]] = set()
 
     async def create_run(
         self,
@@ -119,9 +120,16 @@ class InMemoryRunRepository:
         path_id: str | None = None,
         user_id: UUID | None = None,
     ) -> list[QuestionData]:
-        _ = mode
         _ = path_id
-        _ = user_id
+        if mode == RunMode.REVIEW and user_id is not None:
+            mistake_question_ids = {
+                mistake_question_id
+                for mistake_user_id, mistake_question_id, mistake_document_id in self._mistakes
+                if mistake_user_id == user_id
+                and (document_id is None or mistake_document_id == document_id)
+            }
+            candidates = [q for q in self._source_questions if q.id in mistake_question_ids]
+            return candidates[:count]
         if document_id is None:
             return self._source_questions[:count]
         return [q for q in self._source_questions if q.document_id == document_id][:count]
@@ -130,10 +138,43 @@ class InMemoryRunRepository:
         return sum(1 for q in self._source_questions if q.document_id == document_id)
 
     async def count_review_questions(self, *, document_id: UUID | None, user_id: UUID) -> int:
-        _ = user_id
-        if document_id is None:
-            return len(self._source_questions)
-        return sum(1 for q in self._source_questions if q.document_id == document_id)
+        question_ids = {
+            question_id
+            for mistake_user_id, question_id, mistake_document_id in self._mistakes
+            if mistake_user_id == user_id
+            and (document_id is None or mistake_document_id == document_id)
+        }
+        return len(question_ids)
+
+    async def create_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID,
+        run_id: UUID,
+        explanation: str | None = None,
+    ) -> None:
+        _ = run_id
+        _ = explanation
+        self._mistakes.add((user_id, question_id, document_id))
+
+    async def remove_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID | None = None,
+    ) -> None:
+        self._mistakes = {
+            item
+            for item in self._mistakes
+            if not (
+                item[0] == user_id
+                and item[1] == question_id
+                and (document_id is None or item[2] == document_id)
+            )
+        }
 
     async def list_document_knowledge_points(
         self,
@@ -556,6 +597,13 @@ async def test_review_mode_uses_twenty_question_goal_progress() -> None:
         question.correct_option_ids = [UUID(question.options[0]["id"])]
 
     repository = InMemoryRunRepository(questions)
+    for question in questions:
+        await repository.create_mistake(
+            user_id=user_id,
+            question_id=question.id,
+            document_id=document_id,
+            run_id=uuid4(),
+        )
     service = RunService(repository=repository)
 
     run, generated = await service.create_run(
@@ -596,12 +644,33 @@ async def test_review_path_options_returns_empty_when_no_review_questions() -> N
 async def test_review_path_options_caps_stage_count() -> None:
     user_id = uuid4()
     document_id = uuid4()
-    source = _build_questions(document_id)
     questions: list[QuestionData] = []
-    for _ in range(54):
-        questions.extend(source)
+    for index in range(54):
+        option_a = uuid4()
+        option_b = uuid4()
+        questions.append(
+            QuestionData(
+                id=uuid4(),
+                document_id=document_id,
+                question_text=f"Question {index + 1}",
+                question_type="single_choice",
+                options=[
+                    {"id": str(option_a), "text": "A"},
+                    {"id": str(option_b), "text": "B"},
+                ],
+                correct_option_ids=[option_a],
+                difficulty=1,
+            )
+        )
 
     repository = InMemoryRunRepository(questions)
+    for question in questions:
+        await repository.create_mistake(
+            user_id=user_id,
+            question_id=question.id,
+            document_id=document_id,
+            run_id=uuid4(),
+        )
     service = RunService(repository=repository)
 
     options = await service.list_path_options(
@@ -610,5 +679,100 @@ async def test_review_path_options_caps_stage_count() -> None:
         user_id=user_id,
     )
 
-    assert len(options) == 8
-    assert options[-1]["path_id"] == "review-stage-8"
+    assert len(options) == 3
+    assert options[-1]["path_id"] == "review-stage-3"
+
+
+@pytest.mark.asyncio
+async def test_review_mode_correct_answer_removes_mistake_record() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    questions = _build_questions(document_id)
+    target = questions[0]
+    target.correct_option_ids = [UUID(target.options[0]["id"])]
+
+    repository = InMemoryRunRepository(questions)
+    await repository.create_mistake(
+        user_id=user_id,
+        question_id=target.id,
+        document_id=document_id,
+        run_id=uuid4(),
+    )
+
+    service = RunService(repository=repository)
+    run, generated = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.REVIEW,
+        question_count=1,
+    )
+    assert len(generated) == 1
+
+    await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[generated[0].correct_option_ids[0]],
+    )
+
+    remaining = await repository.count_review_questions(document_id=document_id, user_id=user_id)
+    assert remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_review_mode_multiple_choice_requires_all_correct_options() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    qid = uuid4()
+    option_a = uuid4()
+    option_b = uuid4()
+    option_c = uuid4()
+    option_d = uuid4()
+    question = QuestionData(
+        id=qid,
+        document_id=document_id,
+        question_text="Which options are correct?",
+        question_type="multiple_choice",
+        options=[
+            {"id": str(option_a), "text": "A"},
+            {"id": str(option_b), "text": "B"},
+            {"id": str(option_c), "text": "C"},
+            {"id": str(option_d), "text": "D"},
+        ],
+        correct_option_ids=[option_b, option_d],
+        difficulty=1,
+    )
+
+    repository = InMemoryRunRepository([question])
+    await repository.create_mistake(
+        user_id=user_id,
+        question_id=qid,
+        document_id=document_id,
+        run_id=uuid4(),
+    )
+    service = RunService(repository=repository)
+
+    run_partial, generated_partial = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.REVIEW,
+        question_count=1,
+    )
+    partial = await service.submit_answer(
+        run_id=run_partial.id,
+        question_id=generated_partial[0].id,
+        selected_option_ids=[option_b],
+    )
+    assert partial.is_correct is False
+
+    run_full, generated_full = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.REVIEW,
+        question_count=1,
+    )
+    full = await service.submit_answer(
+        run_id=run_full.id,
+        question_id=generated_full[0].id,
+        selected_option_ids=[option_b, option_d],
+    )
+    assert full.is_correct is True

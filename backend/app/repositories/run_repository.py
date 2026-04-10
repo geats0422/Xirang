@@ -7,7 +7,7 @@ from hashlib import sha1
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.db.models.profile import UserSetting
 from app.db.models.questions import Question, QuestionOption, QuestionType
@@ -522,11 +522,18 @@ class RunRepository:
             language_code = await self.get_user_language_code(user_id)
 
         if mode == RunMode.REVIEW and user_id is not None:
-            stmt = select(Question).join(Mistake, Mistake.question_id == Question.id)
-            stmt = stmt.where(Mistake.user_id == user_id)
+            mistake_question_ids_stmt = select(Mistake.question_id).where(
+                Mistake.user_id == user_id
+            )
             if document_id is not None:
-                stmt = stmt.where(Mistake.document_id == document_id)
-            stmt = stmt.distinct(Question.id)
+                mistake_question_ids_stmt = mistake_question_ids_stmt.where(
+                    Mistake.document_id == document_id
+                )
+            mistake_question_ids_subquery = mistake_question_ids_stmt.distinct().subquery()
+            stmt = select(Question).join(
+                mistake_question_ids_subquery,
+                mistake_question_ids_subquery.c.question_id == Question.id,
+            )
         else:
             if document_id is None:
                 return []
@@ -545,8 +552,15 @@ class RunRepository:
                 )
             )
         elif mode == RunMode.ENDLESS:
-            # Endless mode uses FILL_IN_BLANK questions
-            stmt = stmt.where(Question.question_type == QuestionType.FILL_IN_BLANK)
+            stmt = stmt.where(
+                Question.question_type.in_(
+                    [
+                        QuestionType.FILL_IN_BLANK,
+                        QuestionType.SINGLE_CHOICE,
+                        QuestionType.TRUE_FALSE,
+                    ]
+                )
+            )
 
         if mode == RunMode.ENDLESS and path_id:
             target_difficulty = self._target_endless_difficulty(path_id)
@@ -632,12 +646,16 @@ class RunRepository:
                     blank_count = max(2, len(correct_options))
                 elif question.question_type == QuestionType.SINGLE_CHOICE:
                     blank_count = 1
+            question_type_value = question.question_type.value
+            if question_type_value == QuestionType.SINGLE_CHOICE.value and len(correct_options) > 1:
+                question_type_value = QuestionType.MULTIPLE_CHOICE.value
+
             questions.append(
                 QuestionData(
                     id=question.id,
                     document_id=question.document_id,
                     question_text=prompt_text,
-                    question_type=question.question_type.value,
+                    question_type=question_type_value,
                     options=[{"id": str(option.id), "text": option.content} for option in options],
                     correct_option_ids=[option.id for option in correct_options],
                     difficulty=question.difficulty,
@@ -675,6 +693,19 @@ class RunRepository:
             explanation=explanation,
         )
         self._session.add(mistake)
+        await self._session.flush()
+
+    async def remove_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID | None = None,
+    ) -> None:
+        stmt = delete(Mistake).where(Mistake.user_id == user_id, Mistake.question_id == question_id)
+        if document_id is not None:
+            stmt = stmt.where(Mistake.document_id == document_id)
+        await self._session.execute(stmt)
         await self._session.flush()
 
     async def get_user_language_code(self, user_id: UUID) -> str:

@@ -188,7 +188,10 @@ const mapOptionToNode = (option: RunPathOption): PathNode => {
 
 const loadPathOptions = async () => {
   const rawDocumentId = route.query.documentId;
-  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : undefined;
+  const documentId =
+    typeof rawDocumentId === "string" && rawDocumentId.trim().length > 0
+      ? rawDocumentId
+      : undefined;
   if (!documentId && mode.value !== "review") {
     nodes.value = fallbackNodes.value;
     return;
@@ -311,10 +314,16 @@ const startLearning = async () => {
   if (!selectedNode.value) {
     return;
   }
+  const rawDocumentId = route.query.documentId;
+  const documentId =
+    typeof rawDocumentId === "string" && rawDocumentId.trim().length > 0
+      ? rawDocumentId
+      : undefined;
   await router.push({
     path: modeRouteMap[mode.value],
     query: {
       ...route.query,
+      documentId,
       flow: flow.value,
       mode: mode.value,
       pathId: selectedNode.value.id,

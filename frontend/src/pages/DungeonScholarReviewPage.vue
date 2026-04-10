@@ -202,7 +202,10 @@ const refreshBalance = async () => {
 const bootstrapRun = async () => {
   await refreshBalance();
   const rawDocumentId = route.query.documentId;
-  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : undefined;
+  const documentId =
+    typeof rawDocumentId === "string" && rawDocumentId.trim().length > 0
+      ? rawDocumentId
+      : undefined;
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
 

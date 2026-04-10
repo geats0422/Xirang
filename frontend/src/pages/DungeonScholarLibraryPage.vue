@@ -815,7 +815,8 @@ defineExpose({
   grid-template-columns: 256px minmax(0, 1fr);
   height: 100vh;
   min-height: 100vh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 24px;
 }
 
@@ -998,11 +999,10 @@ defineExpose({
 .card-grid {
   display: grid;
   gap: 14px;
+  align-content: start;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  height: 100%;
   margin-top: 16px;
-  overflow-y: auto;
-  padding-right: 10px;
+  min-height: 0;
 }
 
 .card-grid::-webkit-scrollbar {
@@ -1378,7 +1378,7 @@ defineExpose({
 
 @media (max-width: 1360px) {
   .card-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -7,6 +7,7 @@ import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
 import { getQuests, claimQuestReward, type QuestAssignment, type MonthlyProgress } from "../api/quests";
+import { getDaysRemainingInMonth } from "../utils/questUtils";
 import {
   getNotifications,
   markNotificationAsRead,
@@ -14,11 +15,12 @@ import {
   type NotificationItem as ApiNotificationItem,
 } from "../api/notifications";
 
-const { profileName, profileLevel, coins, hasCoinBalance, hydrate } = useScholarData();
+const { profileName, profileLevel, coins, hasCoinBalance, hydrate, uploadAndRefresh } = useScholarData();
 const { t, locale } = useI18n();
 const notificationVisible = ref(false);
 const notifications = ref<ApiNotificationItem[]>([]);
 const unreadCount = ref(0);
+const questsError = ref<string | null>(null);
 
 const questsData = ref<{
   daily_quests: QuestAssignment[];
@@ -28,6 +30,10 @@ const questsData = ref<{
 } | null>(null);
 const isLoading = ref(false);
 const claimingQuestId = ref<string | null>(null);
+const showUploadModal = ref(false);
+const uploadError = ref<string | null>(null);
+const uploadInput = ref<HTMLInputElement | null>(null);
+const isUploading = ref(false);
 
 const shopRoute = ROUTES.shop;
 
@@ -56,9 +62,11 @@ const formatTimeAgo = (dateStr: string): string => {
 const loadQuests = async () => {
   try {
     isLoading.value = true;
+    questsError.value = null;
     questsData.value = await getQuests();
   } catch (error) {
     console.error("Failed to load quests:", error);
+    questsError.value = "任务数据加载失败，请稍后重试。";
   } finally {
     isLoading.value = false;
   }
@@ -67,7 +75,7 @@ const loadQuests = async () => {
 const loadNotifications = async () => {
   try {
     const data = await getNotifications();
-    notifications.value = data.notifications;
+    notifications.value = data.items ?? [];
     unreadCount.value = data.unread_count;
   } catch (error) {
     console.error("Failed to load notifications:", error);
@@ -94,7 +102,12 @@ const monthlyProgressPercent = computed(() => {
 });
 
 const daysRemaining = computed(() => {
-  return monthlyProgress.value?.days_remaining ?? 0;
+  const calendarDays = getDaysRemainingInMonth(new Date());
+  const apiDays = monthlyProgress.value?.days_remaining;
+  if (typeof apiDays === "number") {
+    return apiDays === 0 && calendarDays > 0 ? calendarDays : apiDays;
+  }
+  return calendarDays;
 });
 
 const streakLabel = computed(() => t("quests.streakLabel", { days: questsData.value?.streak_days ?? 0 }));
@@ -120,10 +133,27 @@ const refreshInLabel = computed(() => {
 const notificationItems = computed(() =>
   notifications.value.map((n) => ({
     id: n.id,
-    title: t(n.title_i18n_key),
+    title: n.title,
     time: formatTimeAgo(n.created_at),
   })),
 );
+
+const pushLocalNotification = (title: string) => {
+  notifications.value = [
+    {
+      id: `local-${Date.now()}`,
+      type: "system",
+      title,
+      body: null,
+      is_read: false,
+      related_quest_id: null,
+      action_url: null,
+      created_at: new Date().toISOString(),
+    },
+    ...notifications.value,
+  ];
+  unreadCount.value += 1;
+};
 
 const toggleNotifications = () => {
   notificationVisible.value = !notificationVisible.value;
@@ -162,6 +192,11 @@ const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 const handleQuestAction = async (quest: QuestAssignment) => {
   if (quest.action_type === "navigate" && quest.navigate_to) {
+    if (quest.quest_code === "quest-upload") {
+      showUploadModal.value = true;
+      uploadError.value = null;
+      return;
+    }
     navigateTo(quest.navigate_to);
     return;
   }
@@ -172,11 +207,33 @@ const handleQuestAction = async (quest: QuestAssignment) => {
       await claimQuestReward(quest.id);
       await loadQuests();
       await loadNotifications();
+      pushLocalNotification(t("quests.notification.questRewardReceived", { reward: t(quest.reward_i18n_key) }));
     } catch (error) {
       console.error("Failed to claim reward:", error);
     } finally {
       claimingQuestId.value = null;
     }
+  }
+};
+
+const handleUploadFromQuest = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const files = target.files;
+  if (!files || files.length === 0) return;
+
+  isUploading.value = true;
+  uploadError.value = null;
+  try {
+    await uploadAndRefresh(files);
+    showUploadModal.value = false;
+    await Promise.all([loadQuests(), loadNotifications()]);
+    pushLocalNotification(t("quests.notification.questUploadDone"));
+  } catch (error) {
+    console.error("Failed to upload from quest modal:", error);
+    uploadError.value = "上传失败，请重试。";
+  } finally {
+    target.value = "";
+    isUploading.value = false;
   }
 };
 
@@ -252,6 +309,17 @@ const isQuestActionable = (quest: QuestAssignment): boolean => {
             <span>Loading...</span>
           </div>
 
+          <div v-else-if="questsError" class="loading-state loading-state--error">
+            <span>{{ questsError }}</span>
+            <button class="mission-card__action mission-card__action--solid" type="button" @click="loadQuests">
+              {{ t("quests.retryLoad") }}
+            </button>
+          </div>
+
+          <div v-else-if="dailyQuests.length === 0" class="loading-state">
+            <span>{{ t("quests.emptyDaily") }}</span>
+          </div>
+
           <div v-else class="mission-list">
             <article
               v-for="quest in dailyQuests"
@@ -296,6 +364,36 @@ const isQuestActionable = (quest: QuestAssignment): boolean => {
             </article>
           </div>
         </section>
+
+        <transition name="modal-fade">
+          <div v-if="showUploadModal" class="quest-upload-overlay" @click="showUploadModal = false">
+            <section class="quest-upload-modal" @click.stop>
+              <h3>{{ t("quests.upload") }}</h3>
+              <p>{{ t("quests.uploadQuestHint") }}</p>
+              <input
+                ref="uploadInput"
+                class="quest-upload-input"
+                type="file"
+                accept=".pdf,.txt,.md,.markdown,.epub"
+                @change="handleUploadFromQuest"
+              />
+              <p v-if="uploadError" class="quest-upload-error">{{ uploadError }}</p>
+              <div class="quest-upload-actions">
+                <button
+                  class="mission-card__action mission-card__action--solid"
+                  type="button"
+                  :disabled="isUploading"
+                  @click="uploadInput?.click()"
+                >
+                  {{ isUploading ? "..." : t("quests.uploadNow") }}
+                </button>
+                <button class="mission-card__action mission-card__action--ghost" type="button" @click="showUploadModal = false">
+                  {{ t("common.closeAria") }}
+                </button>
+              </div>
+            </section>
+          </div>
+        </transition>
       </section>
     </main>
   </div>
@@ -498,8 +596,14 @@ const isQuestActionable = (quest: QuestAssignment): boolean => {
   align-items: center;
   color: var(--color-text-secondary);
   display: flex;
+  flex-direction: column;
+  gap: 12px;
   justify-content: center;
   padding: 48px;
+}
+
+.loading-state--error {
+  color: var(--color-icon-red);
 }
 
 .mission-list {
@@ -628,9 +732,66 @@ const isQuestActionable = (quest: QuestAssignment): boolean => {
   color: var(--color-surface);
 }
 
+.mission-card__action--ghost {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+
 .mission-card__action--disabled {
   cursor: not-allowed;
   opacity: 0.64;
+}
+
+.quest-upload-overlay {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.45);
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 1200;
+}
+
+.quest-upload-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
+  max-width: 520px;
+  padding: 22px;
+  width: min(520px, 100%);
+}
+
+.quest-upload-modal h3 {
+  color: var(--color-text-primary);
+  font-size: 24px;
+  margin: 0;
+}
+
+.quest-upload-modal p {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 10px 0 0;
+}
+
+.quest-upload-input {
+  margin-top: 14px;
+  width: 100%;
+}
+
+.quest-upload-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.quest-upload-error {
+  color: var(--color-icon-red);
+  font-weight: 700;
 }
 
 @media (max-width: 1080px) {

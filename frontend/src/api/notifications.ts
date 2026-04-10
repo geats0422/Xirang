@@ -5,17 +5,17 @@ export type NotificationType = "quest_reward" | "system" | "achievement" | "stre
 
 export type NotificationItem = {
   id: string;
-  user_id: string;
-  notification_type: NotificationType;
-  title_i18n_key: string;
-  content_i18n_key: string;
-  meta: Record<string, unknown> | null;
+  type: NotificationType | string;
+  title: string;
+  body: string | null;
   is_read: boolean;
+  related_quest_id: string | null;
+  action_url: string | null;
   created_at: string;
 };
 
 export type NotificationListResponse = {
-  notifications: NotificationItem[];
+  items: NotificationItem[];
   unread_count: number;
 };
 

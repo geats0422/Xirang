@@ -7,6 +7,7 @@ from app.api.dependencies.auth import get_current_user_id
 from app.db.session import get_db_session
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.quest_repository import QuestRepository
+from app.repositories.shop_repository import ShopRepository
 from app.repositories.wallet_repository import WalletRepository
 from app.schemas.quest import QuestClaimResponse, QuestListResponse
 from app.services.notification.service import NotificationService
@@ -37,14 +38,22 @@ async def get_wallet_repository(
     return WalletRepository(session)
 
 
+async def get_shop_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> ShopRepository:
+    return ShopRepository(session)
+
+
 def get_quest_service(
     quest_repo: QuestRepository = Depends(get_quest_repository),
     wallet_repo: WalletRepository = Depends(get_wallet_repository),
+    shop_repo: ShopRepository = Depends(get_shop_repository),
     notification_repo: NotificationRepository = Depends(get_notification_repository),
 ) -> QuestService:
     return QuestService(
         quest_repository=quest_repo,
         wallet_repository=wallet_repo,
+        shop_repository=shop_repo,
         notification_service=NotificationService(notification_repo),
     )
 

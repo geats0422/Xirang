@@ -16,6 +16,7 @@ from app.schemas.quest import (
 if TYPE_CHECKING:
     from app.db.models.quest import QuestAssignment
     from app.repositories.quest_repository import QuestRepository
+    from app.repositories.shop_repository import ShopRepository
     from app.repositories.wallet_repository import WalletRepository
     from app.services.notification.schemas import NotificationResponse
 
@@ -64,6 +65,61 @@ QUEST_DEFINITIONS: dict[str, dict[str, Any]] = {
         "action_type": ActionType.CONTINUE,
         "navigate_to": None,
     },
+    "quest-abyss": {
+        "title_i18n_key": "quests.missionAbyssTitle",
+        "target_metric": "run_count_endless",
+        "target_value": 2,
+        "reward_type": "item",
+        "reward_item_code": "xp_boost_2x",
+        "reward_i18n_key": "quests.rewardDoubleCard",
+        "reward_icon": "🎁",
+        "icon": "⚔",
+        "icon_tone": IconTone.VIOLET,
+        "action_type": ActionType.CONTINUE,
+        "navigate_to": None,
+    },
+    "quest-accuracy": {
+        "title_i18n_key": "quests.missionAccuracyTitle",
+        "target_metric": "accuracy_gte_80",
+        "target_value": 1,
+        "reward_type": "asset",
+        "reward_asset_code": "COIN",
+        "reward_quantity": 30,
+        "reward_i18n_key": "quests.rewardCoins30",
+        "reward_icon": "🪙",
+        "icon": "✪",
+        "icon_tone": IconTone.GREEN,
+        "action_type": ActionType.CONTINUE,
+        "navigate_to": None,
+    },
+    "quest-time": {
+        "title_i18n_key": "quests.missionTimeTitle",
+        "target_metric": "study_minutes",
+        "target_value": 10,
+        "reward_type": "asset",
+        "reward_asset_code": "COIN",
+        "reward_quantity": 20,
+        "reward_i18n_key": "quests.rewardCoins20",
+        "reward_icon": "🪙",
+        "icon": "⏱",
+        "icon_tone": IconTone.BLUE,
+        "action_type": ActionType.CONTINUE,
+        "navigate_to": None,
+    },
+    "quest-floors": {
+        "title_i18n_key": "quests.missionFloorsTitle",
+        "target_metric": "endless_floors",
+        "target_value": 5,
+        "reward_type": "asset",
+        "reward_asset_code": "COIN",
+        "reward_quantity": 25,
+        "reward_i18n_key": "quests.rewardCoins25",
+        "reward_icon": "🪙",
+        "icon": "🗼",
+        "icon_tone": IconTone.AMBER,
+        "action_type": ActionType.CONTINUE,
+        "navigate_to": None,
+    },
 }
 
 
@@ -105,10 +161,12 @@ class QuestService:
         self,
         quest_repository: QuestRepository,
         wallet_repository: WalletRepository,
+        shop_repository: ShopRepository,
         notification_service: NotificationServiceProtocol,
     ) -> None:
         self._quest_repo = quest_repository
         self._wallet_repo = wallet_repository
+        self._shop_repo = shop_repository
         self._notification_service = notification_service
 
     def _get_today_cycle_key(self) -> str:
@@ -182,10 +240,11 @@ class QuestService:
 
     async def get_user_quests(self, user_id: UUID) -> QuestListResponse:
         today_key = self._get_today_cycle_key()
+        await self._ensure_daily_quests(user_id, today_key)
         quests = await self._quest_repo.get_user_quests_by_cycle(user_id, today_key)
 
-        if not quests:
-            quests = await self._ensure_daily_quests(user_id, today_key)
+        quest_order = {code: index for index, code in enumerate(QUEST_DEFINITIONS.keys())}
+        quests.sort(key=lambda q: quest_order.get(q.quest_code, 999))
 
         quest_responses = [self._build_quest_response(q) for q in quests]
         monthly_progress = await self._get_monthly_progress(user_id)
@@ -263,7 +322,12 @@ class QuestService:
             coin_balance = await self._wallet_repo.get_balance(user_id, quest.reward_asset_code)
 
         elif quest.reward_type == "item" and quest.reward_item_code:
-            item_quantity = 1
+            inventory = await self._shop_repo.upsert_inventory(
+                user_id=user_id,
+                item_code=quest.reward_item_code,
+                quantity=1,
+            )
+            item_quantity = inventory.quantity
 
         await self._notification_service.create_notification(
             user_id=user_id,

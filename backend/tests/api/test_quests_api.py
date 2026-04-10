@@ -242,6 +242,30 @@ class FakeNotificationRepo:
         pass
 
 
+class FakeShopRepository:
+    def __init__(self) -> None:
+        self.inventory: dict[tuple[UUID, str], int] = {}
+
+    async def upsert_inventory(
+        self,
+        user_id: UUID,
+        item_code: str,
+        quantity: int,
+        quota_max: int | None = None,
+        refill_days: int | None = None,
+        is_auto_refill: bool = False,
+    ):
+        current = self.inventory.get((user_id, item_code), 0)
+        updated = current + quantity
+        self.inventory[(user_id, item_code)] = updated
+
+        class InventoryResult:
+            def __init__(self, qty: int) -> None:
+                self.quantity = qty
+
+        return InventoryResult(updated)
+
+
 class TestQuestService:
     async def test_get_user_quests_creates_daily_quests(self) -> None:
         from app.services.quest.service import QuestService
@@ -250,10 +274,12 @@ class TestQuestService:
         repo = FakeQuestRepository()
         wallet_repo = FakeWalletRepository()
         notification_repo = FakeNotificationRepo()
+        shop_repo = FakeShopRepository()
 
         service = QuestService(
             quest_repository=repo,
             wallet_repository=wallet_repo,
+            shop_repository=shop_repo,
             notification_service=notification_repo,
         )
 
@@ -271,10 +297,12 @@ class TestQuestService:
         repo = FakeQuestRepository()
         wallet_repo = FakeWalletRepository()
         notification_repo = FakeNotificationRepo()
+        shop_repo = FakeShopRepository()
 
         service = QuestService(
             quest_repository=repo,
             wallet_repository=wallet_repo,
+            shop_repository=shop_repo,
             notification_service=notification_repo,
         )
 
@@ -308,10 +336,12 @@ class TestQuestService:
         repo = FakeQuestRepository()
         wallet_repo = FakeWalletRepository()
         notification_repo = FakeNotificationRepo()
+        shop_repo = FakeShopRepository()
 
         service = QuestService(
             quest_repository=repo,
             wallet_repository=wallet_repo,
+            shop_repository=shop_repo,
             notification_service=notification_repo,
         )
 
@@ -325,10 +355,12 @@ class TestQuestService:
         repo = FakeQuestRepository()
         wallet_repo = FakeWalletRepository()
         notification_repo = FakeNotificationRepo()
+        shop_repo = FakeShopRepository()
 
         service = QuestService(
             quest_repository=repo,
             wallet_repository=wallet_repo,
+            shop_repository=shop_repo,
             notification_service=notification_repo,
         )
 
@@ -357,10 +389,12 @@ class TestQuestService:
         repo = FakeQuestRepository()
         wallet_repo = FakeWalletRepository()
         notification_repo = FakeNotificationRepo()
+        shop_repo = FakeShopRepository()
 
         service = QuestService(
             quest_repository=repo,
             wallet_repository=wallet_repo,
+            shop_repository=shop_repo,
             notification_service=notification_repo,
         )
 

@@ -360,7 +360,27 @@ const chooseAnswer = async (answerChoice: "false" | "true") => {
 };
 
 const closeSettlement = () => {
-  showSettlement.value = false;
+  void router.push(ROUTES.library);
+};
+
+const goToPath = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "speed-survival",
+    },
+  });
+};
+
+const goToReview = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "review",
+    },
+  });
 };
 
 const toggleFeedbackForm = async () => {
@@ -530,6 +550,8 @@ onUnmounted(() => {
       :goal-text="t('speedSurvival.settlementGoalText')"
       @close="closeSettlement"
       @confirm="goLibrary"
+      @continue-to-path="goToPath"
+      @review-mistakes="goToReview"
     />
   </main>
 </template>

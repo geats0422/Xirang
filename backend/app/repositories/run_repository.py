@@ -463,9 +463,9 @@ class RunRepository:
         if document_id is not None:
             stmt = stmt.where(Run.document_id == document_id)
         result = await self._session.execute(stmt)
+        states = result.scalars().all()
         path_ids: set[str] = set()
-        for row in result:
-            state = row[0] if isinstance(row, tuple) else row
+        for state in states:
             if isinstance(state, dict):
                 path_id = state.get("path_id")
                 if isinstance(path_id, str) and path_id:

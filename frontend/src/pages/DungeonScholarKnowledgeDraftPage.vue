@@ -774,18 +774,22 @@ const closeSettlement = () => {
 };
 
 const goToPath = () => {
-  const documentId = typeof route.query.documentId === "string" ? route.query.documentId : "";
   void router.push({
     path: ROUTES.levelPath,
-    query: { documentId, mode: "draft" },
+    query: {
+      ...route.query,
+      mode: "knowledge-draft",
+    },
   });
 };
 
 const goToReview = () => {
-  const documentId = typeof route.query.documentId === "string" ? route.query.documentId : "";
   void router.push({
     path: ROUTES.levelPath,
-    query: { documentId, mode: "review" },
+    query: {
+      ...route.query,
+      mode: "review",
+    },
   });
 };
 

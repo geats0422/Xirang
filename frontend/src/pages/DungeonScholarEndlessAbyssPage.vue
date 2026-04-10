@@ -440,18 +440,22 @@ const closeSettlement = () => {
 };
 
 const goToPath = () => {
-  const documentId = typeof route.query.documentId === "string" ? route.query.documentId : "";
   void router.push({
     path: ROUTES.levelPath,
-    query: { documentId, mode: "endless" },
+    query: {
+      ...route.query,
+      mode: "endless-abyss",
+    },
   });
 };
 
 const goToReview = () => {
-  const documentId = typeof route.query.documentId === "string" ? route.query.documentId : "";
   void router.push({
     path: ROUTES.levelPath,
-    query: { documentId, mode: "review" },
+    query: {
+      ...route.query,
+      mode: "review",
+    },
   });
 };
 

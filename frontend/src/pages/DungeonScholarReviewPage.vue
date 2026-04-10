@@ -393,7 +393,27 @@ const castSpell = async () => {
 };
 
 const closeSettlement = () => {
-  showSettlement.value = false;
+  void router.push(ROUTES.library);
+};
+
+const goToPath = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "review",
+    },
+  });
+};
+
+const goToReview = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "review",
+    },
+  });
 };
 
 watch(locale, () => {
@@ -540,6 +560,8 @@ onMounted(async () => {
       :goal-text="t('reviewMode.settlementGoal')"
       @close="closeSettlement"
       @confirm="goLibrary"
+      @continue-to-path="goToPath"
+      @review-mistakes="goToReview"
     />
   </main>
 </template>

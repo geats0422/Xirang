@@ -271,6 +271,7 @@ const getScrollCards = (): ScrollCard[] => {
 
   return filtered.map((doc) => {
     const progress = progressMap.value[doc.id];
+    const cardProgress = getProgress(doc);
     return {
       id: doc.id,
       title: doc.title,
@@ -279,8 +280,8 @@ const getScrollCards = (): ScrollCard[] => {
       format: getDocumentFormat(doc),
       size: "",
       progressLabel: getProgressLabel(doc.status),
-      progressValue: progress ? `${progress.progress}%` : "0%",
-      progress: getProgress(doc),
+      progressValue: `${cardProgress}%`,
+      progress: cardProgress,
       action: getAction(doc.status),
       disabled: isDisabled(doc.status),
       tone: "muted" as const,

@@ -268,7 +268,7 @@ class FakeShopRepository:
 
 class TestQuestService:
     async def test_get_user_quests_creates_daily_quests(self) -> None:
-        from app.services.quest.service import QuestService
+        from app.services.quest.service import DAILY_QUEST_COUNT, QUEST_DEFINITIONS, QuestService
 
         user_id = uuid4()
         repo = FakeQuestRepository()
@@ -284,9 +284,16 @@ class TestQuestService:
         )
 
         result = await service.get_user_quests(user_id)
+        result_again = await service.get_user_quests(user_id)
+
+        quest_codes = [quest.quest_code for quest in result.daily_quests]
+        quest_codes_again = [quest.quest_code for quest in result_again.daily_quests]
 
         assert isinstance(result, QuestListResponse)
-        assert len(result.daily_quests) >= 0
+        assert len(result.daily_quests) == DAILY_QUEST_COUNT
+        assert len(set(quest_codes)) == DAILY_QUEST_COUNT
+        assert set(quest_codes).issubset(set(QUEST_DEFINITIONS.keys()))
+        assert quest_codes == quest_codes_again
         assert result.monthly_progress is not None
         assert isinstance(result.monthly_progress, MonthlyProgressResponse)
 

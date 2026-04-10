@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
@@ -122,6 +123,8 @@ QUEST_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
 }
 
+DAILY_QUEST_COUNT = 3
+
 
 class QuestServiceError(Exception):
     pass
@@ -240,11 +243,7 @@ class QuestService:
 
     async def get_user_quests(self, user_id: UUID) -> QuestListResponse:
         today_key = self._get_today_cycle_key()
-        await self._ensure_daily_quests(user_id, today_key)
-        quests = await self._quest_repo.get_user_quests_by_cycle(user_id, today_key)
-
-        quest_order = {code: index for index, code in enumerate(QUEST_DEFINITIONS.keys())}
-        quests.sort(key=lambda q: quest_order.get(q.quest_code, 999))
+        quests = await self._ensure_daily_quests(user_id, today_key)
 
         quest_responses = [self._build_quest_response(q) for q in quests]
         monthly_progress = await self._get_monthly_progress(user_id)
@@ -261,29 +260,41 @@ class QuestService:
         )
 
     async def _ensure_daily_quests(self, user_id: UUID, cycle_key: str) -> list[QuestAssignment]:
-        quests = []
-        for quest_code, definition in QUEST_DEFINITIONS.items():
-            existing = await self._quest_repo.get_user_quest(user_id, quest_code, cycle_key)
-            if not existing:
-                expires_at = datetime.strptime(
-                    cycle_key + " 23:59:59", "%Y-%m-%d %H:%M:%S"
-                ).replace(tzinfo=UTC)
-                quest = await self._quest_repo.create_quest(
-                    user_id=user_id,
-                    quest_code=quest_code,
-                    quest_type="daily",
-                    target_metric=definition["target_metric"],
-                    target_value=definition["target_value"],
-                    cycle_key=cycle_key,
-                    reward_type=definition["reward_type"],
-                    reward_asset_code=definition.get("reward_asset_code"),
-                    reward_quantity=definition.get("reward_quantity", 0),
-                    reward_item_code=definition.get("reward_item_code"),
-                    expires_at=expires_at,
-                )
-                quests.append(quest)
-            else:
+        all_codes = list(QUEST_DEFINITIONS.keys())
+        selection_size = min(DAILY_QUEST_COUNT, len(all_codes))
+        seeded_random = random.Random(f"{user_id}:{cycle_key}")
+        selected_code_set = set(seeded_random.sample(all_codes, k=selection_size))
+        selected_codes = [code for code in all_codes if code in selected_code_set]
+
+        existing_quests = await self._quest_repo.get_user_quests_by_cycle(user_id, cycle_key)
+        existing_by_code = {quest.quest_code: quest for quest in existing_quests}
+
+        expires_at = datetime.strptime(cycle_key + " 23:59:59", "%Y-%m-%d %H:%M:%S").replace(
+            tzinfo=UTC
+        )
+        quests: list[QuestAssignment] = []
+        for quest_code in selected_codes:
+            existing = existing_by_code.get(quest_code)
+            if existing is not None:
                 quests.append(existing)
+                continue
+
+            definition = QUEST_DEFINITIONS[quest_code]
+            quest = await self._quest_repo.create_quest(
+                user_id=user_id,
+                quest_code=quest_code,
+                quest_type="daily",
+                target_metric=definition["target_metric"],
+                target_value=definition["target_value"],
+                cycle_key=cycle_key,
+                reward_type=definition["reward_type"],
+                reward_asset_code=definition.get("reward_asset_code"),
+                reward_quantity=definition.get("reward_quantity", 0),
+                reward_item_code=definition.get("reward_item_code"),
+                expires_at=expires_at,
+            )
+            quests.append(quest)
+
         await self._quest_repo.commit()
         return quests
 

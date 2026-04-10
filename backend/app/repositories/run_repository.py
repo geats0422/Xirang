@@ -434,8 +434,9 @@ class RunRepository:
 
         # Filter by question type based on mode
         if mode == RunMode.SPEED:
-            # Speed mode uses TRUE_FALSE questions
-            stmt = stmt.where(Question.question_type == QuestionType.TRUE_FALSE)
+            stmt = stmt.where(
+                Question.question_type.in_([QuestionType.TRUE_FALSE, QuestionType.SINGLE_CHOICE])
+            )
         elif mode == RunMode.DRAFT:
             # Draft mode prefers SINGLE_CHOICE and MULTIPLE_CHOICE
             stmt = stmt.where(
@@ -507,6 +508,8 @@ class RunRepository:
         questions: list[QuestionData] = []
         for question in question_rows:
             options = option_map.get(question.id, [])
+            if mode == RunMode.SPEED and len(options) < 2:
+                continue
             correct_options = [option for option in options if option.is_correct]
             # Extract correct_answer from metadata for FILL_IN_BLANK questions
             metadata = question.question_metadata or {}

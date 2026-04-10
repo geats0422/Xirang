@@ -169,12 +169,9 @@ const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() ==
 const bootstrapRun = async () => {
   await refreshBalance();
   const rawDocumentId = route.query.documentId;
-  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+  const documentId = typeof rawDocumentId === "string" && rawDocumentId.trim() ? rawDocumentId : undefined;
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
-  if (!documentId) {
-    return;
-  }
 
   try {
     const created = await createRun(documentId, "speed", 8, pathId, isMistakeReview);

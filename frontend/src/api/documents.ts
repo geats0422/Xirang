@@ -4,6 +4,8 @@ import { apiRequest } from "./http";
 export type DocumentListItem = {
   id: string;
   title: string;
+  file_name?: string;
+  format?: string;
   status?: string;
   created_at?: string | null;
 };

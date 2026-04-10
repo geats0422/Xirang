@@ -192,6 +192,8 @@ async def list_documents(
             {
                 "id": str(d.id),
                 "title": d.title,
+                "file_name": d.file_name,
+                "format": str(d.format),
                 "status": str(d.ingest_status),
                 "created_at": d.created_at.isoformat() if d.created_at else None,
             }

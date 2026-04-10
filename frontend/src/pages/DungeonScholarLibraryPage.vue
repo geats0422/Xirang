@@ -200,19 +200,40 @@ const isDisabled = (status?: string): boolean => {
   return status !== "ready" && status !== "failed";
 };
 
-const getDocumentFormat = (fileName: string): string => {
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
-  const formatMap: Record<string, string> = {
-    pdf: "PDF",
-    doc: "DOC",
-    docx: "DOCX",
-    ppt: "PPT",
-    pptx: "PPTX",
-    txt: "TXT",
-    md: "MD",
-    markdown: "MD",
-  };
-  return formatMap[ext] ?? ext.toUpperCase();
+const FORMAT_LABELS: Record<string, string> = {
+  pdf: "PDF",
+  txt: "TXT",
+  md: "MARKDOWN",
+  markdown: "MARKDOWN",
+  doc: "WORD",
+  docx: "WORD",
+  ppt: "PPT",
+  pptx: "PPT",
+};
+
+const getExtension = (value?: string): string | null => {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  const dotIndex = trimmed.lastIndexOf(".");
+  if (dotIndex <= 0 || dotIndex === trimmed.length - 1) {
+    return null;
+  }
+  const ext = trimmed.slice(dotIndex + 1).toLowerCase();
+  return /^[a-z0-9]+$/.test(ext) ? ext : null;
+};
+
+const getDocumentFormat = (doc: DocumentListItem): string => {
+  const apiFormat = doc.format?.toLowerCase().trim();
+  if (apiFormat && FORMAT_LABELS[apiFormat]) {
+    return FORMAT_LABELS[apiFormat];
+  }
+  const ext = getExtension(doc.file_name) ?? getExtension(doc.title);
+  if (!ext) {
+    return "UNKNOWN";
+  }
+  return FORMAT_LABELS[ext] ?? ext.toUpperCase();
 };
 
 const getScrollCards = (): ScrollCard[] => {
@@ -255,7 +276,7 @@ const getScrollCards = (): ScrollCard[] => {
       title: doc.title,
       subtitle: getStatusLabel(doc.status, progress?.stage),
       icon: "📖",
-      format: getDocumentFormat(doc.title),
+      format: getDocumentFormat(doc),
       size: "",
       progressLabel: getProgressLabel(doc.status),
       progressValue: progress ? `${progress.progress}%` : "0%",

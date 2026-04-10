@@ -19,6 +19,7 @@ type ShopItem = {
   offerId: string;
   name: string;
   rarity: string;
+  rarityKey: "common" | "uncommon" | "rare" | "legendary";
   price: number;
   icon: string;
   description: string;
@@ -28,7 +29,8 @@ type ShopItem = {
 };
 
 const router = useRouter();
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+const isZhLocale = computed(() => locale.value.startsWith("zh"));
 
 const walletBalance = ref(0);
 const shopItems = ref<ShopItem[]>([]);
@@ -39,19 +41,27 @@ const isPurchasing = ref(false);
 const showTopUpModal = ref(false);
 const showBagModal = ref(false);
 const selectedItem = ref<ShopItem | null>(null);
+const showPurchaseConfirmModal = ref(false);
+const showTopUpConfirmModal = ref(false);
 const showUseConfirmModal = ref(false);
 const selectedInventoryItem = ref<{ itemCode: string; name: string; description: string; quantity: number } | null>(null);
+const selectedTopUpOffer = ref<{ id: string; coin_amount: number; price_usd: number; label: string } | null>(null);
 
 const { inventory, refresh: refreshInventory, quantityOf } = useInventory();
 
 const iconMap: Record<string, string> = {
-  streak_freeze: "🛡️",
-  xp_boost_1_5x: "⚡",
-  xp_boost_2x: "⚡",
-  xp_boost_3x: "⚡",
-  revival: "🔄",
-  time_treasure: "⏳",
-  coin_pack: "💎",
+  streak_freeze: "❄",
+  xp_boost: "⚗",
+  xp_boost_1_5: "⚗",
+  xp_boost_1_5x: "⚗",
+  xp_boost_2: "⚗",
+  xp_boost_2x: "⚗",
+  xp_boost_3: "⚗",
+  xp_boost_3x: "⚗",
+  abyss_revive: "♡",
+  revival: "♡",
+  time_treasure: "⌛",
+  coin_pack: "◈",
 };
 
 const rarityAccentMap: Record<string, "teal" | "violet" | "rose" | "amber"> = {
@@ -63,30 +73,156 @@ const rarityAccentMap: Record<string, "teal" | "violet" | "rose" | "amber"> = {
 
 const rarityLabel = (rarity: string): string => {
   const rarityLower = rarity.toLowerCase();
-  if (rarityLower === "uncommon") return t("shop.items.uncommon");
-  if (rarityLower === "rare") return t("shop.items.rare");
-  if (rarityLower === "legendary") return t("shop.items.rescue");
-  return t("shop.items.common");
+  if (rarityLower === "uncommon") return translateOr("shop.items.uncommon", "稀有");
+  if (rarityLower === "rare") return translateOr("shop.items.rare", "珍稀");
+  if (rarityLower === "legendary") return translateOr("shop.items.legendary", "传说");
+  return translateOr("shop.items.common", "普通");
+};
+
+function translateOr(key: string, fallback: string): string {
+  if (!te(key)) return fallback;
+  return t(key);
+}
+
+const inventoryCountLabel = (count: number): string => {
+  return translateOr("shop.inInventory", `库存 x${count}`).replace("{n}", String(count));
+};
+
+const itemCatalog: Record<string, { name: string; description: string }> = {
+  streak_freeze: {
+    name: "玄霜护印",
+    description: "当日未学习时可护住连胜，不中断打卡。",
+  },
+  xp_boost_1_5: {
+    name: "悟道灵液·一阶",
+    description: "学习与错题复习经验提升至 1.5 倍，可叠加时长。",
+  },
+  xp_boost_1_5x: {
+    name: "悟道灵液·一阶",
+    description: "学习与错题复习经验提升至 1.5 倍，可叠加时长。",
+  },
+  xp_boost_2: {
+    name: "悟道灵液·二阶",
+    description: "学习与错题复习经验提升至 2 倍，可叠加时长。",
+  },
+  xp_boost_2x: {
+    name: "悟道灵液·二阶",
+    description: "学习与错题复习经验提升至 2 倍，可叠加时长。",
+  },
+  xp_boost_3: {
+    name: "悟道灵液·三阶",
+    description: "学习与错题复习经验提升至 3 倍，可叠加时长。",
+  },
+  xp_boost_3x: {
+    name: "悟道灵液·三阶",
+    description: "学习与错题复习经验提升至 3 倍，可叠加时长。",
+  },
+  xp_boost: {
+    name: "悟道灵液",
+    description: "学习与错题复习经验提升，可叠加时长。",
+  },
+  time_treasure: {
+    name: "时晷灵砂",
+    description: "延长当前经验翻倍效果时长，适合即将到期时续时。",
+  },
+  abyss_revive: {
+    name: "归元护符",
+    description: "无尽深渊专属：恢复 1HP，并获得 3 分钟免扣血保护。",
+  },
+  revival: {
+    name: "归元护符",
+    description: "无尽深渊专属：恢复 1HP，并获得 3 分钟免扣血保护。",
+  },
+  coin_pack: {
+    name: "灵钱宝匣",
+    description: "使用现金购买代币，立即到账。",
+  },
+};
+
+const resolveItemBaseCode = (itemCode: string): string => {
+  if (itemCode.startsWith("coin_pack")) return "coin_pack";
+  return itemCode;
+};
+
+const safeItemDisplayName = (itemCode: string): string => {
+  const baseCode = resolveItemBaseCode(itemCode);
+  const fallback = itemCatalog[itemCode] || itemCatalog[baseCode];
+  if (fallback) return fallback.name;
+  return itemCode.replace(/_/g, "·");
 };
 
 const itemLocalization = (itemCode: string): { name: string; description: string } => {
-  const key = itemCode.replace(/_[\d]?x$/, "_boost").replace(/_/g, ".");
-  const names: Record<string, string> = {
-    "streak.freeze": t("shop.items.streakFreeze.name"),
-    "xp.boost": t("shop.items.xpBoost.name"),
-    "abyss.revive": t("shop.items.abyssRevive.name"),
-    "coin.pack": t("shop.items.coinPack.name"),
+  const baseCode = resolveItemBaseCode(itemCode);
+  const i18nKeys: Record<string, { name: string; description: string }> = {
+    streak_freeze: {
+      name: "shop.items.streakFreeze.name",
+      description: "shop.items.streakFreeze.desc",
+    },
+    xp_boost_1_5x: {
+      name: "shop.items.xpBoost15.name",
+      description: "shop.items.xpBoost15.desc",
+    },
+    xp_boost_1_5: {
+      name: "shop.items.xpBoost15.name",
+      description: "shop.items.xpBoost15.desc",
+    },
+    xp_boost_2: {
+      name: "shop.items.xpBoost2.name",
+      description: "shop.items.xpBoost2.desc",
+    },
+    xp_boost_2x: {
+      name: "shop.items.xpBoost2.name",
+      description: "shop.items.xpBoost2.desc",
+    },
+    xp_boost_3: {
+      name: "shop.items.xpBoost3.name",
+      description: "shop.items.xpBoost3.desc",
+    },
+    xp_boost_3x: {
+      name: "shop.items.xpBoost3.name",
+      description: "shop.items.xpBoost3.desc",
+    },
+    xp_boost: {
+      name: "shop.items.xpBoost.name",
+      description: "shop.items.xpBoost.desc",
+    },
+    time_treasure: {
+      name: "shop.items.timeTreasure.name",
+      description: "shop.items.timeTreasure.desc",
+    },
+    abyss_revive: {
+      name: "shop.items.abyssRevive.name",
+      description: "shop.items.abyssRevive.desc",
+    },
+    revival: {
+      name: "shop.items.revival.name",
+      description: "shop.items.revival.desc",
+    },
+    coin_pack: {
+      name: "shop.items.coinPack.name",
+      description: "shop.items.coinPack.desc",
+    },
   };
-  const descs: Record<string, string> = {
-    "streak.freeze": t("shop.items.streakFreeze.desc"),
-    "xp.boost": t("shop.items.xpBoost.desc"),
-    "abyss.revive": t("shop.items.abyssRevive.desc"),
-    "coin.pack": t("shop.items.coinPack.desc"),
+
+  const key = i18nKeys[itemCode] || i18nKeys[baseCode];
+  const fallback = itemCatalog[itemCode] || itemCatalog[baseCode] || {
+    name: safeItemDisplayName(itemCode),
+    description: "",
   };
+
+  if (isZhLocale.value) {
+    return fallback;
+  }
+
   return {
-    name: names[key] || t(`shop.items.${key.replace(/\./g, "")}.name`) || itemCode,
-    description: descs[key] || t(`shop.items.${key.replace(/\./g, "")}.desc`) || "",
+    name: key ? translateOr(key.name, fallback.name) : fallback.name,
+    description: key ? translateOr(key.description, fallback.description) : fallback.description,
   };
+};
+
+const itemIcon = (itemCode: string): string => {
+  const baseCode = resolveItemBaseCode(itemCode);
+  return iconMap[itemCode] || iconMap[baseCode] || "◉";
 };
 
 const mapOfferToShopItem = (offer: ShopOffer): ShopItem => {
@@ -96,10 +232,14 @@ const mapOfferToShopItem = (offer: ShopOffer): ShopItem => {
   const localized = itemLocalization(itemCode);
   return {
     offerId: offer.id,
-    name: localized.name || offer.display_name || itemCode,
+    name: localized.name || offer.display_name || safeItemDisplayName(itemCode),
     rarity: rarityLabel(offer.rarity || "common"),
+    rarityKey:
+      rarityLower === "legendary" || rarityLower === "rare" || rarityLower === "uncommon"
+        ? rarityLower
+        : "common",
     price: offer.price_amount || 0,
-    icon: iconMap[itemCode] || (isCoinPack ? "💎" : "📦"),
+    icon: itemIcon(itemCode),
     description: localized.description,
     accent: isCoinPack ? "amber" : (rarityAccentMap[rarityLower] || "teal"),
     itemCode,
@@ -155,25 +295,31 @@ const goBack = async () => {
   await router.push("/home");
 };
 
-const handlePurchaseItemCode = async (itemCode: string) => {
-  const item = shopItems.value.find((i) => i.itemCode === itemCode);
-  if (!item) return;
-  await handlePurchase(item);
-};
-
 const handlePurchase = async (item: ShopItem) => {
   if (isPurchasing.value) return;
 
   if (item.isCoinPack) {
-    showTopUpModal.value = true;
-    return;
-  }
-
-  if (walletBalance.value < item.price) {
     selectedItem.value = item;
     showTopUpModal.value = true;
     return;
   }
+
+  selectedItem.value = item;
+  showPurchaseConfirmModal.value = true;
+};
+
+const confirmPurchaseSelected = async () => {
+  if (isPurchasing.value || !selectedItem.value) return;
+
+  const item = selectedItem.value;
+
+  if (walletBalance.value < item.price) {
+    showPurchaseConfirmModal.value = false;
+    showTopUpModal.value = true;
+    return;
+  }
+
+
 
   isPurchasing.value = true;
   purchaseError.value = null;
@@ -183,6 +329,8 @@ const handlePurchase = async (item: ShopItem) => {
       offerId: item.offerId,
       idempotencyKey: "purchase-" + Date.now() + "-" + item.offerId,
     });
+    showPurchaseConfirmModal.value = false;
+    selectedItem.value = null;
     await Promise.all([fetchBalance(), fetchShopItems(), refreshInventory()]);
   } catch (error) {
     console.error("Purchase failed:", error);
@@ -193,21 +341,37 @@ const handlePurchase = async (item: ShopItem) => {
 };
 
 const handleTopUpPurchase = async (offerId: string) => {
-  isPurchasing.value = true;
-  try {
-    await purchaseShopItem({
-      offerId,
-      idempotencyKey: "purchase-" + Date.now() + "-" + offerId,
-    });
-    showTopUpModal.value = false;
-    await Promise.all([fetchBalance(), fetchShopItems()]);
-  } catch (error) {
-    console.error("Top-up failed:", error);
-    purchaseError.value = t("shop.errors.purchaseFailed");
-  } finally {
-    isPurchasing.value = false;
-  }
+  const offer = topUpOffers.value.find((i) => i.id === offerId);
+  if (!offer) return;
+  selectedTopUpOffer.value = offer;
+  showTopUpConfirmModal.value = true;
 };
+
+const confirmTopUpPurchase = async () => {
+  if (!selectedTopUpOffer.value) return;
+  showTopUpConfirmModal.value = false;
+  showTopUpModal.value = false;
+  purchaseError.value = "充值接口暂未接入，当前为前端流程占位。";
+  window.setTimeout(() => {
+    purchaseError.value = null;
+  }, 2200);
+  selectedTopUpOffer.value = null;
+};
+
+const closePurchaseConfirm = () => {
+  showPurchaseConfirmModal.value = false;
+  selectedItem.value = null;
+};
+
+const purchaseModalTitle = computed(() => {
+  if (!selectedItem.value) return "购买道具";
+  return `购买${selectedItem.value.name}`;
+});
+
+const topUpConfirmTitle = computed(() => {
+  if (!selectedTopUpOffer.value) return "购买灵钱宝匣";
+  return `购买${selectedTopUpOffer.value.label}`;
+});
 
 const openBag = async () => {
   await refreshInventory();
@@ -251,7 +415,42 @@ const inventoryItems = computed(() => {
     });
 });
 
-const coinPacks = computed(() => shopItems.value.filter((i) => i.isCoinPack));
+const coinPacks = computed(() => {
+  const packs = shopItems.value.filter((i) => i.isCoinPack);
+  if (packs.length > 0) return packs;
+  return [
+    {
+      offerId: "coin-pack-fallback",
+      name: "灵钱宝匣",
+      rarity: translateOr("shop.topUp", "充值"),
+      rarityKey: "legendary" as const,
+      price: 6,
+      icon: "◈",
+      description: "购买灵钱补给，用于解锁道具与功能。",
+      accent: "amber" as const,
+      itemCode: "coin_pack",
+      isCoinPack: true,
+    },
+  ];
+});
+
+const topUpOffers = computed(() => {
+  const realOffers = shopItems.value
+    .filter((i) => i.isCoinPack)
+    .map((c) => ({
+      id: c.offerId,
+      coin_amount: c.price * 10,
+      price_usd: c.price,
+      label: c.name,
+      recommended: false,
+    }));
+  if (realOffers.length > 0) return realOffers;
+  return [
+    { id: "demo-1", coin_amount: 60, price_usd: 6, label: "灵钱宝匣·小", recommended: false },
+    { id: "demo-2", coin_amount: 300, price_usd: 30, label: "灵钱宝匣·中", recommended: true },
+    { id: "demo-3", coin_amount: 680, price_usd: 68, label: "灵钱宝匣·大", recommended: false },
+  ];
+});
 const toolItems = computed(() => shopItems.value.filter((i) => !i.isCoinPack));
 
 defineExpose({
@@ -292,9 +491,10 @@ defineExpose({
           :accent="item.accent"
           :item-code="item.itemCode"
           :price-is-cash="true"
-          :tag="t('shop.topUp')"
+          :hide-price-tag="true"
+          :badge="t('shop.topUp')"
           :description="item.description"
-          @purchase="handlePurchaseItemCode"
+          @purchase="() => handlePurchase(item)"
         />
         <ShopItemCard
           v-for="item in toolItems"
@@ -305,8 +505,9 @@ defineExpose({
           :accent="item.accent"
           :item-code="item.itemCode"
           :tag="item.rarity"
+          :badge="item.rarityKey === 'rare' ? t('shop.items.rareTag') : undefined"
           :description="item.description"
-          @purchase="handlePurchaseItemCode"
+          @purchase="() => handlePurchase(item)"
         />
       </section>
 
@@ -322,10 +523,39 @@ defineExpose({
 
     <CoinPackTopUpModal
       :visible="showTopUpModal"
-      :offers="coinPacks.map((c) => ({ id: c.offerId, coin_amount: c.price * 10, price_usd: c.price, label: c.name }))"
+      :title="'灵钱宝匣充值'"
+      :offers="topUpOffers"
       @purchase="handleTopUpPurchase"
       @close="showTopUpModal = false"
     />
+
+    <transition name="modal-fade">
+      <div v-if="showTopUpConfirmModal" class="purchase-modal-overlay" @click="showTopUpConfirmModal = false">
+        <section class="purchase-modal" @click.stop>
+          <h2>{{ topUpConfirmTitle }}</h2>
+          <p v-if="selectedTopUpOffer">将获得 {{ selectedTopUpOffer.coin_amount }} 灵钱。</p>
+          <p v-if="selectedTopUpOffer" class="purchase-modal__price">需支付 ${{ selectedTopUpOffer.price_usd }}</p>
+          <footer class="purchase-modal__actions">
+            <button class="confirm-btn" type="button" @click="confirmTopUpPurchase">确认购买</button>
+            <button class="cancel-btn" type="button" @click="showTopUpConfirmModal = false">取消</button>
+          </footer>
+        </section>
+      </div>
+    </transition>
+
+    <transition name="modal-fade">
+      <div v-if="showPurchaseConfirmModal" class="purchase-modal-overlay" @click="closePurchaseConfirm">
+        <section class="purchase-modal" @click.stop>
+          <h2>{{ purchaseModalTitle }}</h2>
+          <p v-if="selectedItem">{{ selectedItem.description }}</p>
+          <p v-if="selectedItem" class="purchase-modal__price">需消耗 {{ selectedItem.price }} 🪙</p>
+          <footer class="purchase-modal__actions">
+            <button class="confirm-btn" type="button" @click="confirmPurchaseSelected">确认购买</button>
+            <button class="cancel-btn" type="button" @click="closePurchaseConfirm">取消</button>
+          </footer>
+        </section>
+      </div>
+    </transition>
 
     <ItemUseConfirmModal
       :visible="showUseConfirmModal"
@@ -346,7 +576,7 @@ defineExpose({
           </header>
           <div class="bag-modal__body">
             <div v-if="inventoryItems.length === 0" class="bag-empty">
-              <p>{{ t("shop.bagEmpty") }}</p>
+              <p>{{ translateOr("shop.bagEmpty", "暂无可用道具") }}</p>
             </div>
             <div v-else class="bag-grid">
               <article
@@ -357,20 +587,24 @@ defineExpose({
                 <span class="bag-item__icon">{{ item.icon }}</span>
                 <div class="bag-item__info">
                   <strong>{{ item.name }}</strong>
-                  <span>{{ t("shop.inInventory", { n: item.quantity }) }}</span>
+                  <span>{{ inventoryCountLabel(item.quantity) }}</span>
                 </div>
                 <button
                   class="use-btn"
                   type="button"
                   @click="handleUseItem(item.itemCode, item.name, item.description)"
                 >
-                  {{ t("shop.use") }}
+                  {{ translateOr("shop.use", "使用") }}
                 </button>
               </article>
             </div>
           </div>
         </section>
       </div>
+    </transition>
+
+    <transition name="modal-fade">
+      <div v-if="purchaseError" class="purchase-error-toast">{{ purchaseError }}</div>
     </transition>
   </main>
 </template>
@@ -515,6 +749,88 @@ defineExpose({
   right: 0;
   top: 0;
   z-index: 1000;
+}
+
+.purchase-modal-overlay {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.45);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 1200;
+}
+
+.purchase-modal {
+  background: #ffffff;
+  border: 1px solid #e7e5e4;
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
+  max-width: 560px;
+  padding: 24px;
+  width: min(560px, calc(100% - 24px));
+}
+
+.purchase-modal h2 {
+  color: #1f2937;
+  font-size: 36px;
+  margin: 0;
+}
+
+.purchase-modal p {
+  color: #6b7280;
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
+
+.purchase-modal__price {
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.purchase-modal__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.confirm-btn,
+.cancel-btn {
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.confirm-btn {
+  background: linear-gradient(90deg, #0891b2, #0d9488);
+  border: 0;
+  color: #ffffff;
+}
+
+.cancel-btn {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.purchase-error-toast {
+  background: #7f1d1d;
+  border-radius: 12px;
+  bottom: 20px;
+  color: #ffffff;
+  left: 50%;
+  padding: 10px 14px;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 1200;
 }
 
 .bag-modal {

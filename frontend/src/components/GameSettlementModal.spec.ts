@@ -25,7 +25,7 @@ describe("GameSettlementModal", () => {
     expect(wrapper.emitted("close")).toHaveLength(1);
   });
 
-  it("clicking primary action emits confirm", async () => {
+  it("clicking primary action emits continueToPath", async () => {
     const wrapper = mount(GameSettlementModal, {
       props: baseProps,
       global: {
@@ -35,6 +35,6 @@ describe("GameSettlementModal", () => {
 
     await wrapper.get(".settlement-cta").trigger("click");
 
-    expect(wrapper.emitted("confirm")).toHaveLength(1);
+    expect(wrapper.emitted("continueToPath")).toHaveLength(1);
   });
 });

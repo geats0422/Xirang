@@ -57,21 +57,17 @@ class UserRepository:
         )
 
     async def _calculate_streak(self, user_id: UUID) -> int:
+        day_expr = func.date_trunc("day", func.timezone("Asia/Shanghai", Run.ended_at)).label("day")
+
         stmt = (
-            select(
-                func.date_trunc("day", Run.ended_at.op("AT TIME ZONE")("Asia/Shanghai")).label(
-                    "day"
-                ),
-            )
+            select(day_expr)
             .where(
                 Run.user_id == user_id,
                 Run.status == RunStatus.COMPLETED,
                 Run.ended_at.is_not(None),
             )
-            .group_by(func.date_trunc("day", Run.ended_at.op("AT TIME ZONE")("Asia/Shanghai")))
-            .order_by(
-                func.date_trunc("day", Run.ended_at.op("AT TIME ZONE")("Asia/Shanghai")).desc()
-            )
+            .group_by(day_expr)
+            .order_by(day_expr.desc())
         )
         result = await self._session.execute(stmt)
         rows = list(result.all())

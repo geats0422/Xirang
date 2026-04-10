@@ -770,7 +770,23 @@ const onDragEnd = () => {
 };
 
 const closeSettlement = () => {
-  showSettlement.value = false;
+  void router.push(ROUTES.library);
+};
+
+const goToPath = () => {
+  const documentId = typeof route.query.documentId === "string" ? route.query.documentId : "";
+  void router.push({
+    path: ROUTES.levelPath,
+    query: { documentId, mode: "draft" },
+  });
+};
+
+const goToReview = () => {
+  const documentId = typeof route.query.documentId === "string" ? route.query.documentId : "";
+  void router.push({
+    path: ROUTES.levelPath,
+    query: { documentId, mode: "review" },
+  });
 };
 
 const handleFeedback = async () => {
@@ -1013,6 +1029,8 @@ onUnmounted(() => {
       :goal-text="t('knowledgeDraft.settlementGoal')"
       @close="closeSettlement"
       @confirm="goLibrary"
+      @continue-to-path="goToPath"
+      @review-mistakes="goToReview"
     />
   </main>
 </template>

@@ -237,6 +237,26 @@ class InMemoryRunRepository:
     async def get_settlement(self, run_id: UUID) -> FakeSettlementRow | None:
         return self._settlements.get(run_id)
 
+    async def get_completed_path_ids(
+        self, user_id: UUID, document_id: UUID | None, mode: RunMode
+    ) -> set[str]:
+        path_ids: set[str] = set()
+        for run in self._runs.values():
+            if run.user_id != user_id:
+                continue
+            if run.status != RunStatus.COMPLETED:
+                continue
+            if run.mode != mode:
+                continue
+            if document_id is not None and run.document_id != document_id:
+                continue
+            state = run.mode_state
+            if isinstance(state, dict):
+                path_id = state.get("path_id")
+                if isinstance(path_id, str) and path_id:
+                    path_ids.add(path_id)
+        return path_ids
+
     async def commit(self) -> None:
         return
 

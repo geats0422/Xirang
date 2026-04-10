@@ -27,6 +27,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   close: [];
   confirm: [];
+  continueToPath: [];
+  reviewMistakes: [];
 }>();
 
 const goalProgressPercent = computed(() => {
@@ -117,8 +119,11 @@ const { t } = useI18n();
         </section>
 
         <footer class="settlement-actions">
-          <button class="settlement-cta" type="button" @click="emit('confirm')">{{ t("settlement.continueToLibrary") }}</button>
-          <button class="settlement-secondary" type="button" @click="emit('close')">{{ t("settlement.reviewMistakes") }}</button>
+          <button class="settlement-cta" type="button" @click="emit('continueToPath')">{{ t("settlement.continueToPath") }}</button>
+          <div class="settlement-secondary-actions">
+            <button class="settlement-secondary" type="button" @click="emit('reviewMistakes')">{{ t("settlement.reviewMistakes") }}</button>
+            <button class="settlement-tertiary" type="button" @click="emit('close')">{{ t("settlement.backToLibrary") }}</button>
+          </div>
         </footer>
       </section>
     </div>
@@ -346,10 +351,16 @@ const { t } = useI18n();
 }
 
 .settlement-actions {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-top: 16px;
+}
+
+.settlement-secondary-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
 }
 
 .settlement-cta {
@@ -375,8 +386,20 @@ const { t } = useI18n();
   cursor: pointer;
   font-size: 14px;
   font-weight: 700;
-  height: 54px;
+  height: 48px;
+  padding: 0 20px;
+}
+
+.settlement-tertiary {
+  background: transparent;
+  border: 0;
+  color: #a0aeb2;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  height: 48px;
   padding: 0 16px;
+  text-decoration: underline;
 }
 
 @media (max-width: 760px) {

@@ -436,8 +436,24 @@ const castSpell = async () => {
 };
 
 const closeSettlement = () => {
-  showSettlement.value = false;
-}
+  void router.push(ROUTES.library);
+};
+
+const goToPath = () => {
+  const documentId = typeof route.query.documentId === "string" ? route.query.documentId : "";
+  void router.push({
+    path: ROUTES.levelPath,
+    query: { documentId, mode: "endless" },
+  });
+};
+
+const goToReview = () => {
+  const documentId = typeof route.query.documentId === "string" ? route.query.documentId : "";
+  void router.push({
+    path: ROUTES.levelPath,
+    query: { documentId, mode: "review" },
+  });
+};
 
 
 const purchaseRevive = async () => {
@@ -650,6 +666,8 @@ onUnmounted(() => {
       :goal-text="t('endlessAbyss.settlementGoal')"
       @close="closeSettlement"
       @confirm="goLibrary"
+      @continue-to-path="goToPath"
+      @review-mistakes="goToReview"
     />
   </main>
 </template>

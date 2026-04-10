@@ -404,7 +404,9 @@ const messages = {
       topPercentFallback: "Top --%",
       keepClimbing: "Keep climbing the ladder",
       continueToLibrary: "Continue to Library →",
+      continueToPath: "Continue to Learning Path →",
       reviewMistakes: "Review Mistakes",
+      backToLibrary: "Back to Library",
     },
     login: {
       metaTitle: "Xi Rang Login",
@@ -1156,7 +1158,9 @@ const messages = {
       topPercentFallback: "前 --%",
       keepClimbing: "继续攀升排名",
       continueToLibrary: "继续前往书库 →",
+      continueToPath: "继续前往学习路径 →",
       reviewMistakes: "回顾错题",
+      backToLibrary: "回到书库",
     },
     login: {
       metaTitle: "息壤登录",

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import MarkdownRichText from "../components/ui/MarkdownRichText.vue";
 import { ROUTES } from "../constants/routes";
 import { createRun, submitAnswer, useRunRevive, type RunQuestion } from "../api/runs";
 import { submitFeedback } from "../api/feedback";
@@ -546,7 +547,7 @@ onUnmounted(() => {
 
         <article class="question-card" :aria-label="t('endlessAbyss.questionCardAria')">
           <p class="question-card__tag">{{ t("endlessAbyss.questionTag") }}</p>
-          <h1>{{ questionTitle }}</h1>
+          <MarkdownRichText :content="questionTitle" class-name="question-card__title" />
 
           <footer class="question-card__footer">
             <span>{{ chapterTitle }}</span>
@@ -582,10 +583,12 @@ onUnmounted(() => {
             <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
           </div>
           <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
-            <strong>{{ t("speedSurvival.correctAnswer") }}</strong> {{ feedbackCorrectAnswer }}
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong>
+            <MarkdownRichText :content="feedbackCorrectAnswer" inline class-name="answer-feedback__markdown" />
           </div>
           <div v-if="feedbackExplanation" class="answer-feedback__explanation">
-            <strong>{{ t("speedSurvival.explanation") }}</strong> {{ feedbackExplanation }}
+            <strong>{{ t("speedSurvival.explanation") }}</strong>
+            <MarkdownRichText :content="feedbackExplanation" class-name="answer-feedback__markdown" />
           </div>
         </div>
 
@@ -838,7 +841,7 @@ onUnmounted(() => {
   padding: 4px 8px;
 }
 
-.question-card h1 {
+.question-card__title {
   color: var(--color-text-strong);
   font-size: 23px;
   font-weight: 800;
@@ -1064,7 +1067,7 @@ onUnmounted(() => {
     background-size: cover, 144% auto;
   }
 
-  .question-card h1 {
+  .question-card__title {
     font-size: 19px;
     max-width: none;
   }

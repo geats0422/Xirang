@@ -79,7 +79,21 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
     const { wrapper } = await mountSpeedSurvivalPage();
 
     expect(wrapper.find(".survival-card").exists()).toBe(true);
-    expect(wrapper.find(".survival-card__body h2").exists()).toBe(true);
+    expect(wrapper.find(".survival-card__title").exists()).toBe(true);
+  });
+
+  it("renders markdown in question text", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-speed-1",
+      mode: "speed",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 120, pending_coins: 0 },
+      questions: [{ id: "q-1", text: "Speed **question**", options: [{ id: "o-1", text: "False" }, { id: "o-2", text: "True" }] }],
+    });
+
+    const { wrapper } = await mountSpeedSurvivalPage();
+
+    expect(wrapper.find(".survival-card__title strong").exists()).toBe(true);
   });
 
   it("renders feedback action for reporting errors", async () => {

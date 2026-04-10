@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import MarkdownRichText from "../components/ui/MarkdownRichText.vue";
 import { ApiError } from "../api/http";
 import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
 import { submitFeedback } from "../api/feedback";
@@ -423,7 +424,7 @@ onMounted(async () => {
       <section class="battle-stage">
         <article class="question-card" :aria-label="t('reviewMode.questionCardAria')">
           <p class="question-card__tag">{{ t("reviewMode.questionTag") }}</p>
-          <h2>{{ questionTitle }}</h2>
+          <MarkdownRichText :content="questionTitle" class-name="question-card__title" />
           <footer class="question-card__footer">
             <span>{{ materialTitle }}</span>
             <span class="question-card__hint">{{ questionHint }}</span>
@@ -442,7 +443,7 @@ onMounted(async () => {
             type="button"
             @click="toggleOptionSelection(option.id)"
           >
-            {{ option.text }}
+            <MarkdownRichText :content="option.text" inline class-name="review-option__content" />
           </button>
         </div>
       </section>
@@ -481,10 +482,12 @@ onMounted(async () => {
             <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
           </div>
           <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
-            <strong>{{ t("speedSurvival.correctAnswer") }}</strong> {{ feedbackCorrectAnswer }}
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong>
+            <MarkdownRichText :content="feedbackCorrectAnswer" inline class-name="answer-feedback__markdown" />
           </div>
           <div v-if="feedbackExplanation" class="answer-feedback__explanation">
-            <strong>{{ t("speedSurvival.explanation") }}</strong> {{ feedbackExplanation }}
+            <strong>{{ t("speedSurvival.explanation") }}</strong>
+            <MarkdownRichText :content="feedbackExplanation" class-name="answer-feedback__markdown" />
           </div>
         </div>
 
@@ -620,11 +623,17 @@ onMounted(async () => {
   margin: 0;
 }
 
-.question-card h2 {
+.question-card__title {
+  color: var(--color-text-strong);
   font-family: var(--font-serif);
   font-size: clamp(28px, 4vw, 42px);
+  font-weight: 700;
   line-height: 1.18;
   margin: 16px 0 0;
+}
+
+.review-option__content {
+  white-space: normal;
 }
 
 .question-card__footer {

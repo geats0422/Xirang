@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import MarkdownRichText from "../components/ui/MarkdownRichText.vue";
 import { ROUTES } from "../constants/routes";
 import { createRun, submitAnswer, type RunQuestion, type RunQuestionOption } from "../api/runs";
 import { submitFeedback } from "../api/feedback";
@@ -763,7 +764,12 @@ onUnmounted(() => {
 
             <p class="scroll-paper__body">
               <template v-for="segment in questionSegments" :key="segment.key">
-                <span v-if="segment.kind === 'text'">{{ segment.value }}</span>
+                <MarkdownRichText
+                  v-if="segment.kind === 'text'"
+                  :content="segment.value"
+                  inline
+                  class-name="scroll-paper__segment"
+                />
                 <button
                   v-else
                   class="drop-slot"
@@ -848,7 +854,7 @@ onUnmounted(() => {
             @dragend="onDragEnd"
             @click="chooseOption(chip)"
           >
-            {{ chip.text }}
+            <MarkdownRichText :content="chip.text" inline class-name="draft-chip__label" />
           </button>
         </div>
 
@@ -862,10 +868,12 @@ onUnmounted(() => {
             <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
           </div>
           <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
-            <strong>{{ t("speedSurvival.correctAnswer") }}</strong> {{ feedbackCorrectAnswer }}
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong>
+            <MarkdownRichText :content="feedbackCorrectAnswer" inline class-name="answer-feedback__markdown" />
           </div>
           <div v-if="feedbackExplanation" class="answer-feedback__explanation">
-            <strong>{{ t("speedSurvival.explanation") }}</strong> {{ feedbackExplanation }}
+            <strong>{{ t("speedSurvival.explanation") }}</strong>
+            <MarkdownRichText :content="feedbackExplanation" class-name="answer-feedback__markdown" />
           </div>
         </div>
 

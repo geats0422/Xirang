@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
+import MarkdownRichText from "../components/ui/MarkdownRichText.vue";
 import { ROUTES } from "../constants/routes";
 import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
 import { submitFeedback } from "../api/feedback";
@@ -365,7 +366,7 @@ onUnmounted(() => {
 
           <div class="survival-card__body">
             <p class="survival-card__eyebrow">{{ t("speedSurvival.eyebrow") }}</p>
-            <h2>{{ questionText }}</h2>
+            <MarkdownRichText :content="questionText" class-name="survival-card__title" />
             <p class="survival-card__prompt">{{ answerPrompt }}</p>
           </div>
         </article>
@@ -379,7 +380,7 @@ onUnmounted(() => {
             @click="chooseAnswer('false')"
           >
             <span class="answer-pill__icon">✕</span>
-            <span class="answer-pill__label">{{ falseOptionLabel }}</span>
+            <MarkdownRichText :content="falseOptionLabel" inline class-name="answer-pill__label" />
           </button>
 
           <button
@@ -390,7 +391,7 @@ onUnmounted(() => {
             @click="chooseAnswer('true')"
           >
             <span class="answer-pill__icon">✓</span>
-            <span class="answer-pill__label">{{ trueOptionLabel }}</span>
+            <MarkdownRichText :content="trueOptionLabel" inline class-name="answer-pill__label" />
           </button>
         </footer>
 
@@ -409,10 +410,12 @@ onUnmounted(() => {
             <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
           </div>
           <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
-            <strong>{{ t("speedSurvival.correctAnswer") }}</strong> {{ feedbackCorrectAnswer }}
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong>
+            <MarkdownRichText :content="feedbackCorrectAnswer" inline class-name="answer-feedback__markdown" />
           </div>
           <div v-if="feedbackExplanation" class="answer-feedback__explanation">
-            <strong>{{ t("speedSurvival.explanation") }}</strong> {{ feedbackExplanation }}
+            <strong>{{ t("speedSurvival.explanation") }}</strong>
+            <MarkdownRichText :content="feedbackExplanation" class-name="answer-feedback__markdown" />
           </div>
         </div>
 
@@ -659,7 +662,7 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.survival-card__body h2 {
+.survival-card__title {
   color: var(--color-text-primary);
   font-size: 24px;
   font-weight: 800;
@@ -797,7 +800,7 @@ onUnmounted(() => {
     padding: 20px 16px;
   }
 
-  .survival-card__body h2 {
+  .survival-card__title {
     font-size: 22px;
     max-width: none;
   }

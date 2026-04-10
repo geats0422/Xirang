@@ -81,8 +81,21 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     const { wrapper } = await mountEndlessAbyssPage();
 
     expect(wrapper.find(".question-card").exists()).toBe(true);
-    expect(wrapper.find(".question-card h1").exists()).toBe(true);
+    expect(wrapper.find(".question-card__title").exists()).toBe(true);
     expect(mocks.createRun).toHaveBeenCalledWith("doc-1", "endless", 10, undefined, false);
+  });
+
+  it("renders markdown in question title", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-1",
+      mode: "endless",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 10, time_left_sec: 900, pending_coins: 0 },
+      questions: [{ id: "q-1", text: "Question with **markdown**", options: [{ id: "o-1", text: "water" }] }],
+    });
+
+    const { wrapper } = await mountEndlessAbyssPage();
+    expect(wrapper.find(".question-card__title strong").exists()).toBe(true);
   });
 
   it("shows fallback text when run bootstrap fails", async () => {

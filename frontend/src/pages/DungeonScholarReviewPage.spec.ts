@@ -94,4 +94,43 @@ describe("DungeonScholarReviewPage", () => {
 
     expect(wrapper.text()).toContain("no mistakes to review");
   });
+
+  it("renders markdown in question title", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-1",
+      mode: "review",
+      status: "running",
+      run_state: { goal_total: 20 },
+      questions: [
+        {
+          id: "q-1",
+          text: "Who created **Python**?",
+          question_type: "single_choice",
+          options: [
+            { id: "o-1", text: "Guido van Rossum" },
+            { id: "o-2", text: "Bjarne Stroustrup" },
+          ],
+        },
+      ],
+    });
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: ROUTES.review, component: DungeonScholarReviewPage },
+        { path: ROUTES.levelPath, component: { template: "<div>Path</div>" } },
+        { path: ROUTES.library, component: { template: "<div>Library</div>" } },
+      ],
+    });
+
+    await router.push({ path: ROUTES.review, query: { mode: "review", mistakeReview: "true" } });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarReviewPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".question-card__title strong").exists()).toBe(true);
+  });
 });

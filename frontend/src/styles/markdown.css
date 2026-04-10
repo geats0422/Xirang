@@ -1,0 +1,97 @@
+@import "highlight.js/styles/github.css";
+
+.markdown-rich-text {
+  color: inherit;
+  line-height: 1.6;
+  min-width: 0;
+}
+
+.markdown-rich-text > :first-child {
+  margin-top: 0;
+}
+
+.markdown-rich-text > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-rich-text p,
+.markdown-rich-text ul,
+.markdown-rich-text ol,
+.markdown-rich-text blockquote,
+.markdown-rich-text pre,
+.markdown-rich-text table {
+  margin: 0.5em 0;
+}
+
+.markdown-rich-text code {
+  background: color-mix(in srgb, var(--color-surface-alt) 76%, var(--color-primary-50) 24%);
+  border-radius: 6px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
+  padding: 0.1em 0.35em;
+}
+
+.markdown-rich-text pre {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 12px 14px;
+}
+
+.markdown-rich-text pre code {
+  background: transparent;
+  border-radius: 0;
+  display: block;
+  font-size: 0.9em;
+  line-height: 1.5;
+  padding: 0;
+}
+
+.markdown-rich-text table {
+  border-collapse: collapse;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.markdown-rich-text th,
+.markdown-rich-text td {
+  border: 1px solid var(--color-border-soft);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-rich-text th {
+  background: var(--color-surface-alt);
+  color: var(--color-text-strong);
+  font-weight: 700;
+}
+
+.markdown-rich-text a {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-rich-text--inline {
+  display: inline;
+  line-height: inherit;
+}
+
+.markdown-rich-text--inline p,
+.markdown-rich-text--inline ul,
+.markdown-rich-text--inline ol,
+.markdown-rich-text--inline blockquote,
+.markdown-rich-text--inline pre,
+.markdown-rich-text--inline table {
+  display: inline;
+  margin: 0;
+}
+
+.markdown-rich-text--inline code {
+  white-space: normal;
+}

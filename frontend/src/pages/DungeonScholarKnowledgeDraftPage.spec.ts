@@ -102,6 +102,27 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     expect(wrapper.find(".scroll-paper h2").exists()).toBe(true);
   });
 
+  it("renders markdown in text segments while keeping blank slots", async () => {
+    mocks.createRun.mockResolvedValueOnce({
+      run_id: "run-draft-1",
+      mode: "draft",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 600, pending_coins: 0 },
+      questions: [
+        {
+          id: "q-1",
+          text: "Use **clarity** in ____ lines.",
+          options: [{ id: "o-1", text: "all" }],
+        },
+      ],
+    });
+
+    const { wrapper } = await mountKnowledgeDraftPage();
+
+    expect(wrapper.find(".scroll-paper__body strong").exists()).toBe(true);
+    expect(wrapper.find(".drop-slot").exists()).toBe(true);
+  });
+
   it("renders feedback action for reporting errors", async () => {
     const { wrapper } = await mountKnowledgeDraftPage();
 

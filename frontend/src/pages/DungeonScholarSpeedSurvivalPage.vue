@@ -52,6 +52,8 @@ const showFeedback = ref(false);
 const lastAnswerCorrect = ref(false);
 const feedbackCorrectAnswer = ref<string | null>(null);
 const feedbackExplanation = ref<string | null>(null);
+const awaitingCorrection = ref(false);
+const expectedCorrectOptionIds = ref<string[]>([]);
 
 
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
@@ -116,6 +118,64 @@ const resolveLeagueTopPercent = (accuracy: number | null | undefined): number | 
   }
   const normalized = Math.min(1, Math.max(0, accuracy));
   return Math.max(1, 100 - Math.round(normalized * 100));
+};
+
+const areSameOptionSet = (left: string[], right: string[]): boolean => {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const leftSet = new Set(left);
+  return right.every((item) => leftSet.has(item));
+};
+
+const normalizeComparableText = (value: string): string => {
+  return value.trim().toLowerCase().replace(/\u3000/g, " ").replace(/\s+/g, "");
+};
+
+const normalizeTokens = (value: string): string[] => {
+  return value
+    .toLowerCase()
+    .split(/[\s,，。！？!?;；:：/]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+};
+
+const resolveExpectedCorrectOptionIds = (payload: {
+  correctOptionIds: string[];
+  correctAnswerText: string | null;
+  options: { id: string; text: string }[];
+}): string[] => {
+  if (payload.correctOptionIds.length > 0) {
+    return payload.correctOptionIds;
+  }
+  if (!payload.correctAnswerText) {
+    return [];
+  }
+  const answerTokens = normalizeTokens(payload.correctAnswerText);
+  if (answerTokens.length === 0) {
+    return [];
+  }
+  return payload.options
+    .filter((option) => normalizeTokens(option.text).some((token) => answerTokens.includes(token)))
+    .map((option) => option.id);
+};
+
+const resolveDisplayCorrectAnswer = (payload: {
+  correctAnswerText: string | null;
+  correctOptionIds: string[];
+  options: { id: string; text: string }[];
+}): string | null => {
+  if (payload.correctAnswerText && payload.correctAnswerText.trim()) {
+    return payload.correctAnswerText;
+  }
+  if (!payload.correctOptionIds.length) {
+    return null;
+  }
+  const optionMap = new Map(payload.options.map((option) => [option.id, option.text]));
+  const values = payload.correctOptionIds
+    .map((id) => optionMap.get(id)?.trim())
+    .filter((item): item is string => Boolean(item));
+  return values.length > 0 ? values.join(", ") : null;
 };
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
@@ -203,24 +263,53 @@ const chooseAnswer = async (answerChoice: "false" | "true") => {
     return;
   }
 
-  isSubmittingAnswer.value = true;
+  const selectedOption = answerChoice === "false" ? falseOption.value : trueOption.value;
+  const selectedOptionIds = selectedOption ? [selectedOption.id] : [];
   selectedAnswer.value = answerChoice;
 
-  const selectedOption = answerChoice === "false" ? falseOption.value : trueOption.value;
+  if (awaitingCorrection.value) {
+    const matchedByOption =
+      expectedCorrectOptionIds.value.length > 0 &&
+      areSameOptionSet(selectedOptionIds, expectedCorrectOptionIds.value);
+    const normalizedCurrentAnswer = normalizeComparableText(selectedOption?.text ?? "");
+    const normalizedCorrectAnswer = normalizeComparableText(feedbackCorrectAnswer.value ?? "");
+    const matchedByAnswer =
+      normalizedCurrentAnswer.length > 0 &&
+      normalizedCorrectAnswer.length > 0 &&
+      normalizedCurrentAnswer === normalizedCorrectAnswer;
+
+    if (!matchedByOption && !matchedByAnswer) {
+      showFeedback.value = true;
+      return;
+    }
+
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+    showFeedback.value = false;
+    questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
+    questionStartAt.value = Date.now();
+    return;
+  }
+
+  isSubmittingAnswer.value = true;
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
 
   try {
     const result = await submitAnswer(
       runId.value,
       currentQuestion.value.id,
-      selectedOption ? [selectedOption.id] : [],
+      selectedOptionIds,
       elapsedMs,
     );
     applyRunState(result.run.state);
 
     // Store feedback for display
     lastAnswerCorrect.value = result.is_correct;
-    feedbackCorrectAnswer.value = result.feedback?.correct_answer ?? null;
+    feedbackCorrectAnswer.value = resolveDisplayCorrectAnswer({
+      correctAnswerText: result.feedback?.correct_answer ?? null,
+      correctOptionIds: result.feedback?.correct_option_ids ?? [],
+      options: currentQuestion.value.options,
+    });
     feedbackExplanation.value = result.feedback?.explanation ?? null;
 
     if (result.is_correct) {
@@ -231,7 +320,12 @@ const chooseAnswer = async (answerChoice: "false" | "true") => {
       combo.value = 0;
       runStatus.value = "normal";
       showFeedback.value = true;
-      isSubmittingAnswer.value = false;
+      awaitingCorrection.value = true;
+      expectedCorrectOptionIds.value = resolveExpectedCorrectOptionIds({
+        correctOptionIds: result.feedback?.correct_option_ids ?? [],
+        correctAnswerText: result.feedback?.correct_answer ?? null,
+        options: currentQuestion.value.options,
+      });
       return;
     }
 
@@ -306,6 +400,8 @@ watch(
   currentQuestion,
   () => {
     showFeedback.value = false;
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
     lastAnswerCorrect.value = false;
     feedbackCorrectAnswer.value = null;
     feedbackExplanation.value = null;

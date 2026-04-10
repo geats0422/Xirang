@@ -137,8 +137,47 @@ const questionSegments = computed<QuestionSegment[]>(() => {
 });
 
 const hasInlineBlanks = computed(() => questionSegments.value.some((segment) => segment.kind === "blank"));
-const blankCount = computed(
-  () => Math.max(1, questionSegments.value.filter((segment) => segment.kind === "blank").length),
+const inlineBlankCount = computed(
+  () => questionSegments.value.filter((segment) => segment.kind === "blank").length,
+);
+
+const inferAnswerCountFromFeedbackText = (value: string | null): number => {
+  if (!value) {
+    return 0;
+  }
+  const parts = value
+    .split(/[\n,，;；/]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return parts.length;
+};
+
+const awaitingCorrection = ref(false);
+const expectedCorrectOptionIds = ref<string[]>([]);
+
+const correctionBlankCount = computed(() => {
+  if (!awaitingCorrection.value) {
+    return 0;
+  }
+  if (expectedCorrectOptionIds.value.length > 0) {
+    return expectedCorrectOptionIds.value.length;
+  }
+  return inferAnswerCountFromFeedbackText(feedbackCorrectAnswer.value);
+});
+
+const questionTypeBlankCount = computed(() => {
+  const rawBlankCount = currentQuestion.value?.blank_count;
+  if (typeof rawBlankCount === "number" && Number.isFinite(rawBlankCount) && rawBlankCount > 0) {
+    return Math.max(1, Math.floor(rawBlankCount));
+  }
+  if (currentQuestion.value?.question_type === "multiple_choice") {
+    return 2;
+  }
+  return 0;
+});
+
+const blankCount = computed(() =>
+  Math.max(1, inlineBlankCount.value, questionTypeBlankCount.value, correctionBlankCount.value),
 );
 const blankSelections = ref<(string | null)[]>([]);
 const activeBlankIndex = ref(0);
@@ -146,8 +185,6 @@ const dragHoverBlankIndex = ref<number | null>(null);
 const draggingOptionId = ref<string | null>(null);
 const draggingSlotIndex = ref<number | null>(null);
 const isSubmittingAnswer = ref(false);
-const awaitingCorrection = ref(false);
-const expectedCorrectOptionIds = ref<string[]>([]);
 
 const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
 
@@ -168,6 +205,24 @@ const selectedOptionIds = computed(() => {
 
 const hasFilledAllBlanks = computed(() => {
   return blankSelections.value.length > 0 && blankSelections.value.every((selection) => selection !== null);
+});
+
+const supplementalBlankIndexes = computed(() => {
+  if (!hasInlineBlanks.value) {
+    return [] as number[];
+  }
+  const start = inlineBlankCount.value;
+  if (blankSelections.value.length <= start) {
+    return [] as number[];
+  }
+  return Array.from({ length: blankSelections.value.length - start }, (_, index) => start + index);
+});
+
+const renderedFallbackBlankIndexes = computed(() => {
+  if (hasInlineBlanks.value) {
+    return supplementalBlankIndexes.value;
+  }
+  return Array.from({ length: blankSelections.value.length }, (_, index) => index);
 });
 
 const timerLabel = computed(() => {
@@ -240,6 +295,27 @@ const resetBlankState = () => {
   activeBlankIndex.value = 0;
   clearDragState();
   isSubmittingAnswer.value = false;
+};
+
+const resizeBlankSelections = (nextCount: number) => {
+  if (nextCount <= 0) {
+    blankSelections.value = [];
+    activeBlankIndex.value = 0;
+    return;
+  }
+
+  const current = blankSelections.value;
+  if (current.length === nextCount) {
+    return;
+  }
+
+  if (current.length < nextCount) {
+    blankSelections.value = [...current, ...Array.from({ length: nextCount - current.length }, () => null)];
+  } else {
+    blankSelections.value = current.slice(0, nextCount);
+  }
+
+  activeBlankIndex.value = Math.max(0, Math.min(activeBlankIndex.value, blankSelections.value.length - 1));
 };
 
 const bootstrapRun = async () => {
@@ -434,6 +510,10 @@ const areSameOptionSet = (a: string[], b: string[]): boolean => {
   return b.every((item) => setA.has(item));
 };
 
+const normalizeComparableText = (value: string): string => {
+  return value.trim().toLowerCase().replace(/\u3000/g, " ").replace(/\s+/g, "");
+};
+
 const normalizeTokens = (value: string): string[] => {
   return value
     .toLowerCase()
@@ -465,6 +545,24 @@ const resolveExpectedCorrectOptionIds = (payload: {
     .map((option) => option.id);
 };
 
+const resolveDisplayCorrectAnswer = (payload: {
+  correctAnswerText: string | null;
+  correctOptionIds: string[];
+  options: { id: string; text: string }[];
+}): string | null => {
+  if (payload.correctAnswerText && payload.correctAnswerText.trim()) {
+    return payload.correctAnswerText;
+  }
+  if (!payload.correctOptionIds.length) {
+    return null;
+  }
+  const optionMap = new Map(payload.options.map((option) => [option.id, option.text]));
+  const values = payload.correctOptionIds
+    .map((id) => optionMap.get(id)?.trim())
+    .filter((item): item is string => Boolean(item));
+  return values.length > 0 ? values.join(", ") : null;
+};
+
 const submitFilledAnswer = async () => {
   if (
     showSettlement.value ||
@@ -484,7 +582,19 @@ const submitFilledAnswer = async () => {
   );
 
   if (awaitingCorrection.value) {
-    if (!areSameOptionSet(selectedOptionIds, expectedCorrectOptionIds.value)) {
+    const matchedByOption =
+      expectedCorrectOptionIds.value.length > 0 &&
+      areSameOptionSet(selectedOptionIds, expectedCorrectOptionIds.value);
+    const normalizedSelectedAnswer = normalizeComparableText(
+      selectedOptionIds.map((id) => optionTextMap.value.get(id) ?? "").join(", "),
+    );
+    const normalizedCorrectAnswer = normalizeComparableText(feedbackCorrectAnswer.value ?? "");
+    const matchedByAnswer =
+      normalizedSelectedAnswer.length > 0 &&
+      normalizedCorrectAnswer.length > 0 &&
+      normalizedSelectedAnswer === normalizedCorrectAnswer;
+
+    if (!matchedByOption && !matchedByAnswer) {
       showNotice.value = true;
       showFeedback.value = true;
       isSubmittingAnswer.value = false;
@@ -511,7 +621,11 @@ const submitFilledAnswer = async () => {
 
     applyRunState(result.run.state);
     lastAnswerCorrect.value = result.is_correct;
-    feedbackCorrectAnswer.value = result.feedback?.correct_answer ?? null;
+    feedbackCorrectAnswer.value = resolveDisplayCorrectAnswer({
+      correctAnswerText: result.feedback?.correct_answer ?? null,
+      correctOptionIds: result.feedback?.correct_option_ids ?? [],
+      options: currentQuestion.value.options,
+    });
     feedbackExplanation.value = result.feedback?.explanation ?? null;
 
     if (!result.is_correct) {
@@ -702,6 +816,10 @@ watch(currentQuestion, () => {
   resetBlankState();
 }, { immediate: true });
 
+watch(blankCount, (nextCount) => {
+  resizeBlankSelections(nextCount);
+});
+
 watch(showSettlement, (visible) => {
   if (visible) {
     stopTicker();
@@ -796,9 +914,9 @@ onUnmounted(() => {
               </template>
             </p>
 
-            <div v-if="!hasInlineBlanks" class="scroll-paper__slot-row">
+            <div v-if="renderedFallbackBlankIndexes.length > 0" class="scroll-paper__slot-row">
               <button
-                v-for="(_, blankIndex) in blankSelections"
+                v-for="blankIndex in renderedFallbackBlankIndexes"
                 :key="`fallback-slot-${blankIndex}`"
                 class="drop-slot"
                 :class="{

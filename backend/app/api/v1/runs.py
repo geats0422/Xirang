@@ -107,6 +107,7 @@ async def create_run(
                 "id": str(q.id),
                 "text": q.question_text,
                 "question_type": q.question_type,
+                "blank_count": q.blank_count,
                 "options": [{"id": str(o["id"]), "text": o["text"]} for o in q.options],
             }
             for q in questions

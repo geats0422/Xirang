@@ -10,6 +10,7 @@ export type RunQuestion = {
   id: string;
   text: string;
   question_type?: string;
+  blank_count?: number | null;
   options: RunQuestionOption[];
 };
 

@@ -156,7 +156,7 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
     await flushPromises();
   });
 
-  it("does not auto-advance on wrong answer and resets feedback after question changes", async () => {
+  it("advances on local correction after wrong answer without second submit", async () => {
     mocks.createRun.mockResolvedValueOnce({
       run_id: "run-speed-1",
       mode: "speed",
@@ -176,32 +176,21 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
       ],
     });
 
-    mocks.submitAnswer
-      .mockResolvedValueOnce({
-        is_correct: false,
-        feedback: {
-          correct_answer: "True",
-          explanation: "Because this statement is historically accurate.",
-        },
-        run: {
-          id: "run-speed-1",
-          status: "running",
-          score: 5,
-          state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 116, pending_coins: 5 },
-        },
-        settlement: null,
-      })
-      .mockResolvedValueOnce({
-        is_correct: true,
-        feedback: null,
-        run: {
-          id: "run-speed-1",
-          status: "running",
-          score: 15,
-          state: { hp: 3, max_hp: 3, floor: 2, floor_total: 8, time_left_sec: 112, pending_coins: 15 },
-        },
-        settlement: null,
-      });
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_answer: "True",
+        correct_option_ids: ["o-2"],
+        explanation: "Because this statement is historically accurate.",
+      },
+      run: {
+        id: "run-speed-1",
+        status: "running",
+        score: 5,
+        state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 116, pending_coins: 5 },
+      },
+      settlement: null,
+    });
 
     const { wrapper } = await mountSpeedSurvivalPage();
 
@@ -216,8 +205,33 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
     await wrapper.find(".answer-pill--true").trigger("click");
     await flushPromises();
 
-    expect(mocks.submitAnswer).toHaveBeenCalledTimes(2);
+    expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
     expect(wrapper.text()).toContain("Second Speed Question");
     expect(wrapper.find(".answer-feedback").exists()).toBe(false);
+  });
+
+  it("shows derived correct answer text when backend omits correct_answer", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_answer: null,
+        correct_option_ids: ["o-1"],
+        explanation: "Expected false branch.",
+      },
+      run: {
+        id: "run-speed-1",
+        status: "running",
+        score: 5,
+        state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 116, pending_coins: 5 },
+      },
+      settlement: null,
+    });
+
+    const { wrapper } = await mountSpeedSurvivalPage();
+    await wrapper.find(".answer-pill--true").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Correct answer:");
+    expect(wrapper.text()).toContain("False");
   });
 });

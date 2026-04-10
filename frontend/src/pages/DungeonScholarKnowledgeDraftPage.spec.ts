@@ -263,6 +263,153 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     expect(wrapper.find(".answer-feedback").exists()).toBe(false);
   });
 
+  it("accepts local correction by answer text when correct_option_ids is empty", async () => {
+    mocks.createRun.mockResolvedValue({
+      run_id: "run-draft-1",
+      mode: "draft",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 600, pending_coins: 0 },
+      questions: [
+        {
+          id: "q-1",
+          text: "Select ____",
+          options: [
+            { id: "o-1", text: "list[last]" },
+            { id: "o-2", text: "list[-1]" },
+          ],
+        },
+        {
+          id: "q-2",
+          text: "Next draft question",
+          options: [{ id: "o-3", text: "done" }],
+        },
+      ],
+    });
+
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_option_ids: [],
+        correct_answer: "list[-1]",
+        explanation: "Negative index gets the last element.",
+      },
+      run: {
+        id: "run-draft-1",
+        status: "running",
+        score: 10,
+        state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 590, pending_coins: 10 },
+      },
+      settlement: null,
+    });
+
+    const { wrapper } = await mountKnowledgeDraftPage();
+    const chips = wrapper.findAll(".draft-chip");
+
+    await chips[0].trigger("click");
+    await flushPromises();
+
+    expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("Correct answer:");
+    expect(wrapper.text()).toContain("list[-1]");
+
+    await chips[1].trigger("click");
+    await flushPromises();
+
+    expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("Next draft question");
+  });
+
+  it("expands correction slots when feedback contains multiple correct options", async () => {
+    mocks.createRun.mockResolvedValue({
+      run_id: "run-draft-1",
+      mode: "draft",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 600, pending_coins: 0 },
+      questions: [
+        {
+          id: "q-1",
+          question_type: "multiple_choice",
+          text: "以下 ____ 选项可以正确访问最后一个元素。",
+          options: [
+            { id: "o-1", text: "list[last]" },
+            { id: "o-2", text: "list[-1]" },
+            { id: "o-3", text: "list[5]" },
+          ],
+        },
+        {
+          id: "q-2",
+          text: "Second draft question",
+          options: [{ id: "o-4", text: "done" }],
+        },
+      ],
+    });
+
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_option_ids: ["o-2", "o-3"],
+        correct_answer: "list[-1], list[5]",
+        explanation: "Two valid index expressions are expected.",
+      },
+      run: {
+        id: "run-draft-1",
+        status: "running",
+        score: 10,
+        state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 590, pending_coins: 10 },
+      },
+      settlement: null,
+    });
+
+    const { wrapper } = await mountKnowledgeDraftPage();
+    const chips = wrapper.findAll(".draft-chip");
+
+    expect(wrapper.findAll(".drop-slot")).toHaveLength(2);
+
+    await chips[1].trigger("click");
+    await flushPromises();
+
+    expect(mocks.submitAnswer).not.toHaveBeenCalled();
+
+    await chips[0].trigger("click");
+    await flushPromises();
+
+    expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("Correct answer:");
+    expect(wrapper.findAll(".drop-slot")).toHaveLength(2);
+
+    await chips[2].trigger("click");
+    await flushPromises();
+
+    expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("Second draft question");
+  });
+
+  it("renders configured blank_count for multi-blank draft question", async () => {
+    mocks.createRun.mockResolvedValue({
+      run_id: "run-draft-1",
+      mode: "draft",
+      status: "running",
+      run_state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 600, pending_coins: 0 },
+      questions: [
+        {
+          id: "q-1",
+          question_type: "multiple_choice",
+          blank_count: 3,
+          text: "请补全 ____。",
+          options: [
+            { id: "o-1", text: "A" },
+            { id: "o-2", text: "B" },
+            { id: "o-3", text: "C" },
+          ],
+        },
+      ],
+    });
+
+    const { wrapper } = await mountKnowledgeDraftPage();
+
+    expect(wrapper.findAll(".drop-slot")).toHaveLength(3);
+  });
+
   it("supports drag filling and slot reordering before submit", async () => {
     mocks.createRun.mockResolvedValue({
       run_id: "run-draft-1",

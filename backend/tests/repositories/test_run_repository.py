@@ -9,6 +9,7 @@ from app.db.models.runs import RunMode
 from app.repositories.run_repository import (
     _normalize_draft_prompt,
     _resolve_path_selection_count,
+    _select_draft_questions_with_balanced_blanks,
     _select_questions_for_path,
 )
 
@@ -59,6 +60,7 @@ def test_normalize_draft_prompt_generates_natural_english_cloze() -> None:
 class _QuestionRow:
     id: UUID
     created_at: datetime
+    question_type: QuestionType = QuestionType.SINGLE_CHOICE
 
 
 def _build_question_rows(count: int) -> list[_QuestionRow]:
@@ -67,6 +69,32 @@ def _build_question_rows(count: int) -> list[_QuestionRow]:
         _QuestionRow(id=UUID(int=i + 1), created_at=base_time + timedelta(minutes=i))
         for i in range(count)
     ]
+
+
+def _build_mixed_question_rows(single_count: int, multi_count: int) -> list[_QuestionRow]:
+    base_time = datetime(2026, 1, 1, tzinfo=UTC)
+    rows: list[_QuestionRow] = []
+    sequence = 0
+
+    for _ in range(single_count):
+        sequence += 1
+        rows.append(
+            _QuestionRow(
+                id=UUID(int=sequence),
+                created_at=base_time + timedelta(minutes=sequence),
+                question_type=QuestionType.SINGLE_CHOICE,
+            )
+        )
+    for _ in range(multi_count):
+        sequence += 1
+        rows.append(
+            _QuestionRow(
+                id=UUID(int=sequence),
+                created_at=base_time + timedelta(minutes=sequence),
+                question_type=QuestionType.MULTIPLE_CHOICE,
+            )
+        )
+    return rows
 
 
 def test_select_questions_for_path_is_stable_for_same_path() -> None:
@@ -133,3 +161,20 @@ def test_draft_small_pool_different_paths_not_fully_overlapping() -> None:
     assert len(classic_ids) == 9
     assert len(theory_ids) == 9
     assert classic_ids != theory_ids
+
+
+def test_select_draft_questions_with_balanced_blanks_returns_mixed_types() -> None:
+    rows = _build_mixed_question_rows(single_count=12, multi_count=10)
+
+    selected = _select_draft_questions_with_balanced_blanks(
+        rows,
+        count=8,
+        path_id="draft-route-classic",
+    )
+
+    assert len(selected) == 8
+    single_selected = sum(1 for row in selected if row.question_type == QuestionType.SINGLE_CHOICE)
+    multi_selected = sum(1 for row in selected if row.question_type == QuestionType.MULTIPLE_CHOICE)
+    assert single_selected >= 1
+    assert multi_selected >= 1
+    assert abs(single_selected - multi_selected) <= 2

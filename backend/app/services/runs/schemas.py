@@ -19,6 +19,7 @@ class QuestionData:
     options: list[dict[str, str]]
     correct_option_ids: list[UUID]
     difficulty: int
+    blank_count: int | None = None
     chapter_reference: str | None = None
     correct_answer: str | None = None  # For FILL_IN_BLANK questions
     explanation: str | None = None  # Question explanation for feedback

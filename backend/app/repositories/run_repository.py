@@ -213,6 +213,106 @@ def _resolve_path_selection_count(
     return target_count
 
 
+def _select_draft_questions_with_balanced_blanks(
+    question_rows: list[Any],
+    *,
+    count: int,
+    path_id: str | None,
+) -> list[Any]:
+    if count <= 0:
+        return []
+
+    singles = [row for row in question_rows if row.question_type == QuestionType.SINGLE_CHOICE]
+    multiples = [row for row in question_rows if row.question_type == QuestionType.MULTIPLE_CHOICE]
+
+    if not singles or not multiples:
+        return _select_questions_for_path(question_rows, count=count, path_id=path_id)
+
+    if count == 1:
+        prefer_multi = bool(path_id) and (_stable_int(f"draft-multi:{path_id}") % 2 == 1)
+        source = multiples if prefer_multi else singles
+        fallback = singles if prefer_multi else multiples
+        picked = _select_questions_for_path(
+            source, count=1, path_id=f"{path_id or 'draft'}:primary"
+        )
+        if picked:
+            return picked
+        return _select_questions_for_path(
+            fallback, count=1, path_id=f"{path_id or 'draft'}:fallback"
+        )
+
+    desired_multi = count // 2
+    if count % 2 == 1 and path_id and (_stable_int(f"draft-multi:{path_id}") % 2 == 1):
+        desired_multi += 1
+
+    desired_multi = max(1, min(count - 1, desired_multi))
+    multi_count = min(len(multiples), desired_multi)
+    single_count = count - multi_count
+
+    if single_count > len(singles):
+        deficit = single_count - len(singles)
+        single_count = len(singles)
+        multi_count = min(len(multiples), multi_count + deficit)
+    if multi_count > len(multiples):
+        deficit = multi_count - len(multiples)
+        multi_count = len(multiples)
+        single_count = min(len(singles), single_count + deficit)
+
+    if single_count == 0 and len(singles) > 0:
+        single_count = 1
+        multi_count = min(len(multiples), count - 1)
+    if multi_count == 0 and len(multiples) > 0:
+        multi_count = 1
+        single_count = min(len(singles), count - 1)
+
+    selected_singles = _select_questions_for_path(
+        singles,
+        count=single_count,
+        path_id=f"{path_id or 'draft'}:single",
+    )
+    selected_multiples = _select_questions_for_path(
+        multiples,
+        count=multi_count,
+        path_id=f"{path_id or 'draft'}:multiple",
+    )
+
+    interleaved: list[Any] = []
+    single_idx = 0
+    multi_idx = 0
+    start_with_multi = bool(path_id) and (_stable_int(f"draft-order:{path_id}") % 2 == 1)
+
+    while len(interleaved) < count and (
+        single_idx < len(selected_singles) or multi_idx < len(selected_multiples)
+    ):
+        if start_with_multi:
+            if multi_idx < len(selected_multiples):
+                interleaved.append(selected_multiples[multi_idx])
+                multi_idx += 1
+            if len(interleaved) >= count:
+                break
+            if single_idx < len(selected_singles):
+                interleaved.append(selected_singles[single_idx])
+                single_idx += 1
+        else:
+            if single_idx < len(selected_singles):
+                interleaved.append(selected_singles[single_idx])
+                single_idx += 1
+            if len(interleaved) >= count:
+                break
+            if multi_idx < len(selected_multiples):
+                interleaved.append(selected_multiples[multi_idx])
+                multi_idx += 1
+
+    while len(interleaved) < count and single_idx < len(selected_singles):
+        interleaved.append(selected_singles[single_idx])
+        single_idx += 1
+    while len(interleaved) < count and multi_idx < len(selected_multiples):
+        interleaved.append(selected_multiples[multi_idx])
+        multi_idx += 1
+
+    return interleaved[:count]
+
+
 def _apply_zh_cloze_patterns(stem: str, blank_segment: str) -> str | None:
     direct_patterns = (
         (r"^(.+?)是谁$", rf"\1是{_BLANK_TOKEN}"),
@@ -490,7 +590,7 @@ class RunRepository:
             hard = [q for q in question_rows if q.difficulty >= 3]
             soft = [q for q in question_rows if q.difficulty < 3]
             ordered = hard + soft
-            question_rows = _select_questions_for_path(
+            question_rows = _select_draft_questions_with_balanced_blanks(
                 ordered,
                 count=target_count,
                 path_id=path_id,
@@ -520,6 +620,7 @@ class RunRepository:
             )
             correct_answer: str | None = str(raw_answer) if raw_answer is not None else None
             prompt_text = question.prompt
+            blank_count: int | None = None
             if mode == RunMode.DRAFT:
                 prompt_text = _normalize_draft_prompt(
                     question.prompt,
@@ -527,6 +628,10 @@ class RunRepository:
                     correct_option_texts=[option.content for option in correct_options],
                     language_code=language_code,
                 )
+                if question.question_type == QuestionType.MULTIPLE_CHOICE:
+                    blank_count = max(2, len(correct_options))
+                elif question.question_type == QuestionType.SINGLE_CHOICE:
+                    blank_count = 1
             questions.append(
                 QuestionData(
                     id=question.id,
@@ -536,6 +641,7 @@ class RunRepository:
                     options=[{"id": str(option.id), "text": option.content} for option in options],
                     correct_option_ids=[option.id for option in correct_options],
                     difficulty=question.difficulty,
+                    blank_count=blank_count,
                     chapter_reference=None,
                     correct_answer=correct_answer,
                     explanation=question.explanation,
@@ -638,6 +744,7 @@ class RunRepository:
                 "options": question.options,
                 "correct_option_ids": [str(v) for v in question.correct_option_ids],
                 "difficulty": question.difficulty,
+                "blank_count": question.blank_count,
                 "chapter_reference": question.chapter_reference,
                 "correct_answer": question.correct_answer,  # For FILL_IN_BLANK
                 "explanation": question.explanation,  # For feedback
@@ -684,6 +791,7 @@ class RunRepository:
                     "options": snapshot.get("options", []),
                     "correct_option_ids": snapshot.get("correct_option_ids", []),
                     "difficulty": difficulty,
+                    "blank_count": snapshot.get("blank_count"),
                     "correct_answer": snapshot.get("correct_answer"),  # For FILL_IN_BLANK
                     "explanation": snapshot.get("explanation"),  # For feedback
                 }

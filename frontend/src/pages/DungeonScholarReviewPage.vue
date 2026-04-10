@@ -147,6 +147,24 @@ const resolveExpectedCorrectOptionIds = (payload: {
     .map((option) => option.id);
 };
 
+const resolveDisplayCorrectAnswer = (payload: {
+  correctAnswerText: string | null;
+  correctOptionIds: string[];
+  options: { id: string; text: string }[];
+}): string | null => {
+  if (payload.correctAnswerText && payload.correctAnswerText.trim()) {
+    return payload.correctAnswerText;
+  }
+  if (!payload.correctOptionIds.length) {
+    return null;
+  }
+  const optionMap = new Map(payload.options.map((option) => [option.id, option.text]));
+  const values = payload.correctOptionIds
+    .map((id) => optionMap.get(id)?.trim())
+    .filter((item): item is string => Boolean(item));
+  return values.length > 0 ? values.join(", ") : null;
+};
+
 const resolveLeagueTopPercent = (accuracy: number | null | undefined): number | null => {
   if (typeof accuracy !== "number" || !Number.isFinite(accuracy)) {
     return null;
@@ -328,7 +346,11 @@ const castSpell = async () => {
     );
 
     lastAnswerCorrect.value = result.is_correct;
-    feedbackCorrectAnswer.value = result.feedback?.correct_answer ?? null;
+    feedbackCorrectAnswer.value = resolveDisplayCorrectAnswer({
+      correctAnswerText: result.feedback?.correct_answer ?? null,
+      correctOptionIds: result.feedback?.correct_option_ids ?? [],
+      options: currentQuestion.value.options,
+    });
     feedbackExplanation.value = result.feedback?.explanation ?? null;
 
     if (!result.is_correct) {

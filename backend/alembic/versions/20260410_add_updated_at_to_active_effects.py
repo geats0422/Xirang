@@ -4,7 +4,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "20260410_add_updated_at_to_active_effects"
+revision: str = "20260410ae01"
 down_revision: str | Sequence[str] | None = "13210a3f6138"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

@@ -166,29 +166,29 @@ const refreshBalance = async () => {
 
 const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
 
-  const bootstrapRun = async () => {
-    await refreshBalance();
-    const rawDocumentId = route.query.documentId;
-    const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
-    const rawPathId = route.query.pathId;
-    const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
-    if (!documentId) {
-      return;
-    }
+const bootstrapRun = async () => {
+  await refreshBalance();
+  const rawDocumentId = route.query.documentId;
+  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+  const rawPathId = route.query.pathId;
+  const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
+  if (!documentId) {
+    return;
+  }
 
-    try {
-      const created = await createRun(documentId, "speed", 8, pathId, isMistakeReview);
-      runId.value = created.run_id;
-      questions.value = created.questions;
-      questionIndex.value = 0;
-      combo.value = 0;
-      applyRunState(created.run_state);
-      questionStartAt.value = Date.now();
-      startTicker();
-    } catch {
-      runStatus.value = "reduced-reward";
-    }
-  };
+  try {
+    const created = await createRun(documentId, "speed", 8, pathId, isMistakeReview);
+    runId.value = created.run_id;
+    questions.value = created.questions;
+    questionIndex.value = 0;
+    combo.value = 0;
+    applyRunState(created.run_state);
+    questionStartAt.value = Date.now();
+    startTicker();
+  } catch {
+    runStatus.value = "reduced-reward";
+  }
+};
 
   const goBack = async () => {
     await router.push({

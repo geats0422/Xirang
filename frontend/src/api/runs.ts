@@ -42,6 +42,7 @@ export type RunPathOption = {
   kind: string;
   description: string;
   goal_total: number;
+  status?: "locked" | "unlocked" | "completed";
 };
 
 export type RunPathOptionsResponse = {

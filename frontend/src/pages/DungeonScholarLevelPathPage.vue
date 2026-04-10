@@ -54,9 +54,9 @@ const modeLabelMap = computed<Record<ModeId, string>>(() => ({
 }));
 
 const endlessNodes = computed<PathNode[]>(() => [
-  { id: "F1", label: "F1", floor: 1, type: "battle", description: t("levelPath.nodeDescription.endless.f1"), done: true, status: "completed" },
-  { id: "F2", label: "F2", floor: 2, type: "study", description: t("levelPath.nodeDescription.endless.f2"), done: true, status: "completed" },
-  { id: "F3", label: "F3", floor: 3, type: "checkpoint", description: t("levelPath.nodeDescription.endless.f3"), status: "unlocked" },
+  { id: "F1", label: "F1", floor: 1, type: "battle", description: t("levelPath.nodeDescription.endless.f1"), status: "unlocked" },
+  { id: "F2", label: "F2", floor: 2, type: "study", description: t("levelPath.nodeDescription.endless.f2"), status: "locked" },
+  { id: "F3", label: "F3", floor: 3, type: "checkpoint", description: t("levelPath.nodeDescription.endless.f3"), status: "locked" },
   { id: "F4", label: "F4", floor: 4, type: "study", description: t("levelPath.nodeDescription.endless.f4"), status: "locked" },
   { id: "F5", label: "F5", floor: 5, type: "battle", description: t("levelPath.nodeDescription.endless.f5"), status: "locked" },
   { id: "F6", label: "F6", floor: 6, type: "boss", description: t("levelPath.nodeDescription.endless.f6"), status: "locked" },
@@ -68,8 +68,7 @@ const speedNodes = computed<PathNode[]>(() => [
     label: "R1",
     type: "speed",
     description: t("levelPath.nodeDescription.speed.r1"),
-    done: true,
-    status: "completed",
+    status: "unlocked",
   },
   {
     id: "speed-route-burst",
@@ -93,8 +92,7 @@ const draftNodes = computed<PathNode[]>(() => [
     label: "R1",
     type: "draft",
     description: t("levelPath.nodeDescription.draft.r1"),
-    done: true,
-    status: "completed",
+    status: "unlocked",
   },
   {
     id: "draft-route-theory",
@@ -118,8 +116,7 @@ const reviewNodes = computed<PathNode[]>(() => [
     label: "R1",
     type: "review",
     description: t("levelPath.nodeDescription.review.r1"),
-    done: true,
-    status: "completed",
+    status: "unlocked",
   },
   {
     id: "review-stage-2",
@@ -163,22 +160,16 @@ const mapOptionToNode = (option: RunPathOption): PathNode => {
   if (mode.value === "endless-abyss") {
     const floor = Number(option.path_id.replace("F", ""));
     const validFloor = Number.isFinite(floor) ? floor : 1;
-    const isDone = option.path_id === "F1";
     return {
       id: option.path_id,
       label: option.label,
       floor: validFloor,
       type: option.kind === "floor" ? "battle" : "checkpoint",
       description: option.description,
-      done: isDone,
-      status: isDone ? "completed" : "unlocked",
+      done: option.status === "completed",
+      status: option.status ?? "locked",
     };
   }
-
-  const isDone =
-    option.path_id.endsWith("focus") ||
-    option.path_id.endsWith("classic") ||
-    option.path_id.endsWith("1");
 
   return {
     id: option.path_id,
@@ -190,8 +181,8 @@ const mapOptionToNode = (option: RunPathOption): PathNode => {
           ? "draft"
           : "review",
     description: option.description,
-    done: isDone,
-    status: isDone ? "completed" : "unlocked",
+    done: option.status === "completed",
+    status: option.status ?? "locked",
   };
 };
 

@@ -105,6 +105,10 @@ class RunRepositoryProtocol(Protocol):
     async def get_run(self, run_id: UUID) -> Any: ...
     async def list_runs(self, user_id: UUID) -> list[Any]: ...
 
+    async def get_completed_path_ids(
+        self, user_id: UUID, document_id: UUID | None, mode: RunMode
+    ) -> set[str]: ...
+
     async def update_run(
         self,
         run_id: UUID,
@@ -271,7 +275,6 @@ class RunService:
         document_id: UUID | None = None,
         user_id: UUID | None = None,
     ) -> list[dict[str, object]]:
-        # Get question count if document_id provided for dynamic path generation
         question_count = 0
         knowledge_points: list[str] = []
         language_code = "en"
@@ -300,16 +303,36 @@ class RunService:
             knowledge_points,
             language_code,
         )
-        return [
-            {
-                "path_id": item["path_id"],
-                "label": item["label"],
-                "kind": item["kind"],
-                "description": item["description"],
-                "goal_total": item["goal_total"],
-            }
-            for item in path_items
-        ]
+
+        completed_path_ids: set[str] = set()
+        if user_id is not None:
+            completed_path_ids = await self._repository.get_completed_path_ids(
+                user_id, document_id, mode
+            )
+
+        result: list[dict[str, object]] = []
+        for idx, item in enumerate(path_items):
+            path_id = item["path_id"]
+            if path_id in completed_path_ids:
+                status = "completed"
+            elif idx == 0 or path_items[idx - 1]["path_id"] in completed_path_ids:
+                status = "unlocked"
+            else:
+                all_prev_completed = all(
+                    path_items[j]["path_id"] in completed_path_ids for j in range(idx)
+                )
+                status = "unlocked" if all_prev_completed else "locked"
+            result.append(
+                {
+                    "path_id": path_id,
+                    "label": item["label"],
+                    "kind": item["kind"],
+                    "description": item["description"],
+                    "goal_total": item["goal_total"],
+                    "status": status,
+                }
+            )
+        return result
 
     async def get_run(self, run_id: UUID, owner_user_id: UUID | None = None) -> Any:
         run = await self._repository.get_run(run_id)

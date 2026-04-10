@@ -351,6 +351,27 @@ class RunRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_completed_path_ids(
+        self, user_id: UUID, document_id: UUID | None, mode: RunMode
+    ) -> set[str]:
+        stmt = (
+            select(Run.mode_state)
+            .where(Run.user_id == user_id)
+            .where(Run.status == RunStatus.COMPLETED)
+            .where(Run.mode == mode)
+        )
+        if document_id is not None:
+            stmt = stmt.where(Run.document_id == document_id)
+        result = await self._session.execute(stmt)
+        path_ids: set[str] = set()
+        for row in result:
+            state = row[0] if isinstance(row, tuple) else row
+            if isinstance(state, dict):
+                path_id = state.get("path_id")
+                if isinstance(path_id, str) and path_id:
+                    path_ids.add(path_id)
+        return path_ids
+
     async def update_run(
         self,
         run_id: UUID,

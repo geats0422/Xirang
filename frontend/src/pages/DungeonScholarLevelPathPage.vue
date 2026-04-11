@@ -334,6 +334,12 @@ const startLearning = async () => {
 };
 
 const backToModes = async () => {
+  if (mode.value === "review") {
+    await router.push({
+      path: ROUTES.library,
+    });
+    return;
+  }
   await router.push({
     path: ROUTES.gameModes,
     query: {

@@ -16,9 +16,10 @@ const DungeonScholarQuestsPage = () => import("../pages/DungeonScholarQuestsPage
 const DungeonScholarShopPage = () => import("../pages/DungeonScholarShopPage.vue");
 const DungeonScholarLeaderboardPage = () => import("../pages/DungeonScholarLeaderboardPage.vue");
 const DungeonScholarSettingsPage = () => import("../pages/DungeonScholarSettingsPage.vue");
-const DungeonScholarSettingsDocPage = () => import("../pages/DungeonScholarSettingsDocPage.vue");
 const DungeonScholarProfilePage = () => import("../pages/DungeonScholarProfilePage.vue");
 const DungeonScholarPrivacyPolicyPage = () => import("../pages/DungeonScholarPrivacyPolicyPage.vue");
+const DungeonScholarHelpCenterPage = () => import("../pages/DungeonScholarHelpCenterPage.vue");
+const DungeonScholarTermsPage = () => import("../pages/DungeonScholarTermsPage.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -116,12 +117,22 @@ const router = createRouter({
     {
       path: "/settings/user-agreement",
       name: "settings-user-agreement",
-      component: DungeonScholarSettingsDocPage,
+      component: DungeonScholarTermsPage,
     },
     {
       path: "/settings/help-center",
       name: "settings-help-center",
-      component: DungeonScholarSettingsDocPage,
+      component: DungeonScholarHelpCenterPage,
+    },
+    {
+      path: ROUTES.helpCenter,
+      name: "help-center",
+      component: DungeonScholarHelpCenterPage,
+    },
+    {
+      path: ROUTES.termsOfService,
+      name: "terms-of-service",
+      component: DungeonScholarTermsPage,
     },
     {
       path: ROUTES.profile,

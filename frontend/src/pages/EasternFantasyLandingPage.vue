@@ -104,8 +104,8 @@ const footerLinks = computed(() => {
   const _ = locale.value;
   return [
 { text: t("landing.privacyPolicy"), href: "/privacy-policy" },
-        { text: t("landing.termsOfService"), href: "/settings/user-agreement" },
-        { text: t("landing.contactUs"), href: "/settings/help-center" },
+        { text: t("landing.termsOfService"), href: "/terms-of-service" },
+        { text: t("landing.contactUs"), href: "/help-center" },
     { text: t("landing.twitter"), href: "#" },
     { text: t("landing.discord"), href: "#" },
   ];

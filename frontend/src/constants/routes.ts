@@ -17,6 +17,8 @@ export const ROUTES = {
   settings: "/settings",
 profile: "/profile",
   privacyPolicy: "/privacy-policy",
+  helpCenter: "/help-center",
+  termsOfService: "/terms-of-service",
 } as const;
 
 export type AppRoutePath = (typeof ROUTES)[keyof typeof ROUTES];

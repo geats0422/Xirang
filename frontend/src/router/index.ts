@@ -18,6 +18,7 @@ const DungeonScholarLeaderboardPage = () => import("../pages/DungeonScholarLeade
 const DungeonScholarSettingsPage = () => import("../pages/DungeonScholarSettingsPage.vue");
 const DungeonScholarSettingsDocPage = () => import("../pages/DungeonScholarSettingsDocPage.vue");
 const DungeonScholarProfilePage = () => import("../pages/DungeonScholarProfilePage.vue");
+const DungeonScholarPrivacyPolicyPage = () => import("../pages/DungeonScholarPrivacyPolicyPage.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -105,7 +106,12 @@ const router = createRouter({
     {
       path: "/settings/privacy-policy",
       name: "settings-privacy-policy",
-      component: DungeonScholarSettingsDocPage,
+      component: DungeonScholarPrivacyPolicyPage,
+    },
+    {
+      path: ROUTES.privacyPolicy,
+      name: "privacy-policy",
+      component: DungeonScholarPrivacyPolicyPage,
     },
     {
       path: "/settings/user-agreement",

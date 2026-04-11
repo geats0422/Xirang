@@ -103,9 +103,9 @@ const footerLinks = computed(() => {
   // Access locale.value to make computed reactive to locale changes
   const _ = locale.value;
   return [
-    { text: t("landing.privacyPolicy"), href: "/settings/privacy-policy" },
-    { text: t("landing.termsOfService"), href: "/settings/user-agreement" },
-    { text: t("landing.contactUs"), href: "/settings/help-center" },
+{ text: t("landing.privacyPolicy"), href: "/privacy-policy" },
+        { text: t("landing.termsOfService"), href: "/settings/user-agreement" },
+        { text: t("landing.contactUs"), href: "/settings/help-center" },
     { text: t("landing.twitter"), href: "#" },
     { text: t("landing.discord"), href: "#" },
   ];

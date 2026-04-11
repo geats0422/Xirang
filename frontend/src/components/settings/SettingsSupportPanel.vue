@@ -32,7 +32,7 @@ const navigateTo = (path: string) => {
       <button type="button" @click="navigateTo('/settings/user-agreement')">
         {{ $t("settings.support.userAgreement") }}
       </button>
-      <button type="button" @click="navigateTo('/settings/privacy-policy')">
+      <button type="button" @click="navigateTo('/privacy-policy')">
         {{ $t("settings.support.privacyPolicy") }}
       </button>
       <button type="button" @click="navigateTo('/settings/help-center')">

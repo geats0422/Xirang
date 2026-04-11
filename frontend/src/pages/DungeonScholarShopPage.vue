@@ -514,9 +514,9 @@ defineExpose({
       <footer class="shop-footer">
         <small>{{ t("shop.copyright") }}</small>
         <nav class="shop-footer__links" :aria-label="t('shop.footerLinksAria')">
-          <a href="#">{{ t("shop.terms") }}</a>
-          <a href="#">{{ t("shop.privacy") }}</a>
-          <a href="#">{{ t("shop.support") }}</a>
+          <router-link to="/settings/user-agreement">{{ t("shop.terms") }}</router-link>
+          <router-link to="/privacy-policy">{{ t("shop.privacy") }}</router-link>
+          <router-link to="/settings/help-center">{{ t("shop.support") }}</router-link>
         </nav>
       </footer>
     </section>

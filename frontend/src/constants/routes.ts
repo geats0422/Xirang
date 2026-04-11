@@ -15,7 +15,8 @@ export const ROUTES = {
   shop: "/shop",
   leaderboard: "/leaderboard",
   settings: "/settings",
-  profile: "/profile",
+profile: "/profile",
+  privacyPolicy: "/privacy-policy",
 } as const;
 
 export type AppRoutePath = (typeof ROUTES)[keyof typeof ROUTES];

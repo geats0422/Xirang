@@ -19,6 +19,9 @@ profile: "/profile",
   privacyPolicy: "/privacy-policy",
   helpCenter: "/help-center",
   termsOfService: "/terms-of-service",
+  features: "/features",
+  pricing: "/pricing",
+  community: "/community",
 } as const;
 
 export type AppRoutePath = (typeof ROUTES)[keyof typeof ROUTES];

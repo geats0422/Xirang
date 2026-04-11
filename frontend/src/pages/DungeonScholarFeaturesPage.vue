@@ -19,7 +19,6 @@ const showLangDropdown = ref(false);
 const themeCycle: Theme[] = ["light", "dark", "system"];
 
 const languages = computed(() => {
-  // Access locale.value to make computed reactive to locale changes
   const _ = locale.value;
   return SUPPORTED_LOCALES.map((code) => ({
     code,
@@ -32,7 +31,6 @@ const currentLangName = computed(() => {
 });
 
 const currentThemeLabel = computed(() => {
-  // Access locale.value to make computed reactive to locale changes
   const _ = locale.value;
   return t(`settings.preferences.${theme.value}`);
 });
@@ -65,11 +63,10 @@ onBeforeUnmount(() => {
 });
 
 watchEffect(() => {
-  document.title = t("landing.metaTitle");
+  document.title = t("features.metaTitle");
 });
 
 const navItems = computed(() => {
-  // Access locale.value to make computed reactive to locale changes
   const _ = locale.value;
   return [
     { label: t("landing.home"), href: ROUTES.landing },
@@ -80,43 +77,58 @@ const navItems = computed(() => {
 });
 
 const featureCards = computed(() => {
-  // Access locale.value to make computed reactive to locale changes
   const _ = locale.value;
   return [
     {
-      title: t("landing.gameModesTitle"),
-      description: t("landing.gameModesDesc"),
-      icon: "🗡",
+      title: t("features.gameModesTitle"),
+      description: t("features.gameModesDesc"),
+      icon: "game",
       accent: "green" as const,
     },
     {
-      title: t("landing.aiDungeonTitle"),
-      description: t("landing.aiDungeonDesc"),
-      icon: "🧠",
+      title: t("features.aiDungeonTitle"),
+      description: t("features.aiDungeonDesc"),
+      icon: "brain",
       accent: "cyan" as const,
     },
     {
-      title: t("landing.zeroFrictionTitle"),
-      description: t("landing.zeroFrictionDesc"),
-      icon: "☁",
+      title: t("features.zeroFrictionTitle"),
+      description: t("features.zeroFrictionDesc"),
+      icon: "cloud",
       accent: "green" as const,
+    },
+    {
+      title: t("features.questSystemTitle"),
+      description: t("features.questSystemDesc"),
+      icon: "quest",
+      accent: "cyan" as const,
+    },
+    {
+      title: t("features.leaderboardTitle"),
+      description: t("features.leaderboardDesc"),
+      icon: "trophy",
+      accent: "green" as const,
+    },
+    {
+      title: t("features.walletTitle"),
+      description: t("features.walletDesc"),
+      icon: "wallet",
+      accent: "cyan" as const,
     },
   ];
 });
 
 const footerLinks = computed(() => {
-  // Access locale.value to make computed reactive to locale changes
   const _ = locale.value;
   return [
-{ text: t("landing.privacyPolicy"), href: "/privacy-policy" },
-        { text: t("landing.termsOfService"), href: "/terms-of-service" },
-        { text: t("landing.contactUs"), href: "/help-center" },
+    { text: t("landing.privacyPolicy"), href: "/privacy-policy" },
+    { text: t("landing.termsOfService"), href: "/terms-of-service" },
+    { text: t("landing.contactUs"), href: "/help-center" },
     { text: t("landing.twitter"), href: "#" },
     { text: t("landing.discord"), href: "#" },
   ];
 });
 
-// Template-level translations that need locale tracking
 const brandName = computed(() => {
   const _ = locale.value;
   return t("landing.brand");
@@ -137,74 +149,24 @@ const languageLabel = computed(() => {
   return t("landing.languageLabel");
 });
 
-const betaLabel = computed(() => {
+const loginLabel = computed(() => {
   const _ = locale.value;
-  return t("landing.beta");
+  return t("landing.login");
 });
 
-const heroTitle1 = computed(() => {
+const signUpLabel = computed(() => {
   const _ = locale.value;
-  return t("landing.heroTitle1");
+  return t("landing.signUp");
 });
 
-const heroTitle2 = computed(() => {
+const mobileNavAria = computed(() => {
   const _ = locale.value;
-  return t("landing.heroTitle2");
+  return t("landing.mobileNavAria");
 });
 
-const heroTitle3 = computed(() => {
+const footerLinksAria = computed(() => {
   const _ = locale.value;
-  return t("landing.heroTitle3");
-});
-
-const heroSubtitle = computed(() => {
-  const _ = locale.value;
-  return t("landing.heroSubtitle");
-});
-
-const getStartedLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.getStarted");
-});
-
-const watchDemoLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.watchDemo");
-});
-
-const scholarsJoinedLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.scholarsJoined");
-});
-
-const forgeTitle = computed(() => {
-  const _ = locale.value;
-  return t("landing.forgeTitle");
-});
-
-const forgeSubtitle = computed(() => {
-  const _ = locale.value;
-  return t("landing.forgeSubtitle");
-});
-
-const joinScholarLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.joinScholar");
-});
-
-const readyAscendLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.readyAscend");
-});
-
-const ascendDescLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.ascendDesc");
-});
-
-const startJourneyLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.startJourney");
+  return t("landing.footerLinksAria");
 });
 
 const footerBrand = computed(() => {
@@ -225,51 +187,6 @@ const menuLabel = computed(() => {
 const closeLabel = computed(() => {
   const _ = locale.value;
   return t("landing.close");
-});
-
-const heroMascotAlt = computed(() => {
-  const _ = locale.value;
-  return t("landing.heroMascotAlt");
-});
-
-const heroStatTopLine1 = computed(() => {
-  const _ = locale.value;
-  return t("landing.heroStatTopLine1");
-});
-
-const heroStatTopLine2 = computed(() => {
-  const _ = locale.value;
-  return t("landing.heroStatTopLine2");
-});
-
-const heroStatBottomLine1 = computed(() => {
-  const _ = locale.value;
-  return t("landing.heroStatBottomLine1");
-});
-
-const heroStatBottomLine2 = computed(() => {
-  const _ = locale.value;
-  return t("landing.heroStatBottomLine2");
-});
-
-const loginLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.login");
-});
-
-const signUpLabel = computed(() => {
-  const _ = locale.value;
-  return t("landing.signUp");
-});
-
-const mobileNavAria = computed(() => {
-  const _ = locale.value;
-  return t("landing.mobileNavAria");
-});
-
-const footerLinksAria = computed(() => {
-  const _ = locale.value;
-  return t("landing.footerLinksAria");
 });
 
 const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => {
@@ -294,8 +211,8 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
 </script>
 
 <template>
-  <div class="landing-page" data-node-id="4:1178">
-    <header class="site-header" data-node-id="4:1317">
+  <div class="features-page">
+    <header class="site-header">
       <div class="container site-header__inner">
         <div class="brand">
           <div class="brand__badge">
@@ -410,53 +327,15 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
     </header>
 
     <main>
-      <section class="hero">
-        <div class="container hero__inner">
-          <div class="hero__content">
-            <p class="hero__beta">{{ betaLabel }}</p>
-            <h1 class="hero__title">
-              {{ heroTitle1 }}
-              <span>{{ heroTitle2 }}</span>
-              <span>{{ heroTitle3 }}</span>
-            </h1>
-            <p class="hero__subtitle">
-              {{ heroSubtitle }}
-            </p>
-            <div class="hero__actions">
-              <BaseButton
-                class="cta-route-btn"
-                :class="{ 'cta-route-btn--active': activeAction === 'get-started' }"
-                :disabled="isRouting"
-                @click="routeByAuthState('get-started')"
-              >
-                {{ getStartedLabel }}
-              </BaseButton>
-              <BaseButton variant="ghost">{{ watchDemoLabel }}</BaseButton>
-            </div>
-            <p class="hero__social">{{ scholarsJoinedLabel }}</p>
-          </div>
-
-          <div class="hero__visual" aria-hidden="true">
-            <div class="hero__card">
-              <div class="hero__stat hero__stat--top">{{ heroStatTopLine1 }}<br /><strong>{{ heroStatTopLine2 }}</strong></div>
-              <div class="hero__mascot">
-                <img src="/taotie-hero.svg" :alt="heroMascotAlt" class="hero__mascot-image" />
-              </div>
-              <div class="hero__stat hero__stat--bottom">{{ heroStatBottomLine1 }}<br /><strong>{{ heroStatBottomLine2 }}</strong></div>
-            </div>
-          </div>
+      <section class="features-hero">
+        <div class="container features-hero__inner">
+          <h1 class="features-hero__title">{{ t("features.heroTitle") }}</h1>
+          <p class="features-hero__subtitle">{{ t("features.heroSubtitle") }}</p>
         </div>
       </section>
 
-      <section class="features" data-node-id="4:1182">
+      <section class="features-grid-section">
         <div class="container">
-          <div class="section-head">
-            <h2>{{ forgeTitle }}</h2>
-            <p>
-              {{ forgeSubtitle }}
-            </p>
-          </div>
-
           <div class="feature-grid">
             <FeatureCard
               v-for="feature in featureCards"
@@ -465,26 +344,57 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
               :description="feature.description"
               :accent="feature.accent"
             >
-              <template #icon>{{ feature.icon }}</template>
+              <template #icon>
+                <svg v-if="feature.icon === 'game'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M15 5v2M15 11v2M15 17v2M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5z" />
+                  <path d="M9 12h6M12 9v6" />
+                </svg>
+                <svg v-else-if="feature.icon === 'brain'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93M8 6a4 4 0 0 1 8 0" />
+                  <path d="M12 10v4M8 14a4 4 0 0 0 4 4 4 4 0 0 0 4-4" />
+                  <circle cx="12" cy="18" r="4" />
+                </svg>
+                <svg v-else-if="feature.icon === 'cloud'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+                </svg>
+                <svg v-else-if="feature.icon === 'quest'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <line x1="10" y1="9" x2="8" y2="9" />
+                </svg>
+                <svg v-else-if="feature.icon === 'trophy'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                  <path d="M4 22h16" />
+                  <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22" />
+                  <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22" />
+                  <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+                </svg>
+                <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="5" width="20" height="14" rx="2" />
+                  <line x1="2" y1="10" x2="22" y2="10" />
+                </svg>
+              </template>
             </FeatureCard>
           </div>
         </div>
       </section>
 
-      <section class="cta" data-node-id="4:1217">
+      <section class="features-cta">
         <div class="cta__overlay" />
         <div class="container cta__inner">
-          <p class="cta__badge">{{ joinScholarLabel }}</p>
-          <h2>{{ readyAscendLabel }}</h2>
-          <p>
-            {{ ascendDescLabel }}
-          </p>
-          <BaseButton>{{ startJourneyLabel }}</BaseButton>
+          <h2>{{ t("features.ctaTitle") }}</h2>
+          <p>{{ t("features.ctaDesc") }}</p>
+          <BaseButton @click="routeByAuthState('get-started')">
+            {{ t("features.ctaButton") }}
+          </BaseButton>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer" data-node-id="4:1296">
+    <footer class="site-footer">
       <div class="container site-footer__inner">
         <p class="site-footer__brand">{{ footerBrand }}</p>
 
@@ -499,7 +409,7 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
 </template>
 
 <style scoped>
-.landing-page {
+.features-page {
   background: radial-gradient(circle at top right, rgba(212, 175, 55, 0.1), transparent 45%), var(--color-page-bg);
 }
 
@@ -657,11 +567,6 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
   padding-left: var(--space-2);
 }
 
-.site-nav--centered a:hover,
-.site-footer__links a:hover {
-  color: var(--color-primary-700);
-}
-
 .header-icon-btn {
   align-items: center;
   display: inline-flex;
@@ -715,362 +620,164 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
 
 .header-dropdown__item:hover {
   background: var(--color-primary-50);
-  color: var(--color-primary-700);
+  color: var(--color-primary-600);
 }
 
 .header-dropdown__item--active {
-  background: var(--color-primary-100);
-  color: var(--color-primary-700);
-  font-weight: 600;
+  background: var(--color-primary-50);
+  color: var(--color-primary-600);
+  font-weight: 500;
 }
 
 .header-auth {
-  align-items: center;
   display: flex;
   gap: var(--space-2);
+  margin-left: var(--space-4);
 }
 
-.hero {
-  background: linear-gradient(90deg, rgba(212, 177, 130, 0.35) 0 38%, rgba(236, 213, 172, 0.38) 38% 100%);
-  min-height: 760px;
-  overflow: hidden;
-  padding: 64px 0 112px;
+.cta-route-btn {
+  transition: transform 0.2s ease;
 }
 
-.hero__inner {
-  align-items: center;
-  display: grid;
-  gap: 40px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+.cta-route-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
 }
 
-.hero__beta {
-  background: var(--color-primary-50);
-  border: 1px solid var(--color-primary-100);
-  border-radius: var(--radius-pill);
-  color: var(--color-primary-700);
-  display: inline-block;
-  font-size: 14px;
-  margin: 0 0 24px;
-  padding: 6px 14px;
+.cta-route-btn--active {
+  transform: scale(0.97);
 }
 
-.hero__title {
-  font-family: var(--font-serif);
-  font-size: clamp(44px, 6vw, 60px);
-  font-weight: 700;
-  letter-spacing: -1.5px;
-  line-height: 1.05;
-  margin: 0;
-}
-
-.hero__title span {
-  background: linear-gradient(90deg, var(--color-primary-600), #0891b2);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  display: block;
-}
-
-.hero__subtitle {
-  color: var(--color-text-secondary);
-  font-size: 18px;
-  line-height: 1.8;
-  margin: 24px 0 0;
-  max-width: 580px;
-}
-
-.hero__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 24px;
-}
-
-.hero__actions :deep(.base-btn--ghost) {
-  background: var(--color-glass-bg);
-  border-color: var(--color-border);
-  color: var(--color-text-primary);
-}
-
-.hero__actions :deep(.base-btn--ghost:hover) {
-  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-glass-bg));
-  border-color: var(--color-border);
-  color: var(--color-text-strong);
-}
-
-.hero__actions :deep(.cta-route-btn),
-.site-header__inner :deep(.cta-route-btn) {
-  transform-origin: center;
-}
-
-.hero__actions :deep(.cta-route-btn--active),
-.site-header__inner :deep(.cta-route-btn--active) {
-  animation: route-pulse 220ms ease;
-}
-
-@keyframes route-pulse {
-  0% {
-    transform: scale(1);
-  }
-
-  45% {
-    transform: scale(0.96);
-  }
-
-  100% {
-    transform: scale(1);
-  }
-}
-
-.hero__social {
-  color: var(--color-text-muted);
-  font-size: 14px;
-  margin: 24px 0 0;
-}
-
-.hero__visual {
-  align-items: center;
-  display: flex;
-  justify-content: center;
-  min-height: 500px;
-}
-
-.hero__card {
-  background: var(--color-white);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-elevated);
-  min-height: 470px;
-  padding: 16px;
-  position: relative;
-  transform: rotate(1deg);
-  width: min(624px, 100%);
-}
-
-.hero__card::before {
-  background: linear-gradient(180deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.02));
-  border-radius: var(--radius-md);
-  content: "";
-  inset: 16px;
-  position: absolute;
-}
-
-.hero__mascot {
-  align-items: center;
-  display: flex;
-  height: 100%;
-  justify-content: center;
-  position: relative;
-  z-index: 1;
-}
-
-.hero__mascot-image {
-  display: block;
-  height: auto;
-  max-height: 320px;
-  max-width: min(92%, 520px);
-  object-fit: contain;
-  width: 100%;
-}
-
-.hero__stat {
-  backdrop-filter: blur(2px);
-  background: color-mix(in srgb, var(--color-white) 90%, transparent);
-  border: 1px solid var(--color-primary-100);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-card);
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 1.4;
-  padding: 13px;
-  position: absolute;
-  z-index: 2;
-}
-
-.hero__stat strong {
-  color: var(--color-text-strong);
-  font-size: 14px;
-}
-
-.hero__stat--top {
-  right: 32px;
-  top: 32px;
-}
-
-.hero__stat--bottom {
-  bottom: 48px;
-  left: 32px;
-}
-
-.features {
-  background: var(--color-surface-alt);
-  padding: 96px 0;
-}
-
-.section-head {
-  margin: 0 auto;
-  max-width: 672px;
+.features-hero {
+  padding: 80px 0 60px;
   text-align: center;
 }
 
-.section-head h2,
-.cta h2 {
+.features-hero__title {
+  color: var(--color-text-primary);
   font-family: var(--font-serif);
-  font-size: clamp(36px, 4vw, 48px);
-  margin: 0;
+  font-size: var(--text-4xl);
+  font-weight: 700;
+  margin: 0 0 var(--space-4);
 }
 
-.section-head p,
-.cta p {
+.features-hero__subtitle {
   color: var(--color-text-secondary);
-  font-size: 18px;
-  line-height: 1.6;
-  margin: 16px 0 0;
+  font-size: var(--text-lg);
+  margin: 0;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.features-grid-section {
+  padding: 40px 0 80px;
 }
 
 .feature-grid {
   display: grid;
-  gap: 32px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 64px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-6);
 }
 
-.cta {
-  overflow: hidden;
+.features-cta {
+  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
   padding: 80px 0;
   position: relative;
+  text-align: center;
 }
 
 .cta__overlay {
-  background: linear-gradient(180deg, rgba(252, 251, 247, 0.45), var(--color-surface-alt));
-  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
   position: absolute;
+  inset: 0;
 }
 
 .cta__inner {
   position: relative;
-  text-align: center;
+  z-index: 1;
 }
 
-.cta__badge {
-  background: var(--color-primary-50);
-  border: 1px solid var(--color-primary-100);
-  border-radius: var(--radius-pill);
-  color: var(--color-primary-700);
-  display: inline-block;
-  font-size: 14px;
-  margin: 0;
-  padding: 12px 16px;
+.cta__inner h2 {
+  color: white;
+  font-family: var(--font-serif);
+  font-size: var(--text-3xl);
+  margin: 0 0 var(--space-4);
 }
 
-.cta__inner > h2 {
-  margin-top: 28px;
-}
-
-.cta__inner > p {
-  margin: 16px auto 0;
-  max-width: 720px;
-}
-
-.cta__inner :deep(.base-btn) {
-  margin-top: 32px;
-  min-height: 56px;
+.cta__inner p {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-6);
 }
 
 .site-footer {
-  background: var(--color-page-bg);
   border-top: 1px solid var(--color-border);
-  padding: 48px 0;
+  padding: var(--space-8) 0;
 }
 
 .site-footer__inner {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
   text-align: center;
 }
 
 .site-footer__brand {
+  color: var(--color-text-primary);
   font-family: var(--font-serif);
-  font-size: 28px;
-  font-weight: 700;
+  font-size: var(--text-lg);
+  font-weight: 600;
   margin: 0;
 }
 
 .site-footer__links {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px 32px;
+  gap: var(--space-6);
   justify-content: center;
-  margin-top: 32px;
+}
+
+.site-footer__links a {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.site-footer__links a:hover {
+  color: var(--color-primary-600);
 }
 
 .site-footer__copyright {
   color: var(--color-text-muted);
-  font-size: 14px;
-  margin: 32px 0 0;
-  opacity: 0.65;
-}
-
-@media (max-width: 1120px) {
-  .hero__inner {
-    grid-template-columns: 1fr;
-  }
-
-  .hero__visual {
-    min-height: 380px;
-  }
-
-  .feature-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  font-size: var(--text-sm);
+  margin: 0;
 }
 
 @media (max-width: 768px) {
-  .container {
-    padding: 0 20px;
+  .site-nav--centered {
+    display: none;
   }
 
-  .site-nav {
+  .header-auth {
     display: none;
   }
 
   .menu-toggle {
-    display: inline-flex;
-    margin-left: auto;
-    margin-right: var(--space-2);
+    display: block;
   }
 
   .mobile-nav--open {
     display: flex;
-    padding-bottom: var(--space-3);
   }
 
-  .hero {
-    padding: 48px 0 72px;
-  }
-
-  .hero__subtitle,
-  .section-head p,
-  .cta p {
-    font-size: 16px;
+  .features-hero__title {
+    font-size: var(--text-3xl);
   }
 
   .feature-grid {
     grid-template-columns: 1fr;
-    margin-top: 40px;
-  }
-
-  .hero__stat {
-    padding: 10px;
-  }
-
-  .hero__stat--top {
-    right: 16px;
-    top: 16px;
-  }
-
-  .hero__stat--bottom {
-    bottom: 20px;
-    left: 16px;
   }
 }
 </style>

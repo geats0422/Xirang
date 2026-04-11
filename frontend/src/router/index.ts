@@ -20,6 +20,7 @@ const DungeonScholarProfilePage = () => import("../pages/DungeonScholarProfilePa
 const DungeonScholarPrivacyPolicyPage = () => import("../pages/DungeonScholarPrivacyPolicyPage.vue");
 const DungeonScholarHelpCenterPage = () => import("../pages/DungeonScholarHelpCenterPage.vue");
 const DungeonScholarTermsPage = () => import("../pages/DungeonScholarTermsPage.vue");
+const DungeonScholarFeaturesPage = () => import("../pages/DungeonScholarFeaturesPage.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -138,6 +139,11 @@ const router = createRouter({
       path: ROUTES.profile,
       name: "profile",
       component: DungeonScholarProfilePage,
+    },
+    {
+      path: ROUTES.features,
+      name: "features",
+      component: DungeonScholarFeaturesPage,
     },
     {
       path: "/:pathMatch(.*)*",

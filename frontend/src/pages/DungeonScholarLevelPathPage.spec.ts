@@ -18,6 +18,7 @@ function createTestRouter() {
     history: createMemoryHistory(),
     routes: [
       { component: DungeonScholarLevelPathPage, path: ROUTES.levelPath },
+      { component: { template: "<div>ModeGuide</div>" }, path: ROUTES.modeGuide },
       { component: { template: "<div>ModeSelection</div>" }, path: ROUTES.gameModes },
       { component: { template: "<div>Endless</div>" }, path: ROUTES.endlessAbyss },
       { component: { template: "<div>Speed</div>" }, path: ROUTES.speedSurvival },
@@ -167,5 +168,25 @@ describe("DungeonScholarLevelPathPage", () => {
     expect(wrapper.findAll(".path-node")).toHaveLength(0);
     expect(wrapper.find(".path-empty").text()).toContain("No mistakes to review yet");
     expect(wrapper.find(".path-start").attributes("disabled")).toBeDefined();
+  });
+
+  it("navigates to mode guide page with current mode", async () => {
+    const router = createTestRouter();
+    await router.push({
+      path: ROUTES.levelPath,
+      query: { title: "bulk-order-07.txt", documentId: "doc-1", mode: "speed-survival" },
+    });
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLevelPathPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".path-guide").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe(ROUTES.modeGuide);
+    expect(router.currentRoute.value.query.mode).toBe("speed-survival");
   });
 });

@@ -5,6 +5,7 @@ export const ROUTES = {
   home: "/home",
   library: "/library",
   levelPath: "/library/level-path",
+  modeGuide: "/library/mode-guide",
   gameModes: "/library/game-modes",
   endlessAbyss: "/library/game-modes/endless-abyss",
   speedSurvival: "/library/game-modes/speed-survival",

@@ -342,6 +342,17 @@ const backToModes = async () => {
     },
   });
 };
+
+const openGuide = async () => {
+  await router.push({
+    path: ROUTES.modeGuide,
+    query: {
+      ...route.query,
+      mode: mode.value,
+      title: title.value,
+    },
+  });
+};
 </script>
 
 <template>
@@ -356,7 +367,7 @@ const backToModes = async () => {
           <p class="path-sub">{{ pageEyebrow }}</p>
           <h1>{{ title }}</h1>
         </div>
-        <button class="path-guide" type="button">{{ guideLabel }}</button>
+        <button class="path-guide" type="button" @click="openGuide">{{ guideLabel }}</button>
       </header>
 
       <section class="path-map">

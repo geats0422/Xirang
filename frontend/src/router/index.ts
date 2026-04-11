@@ -6,6 +6,7 @@ const DungeonScholarLoginPage = () => import("../pages/DungeonScholarLoginPage.v
 const DungeonScholarHomePage = () => import("../pages/DungeonScholarHomePage.vue");
 const DungeonScholarLibraryPage = () => import("../pages/DungeonScholarLibraryPage.vue");
 const DungeonScholarLevelPathPage = () => import("../pages/DungeonScholarLevelPathPage.vue");
+const DungeonScholarModeGuidePage = () => import("../pages/DungeonScholarModeGuidePage.vue");
 const DungeonScholarModeSelectionPage = () => import("../pages/DungeonScholarModeSelectionPage.vue");
 const DungeonScholarEndlessAbyssPage = () => import("../pages/DungeonScholarEndlessAbyssPage.vue");
 const DungeonScholarSpeedSurvivalPage = () => import("../pages/DungeonScholarSpeedSurvivalPage.vue");
@@ -50,6 +51,11 @@ const router = createRouter({
       path: ROUTES.levelPath,
       name: "level-path",
       component: DungeonScholarLevelPathPage,
+    },
+    {
+      path: ROUTES.modeGuide,
+      name: "mode-guide",
+      component: DungeonScholarModeGuidePage,
     },
     {
       path: ROUTES.gameModes,

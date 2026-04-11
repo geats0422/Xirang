@@ -583,6 +583,97 @@ const messages = {
       },
       defaultTitle: "Scroll Trial",
     },
+    modeGuide: {
+      aria: "Mode guide page",
+      eyebrow: "Beginner Guide",
+      title: "{mode} Guide",
+      back: "Back",
+      returnToPath: "Back to Path",
+      sections: {
+        objective: "Goal",
+        flow: "How It Works",
+        rewards: "Rewards & Settlement",
+        tips: "Quick Tips",
+      },
+      modes: {
+        endlessAbyss: {
+          name: "Endless Abyss",
+          summary: "A progressive roguelike path where each correct answer pushes you one floor deeper.",
+          objective: "Survive the full floor sequence, maintain HP, and clear the run with stable accuracy.",
+          flow: {
+            1: "Start from the selected floor route and answer each prompt in order.",
+            2: "Correct answers advance floors and increase pending coin rewards.",
+            3: "Wrong answers reduce HP; run ends when HP reaches 0 or all questions are cleared.",
+          },
+          rewards: {
+            1: "Settlement grants XP and coins based on score and pending abyss rewards.",
+            2: "Longer survival and cleaner streaks improve final settlement output.",
+          },
+          tips: {
+            1: "Prioritize accuracy over risky guessing when HP is low.",
+            2: "Use revival resources only at decisive floors.",
+            3: "Treat early floors as warm-up and preserve rhythm for later pressure.",
+          },
+        },
+        speedSurvival: {
+          name: "Speed Survival",
+          summary: "A timed challenge focused on fast decisions, combos, and stable hit rate.",
+          objective: "Answer as many questions correctly as possible before time runs out.",
+          flow: {
+            1: "Enter from your selected route and keep answers flowing without hesitation.",
+            2: "Correct answers build combo momentum; mistakes break combo rhythm.",
+            3: "Run settles when time or question set ends.",
+          },
+          rewards: {
+            1: "XP gains scale with both accuracy and combo quality.",
+            2: "Fast and correct bursts produce better overall settlement value.",
+          },
+          tips: {
+            1: "Make quick first-pass judgments, then refine only when uncertain.",
+            2: "Protect combo streaks in the middle of the run.",
+            3: "Avoid overthinking single questions under tight timers.",
+          },
+        },
+        knowledgeDraft: {
+          name: "Knowledge Draft",
+          summary: "A fill-in style mode for concept linking, retrieval, and structured recall.",
+          objective: "Complete all blanks accurately and keep your run progression stable.",
+          flow: {
+            1: "Route entry loads draft questions with single or multiple blanks.",
+            2: "For multi-answer prompts, all correct options must be selected together.",
+            3: "After correction, continue until run settlement is triggered.",
+          },
+          rewards: {
+            1: "Settlement reflects answer quality and completion consistency.",
+            2: "Clean solves with fewer correction retries improve outcomes.",
+          },
+          tips: {
+            1: "Read the whole prompt before placing any option.",
+            2: "Check whether the question expects one blank or multiple blanks.",
+            3: "Use elimination to lock in high-confidence choices first.",
+          },
+        },
+        review: {
+          name: "Mistake Review",
+          summary: "A dedicated mode for revisiting mistakes and stabilizing weak memory points.",
+          objective: "Clear current mistake items so the review queue shrinks over time.",
+          flow: {
+            1: "Review pulls from your mistake set for the current material.",
+            2: "Multi-answer review questions require selecting every correct option.",
+            3: "When answered correctly, the mistake record is removed from the review pool.",
+          },
+          rewards: {
+            1: "Settlement grants XP and coins while reinforcing retention quality.",
+            2: "Stable correction accuracy reduces repeated review workload.",
+          },
+          tips: {
+            1: "Treat each correction as a memory rewrite, not just a one-off answer.",
+            2: "For multi-answer prompts, verify all true options before submitting.",
+            3: "Return regularly to prevent mistakes from accumulating.",
+          },
+        },
+      },
+    },
     reviewMode: {
       metaTitle: "Standalone Review - Xi Rang",
       shellAria: "Standalone review gameplay",
@@ -1336,6 +1427,97 @@ const messages = {
         routeWithDesc: "已选路线 {route}：{description}",
       },
       defaultTitle: "卷轴试炼",
+    },
+    modeGuide: {
+      aria: "模式指南页面",
+      eyebrow: "新手指南",
+      title: "{mode} 指南",
+      back: "返回",
+      returnToPath: "返回路径",
+      sections: {
+        objective: "目标",
+        flow: "玩法流程",
+        rewards: "奖励与结算",
+        tips: "上手建议",
+      },
+      modes: {
+        endlessAbyss: {
+          name: "无尽深渊",
+          summary: "逐层推进的闯关模式，每次答对都会向更深层前进。",
+          objective: "在保证生命值的前提下完成整段楼层并稳定通关。",
+          flow: {
+            1: "从所选楼层路线进入，按顺序完成题目。",
+            2: "答对会推进楼层并累积待结算金币。",
+            3: "答错会损失生命值；生命归零或题目答完即结束本局。",
+          },
+          rewards: {
+            1: "结算时按得分与深渊累积奖励发放经验和金币。",
+            2: "存活更久、连对更稳，结算收益会更好。",
+          },
+          tips: {
+            1: "生命值偏低时优先保准确率，避免冒进猜题。",
+            2: "复活资源尽量留在关键楼层使用。",
+            3: "前层先找节奏，把状态留给后半程高压区。",
+          },
+        },
+        speedSurvival: {
+          name: "极速生存",
+          summary: "限时高压模式，核心在于快速判断、连击与命中率。",
+          objective: "在时间结束前尽可能答对更多题目。",
+          flow: {
+            1: "从所选路线进入后持续快速作答。",
+            2: "答对可叠连击，答错会打断连击节奏。",
+            3: "计时结束或题组完成后进入结算。",
+          },
+          rewards: {
+            1: "经验收益与准确率、连击表现共同相关。",
+            2: "又快又准的连续命中会带来更高结算价值。",
+          },
+          tips: {
+            1: "先做第一判断，犹豫时再二次确认。",
+            2: "中段尽量保连击，不要被单题打乱节奏。",
+            3: "倒计时紧张时避免在单题上停留过久。",
+          },
+        },
+        knowledgeDraft: {
+          name: "知识牌局",
+          summary: "以填空与概念连接为核心，强调结构化回忆和精准补全。",
+          objective: "稳定完成题面空位并维持整局进度。",
+          flow: {
+            1: "从路径进入后会加载单空或多空题。",
+            2: "遇到多答案题时，必须一次选全所有正确项。",
+            3: "完成纠错后继续推进，直到触发结算。",
+          },
+          rewards: {
+            1: "结算会综合正确率与完成稳定性发放奖励。",
+            2: "纠错次数更少、一次命中更多，收益更高。",
+          },
+          tips: {
+            1: "先通读题面，再开始放置选项。",
+            2: "先判断本题是单空还是多空，避免漏选。",
+            3: "优先锁定高置信选项，再补全其余空位。",
+          },
+        },
+        review: {
+          name: "错题回顾",
+          summary: "专门处理错题与薄弱点，目标是降低复习池中的未掌握项。",
+          objective: "持续清空当前错题集合，让复习池逐步缩小。",
+          flow: {
+            1: "复习题来自当前材料的错题记录。",
+            2: "多答案题必须完整选择全部正确项才算正确。",
+            3: "答对后会从错题库移除该题，不再重复出现。",
+          },
+          rewards: {
+            1: "完成复习会获得经验与金币，并提升记忆稳定度。",
+            2: "修正越稳定，后续重复复习负担越小。",
+          },
+          tips: {
+            1: "把每次纠错当成“重写记忆”，而不是只过一题。",
+            2: "多答案题提交前再核对是否已全选。",
+            3: "定期回顾，避免错题池再次堆积。",
+          },
+        },
+      },
     },
     reviewMode: {
       metaTitle: "独立复习 - 息壤",

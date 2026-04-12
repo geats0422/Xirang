@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies.auth import parse_bearer_token
@@ -29,6 +29,40 @@ from app.services.auth.tokens import TokenService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
+
+
+@router.post("/oauth/exchange")
+async def oauth_exchange(request: Request) -> Response:
+    cookie_value = request.cookies.get(_oauth_session_cookie_name())
+    if not cookie_value or ":" not in cookie_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing or invalid OAuth session",
+        )
+    parts = cookie_value.split(":", 2)
+    if len(parts) != 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Malformed OAuth session",
+        )
+
+    _access_token, _refresh_token = parts[1], parts[2]
+
+    settings = get_settings()
+    frontend_origin = settings.frontend_base_url.rstrip("/")
+
+    response = JSONResponse(
+        content={
+            "tokens": {
+                "access_token": _access_token,
+                "refresh_token": _refresh_token,
+                "token_type": "bearer",
+                "expires_in": 900,
+            }
+        },
+        headers={"Access-Control-Allow-Origin": frontend_origin},
+    )
+    return _clear_oauth_session_cookie(response)
 
 
 def _ensure_client_id(provider: str, client_id: str | None) -> str:
@@ -72,21 +106,39 @@ def _frontend_oauth_redirect(
     return _build_redirect_url(frontend_login_url, params)
 
 
-def _frontend_oauth_success_redirect(
-    *, settings: Any, provider: str, access_token: str, refresh_token: str
-) -> str:
-    frontend_login_url = f"{settings.frontend_base_url.rstrip('/')}/login"
-    return _build_redirect_url(
-        frontend_login_url,
-        {
-            "oauth_provider": provider,
-            "oauth_status": "success",
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_type": "bearer",
-            "expires_in": "900",
-        },
+def _oauth_session_cookie_name() -> str:
+    return "oauth_session"
+
+
+def _store_oauth_session(
+    response: RedirectResponse,
+    *,
+    access_token: str,
+    refresh_token: str,
+) -> RedirectResponse:
+    code = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key=_oauth_session_cookie_name(),
+        value=f"{code}:{access_token}:{refresh_token}",
+        max_age=120,
+        httponly=True,
+        samesite="lax",
     )
+    return response
+
+
+def _clear_oauth_session_cookie(response: Response) -> Response:
+    response.delete_cookie(key=_oauth_session_cookie_name())
+    return response
+
+
+def _frontend_oauth_success_redirect(*, settings: Any, provider: str) -> tuple[str, dict[str, str]]:
+    frontend_login_url = f"{settings.frontend_base_url.rstrip('/')}/login"
+    params = {
+        "oauth_provider": provider,
+        "oauth_status": "success",
+    }
+    return frontend_login_url, params
 
 
 def _state_cookie_name(provider: str) -> str:
@@ -437,9 +489,17 @@ async def oauth_github_callback(
             provider_email=provider_email,
             display_name=display_name,
         )
-        redirect_url = _frontend_oauth_success_redirect(
+        redirect_base, redirect_params = _frontend_oauth_success_redirect(
             settings=settings,
             provider="github",
+        )
+        redirect_url = _build_redirect_url(redirect_base, redirect_params)
+        response = RedirectResponse(
+            url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        )
+        response = _clear_state_cookie(response, provider="github")
+        return _store_oauth_session(
+            response,
             access_token=result.tokens.access_token,
             refresh_token=result.tokens.refresh_token,
         )
@@ -452,9 +512,10 @@ async def oauth_github_callback(
             error="oauth_callback_failed",
             error_description=str(exc),
         )
-
-    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-    return _clear_state_cookie(response, provider="github")
+        response = RedirectResponse(
+            url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        )
+        return _clear_state_cookie(response, provider="github")
 
 
 @router.get("/oauth/google/callback")
@@ -520,9 +581,17 @@ async def oauth_google_callback(
             provider_email=provider_email,
             display_name=display_name,
         )
-        redirect_url = _frontend_oauth_success_redirect(
+        redirect_base, redirect_params = _frontend_oauth_success_redirect(
             settings=settings,
             provider="google",
+        )
+        redirect_url = _build_redirect_url(redirect_base, redirect_params)
+        response = RedirectResponse(
+            url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        )
+        response = _clear_state_cookie(response, provider="google")
+        return _store_oauth_session(
+            response,
             access_token=result.tokens.access_token,
             refresh_token=result.tokens.refresh_token,
         )
@@ -535,9 +604,10 @@ async def oauth_google_callback(
             error="oauth_callback_failed",
             error_description=str(exc),
         )
-
-    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-    return _clear_state_cookie(response, provider="google")
+        response = RedirectResponse(
+            url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        )
+        return _clear_state_cookie(response, provider="google")
 
 
 @router.get("/oauth/microsoft/callback")
@@ -603,9 +673,17 @@ async def oauth_microsoft_callback(
             provider_email=provider_email,
             display_name=display_name,
         )
-        redirect_url = _frontend_oauth_success_redirect(
+        redirect_base, redirect_params = _frontend_oauth_success_redirect(
             settings=settings,
             provider="microsoft",
+        )
+        redirect_url = _build_redirect_url(redirect_base, redirect_params)
+        response = RedirectResponse(
+            url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        )
+        response = _clear_state_cookie(response, provider="microsoft")
+        return _store_oauth_session(
+            response,
             access_token=result.tokens.access_token,
             refresh_token=result.tokens.refresh_token,
         )
@@ -618,9 +696,10 @@ async def oauth_microsoft_callback(
             error="oauth_callback_failed",
             error_description=str(exc),
         )
-
-    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-    return _clear_state_cookie(response, provider="microsoft")
+        response = RedirectResponse(
+            url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        )
+        return _clear_state_cookie(response, provider="microsoft")
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)

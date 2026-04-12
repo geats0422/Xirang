@@ -180,6 +180,25 @@ export const refreshToken = async (): Promise<AuthTokens> => {
   return tokens;
 };
 
+export const exchangeOauthCode = async (): Promise<AuthTokens> => {
+  const resp = await fetch("/api/v1/auth/oauth/exchange", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.detail || "OAuth token exchange failed");
+  }
+  const data = await resp.json();
+  return {
+    access_token: data.tokens.access_token,
+    refresh_token: data.tokens.refresh_token,
+    token_type: data.tokens.token_type || "bearer",
+    expires_in: data.tokens.expires_in || 900,
+  };
+};
+
 export const clearAuthSessionStorage = (): void => {
   if (typeof window === "undefined") {
     return;

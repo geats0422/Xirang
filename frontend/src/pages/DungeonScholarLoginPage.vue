@@ -10,6 +10,7 @@ import { ROUTES } from "../constants/routes";
 import { SUPPORTED_LOCALES, type SupportedLocale } from "../i18n";
 import {
   clearAuthSessionStorage,
+  exchangeOauthCode,
   getAuthErrorMessage,
   getCurrentAuthUser,
   loginWithPassword,
@@ -145,21 +146,16 @@ const handleOauthCallback = async () => {
       return;
     }
 
-    const accessToken = queryStringValue(route.query.access_token);
-    const refreshToken = queryStringValue(route.query.refresh_token);
-
-    if (!accessToken || !refreshToken) {
-      toast.error("OAuth login succeeded but token payload is incomplete.");
+    let tokens: Awaited<ReturnType<typeof exchangeOauthCode>> | undefined;
+    try {
+      tokens = await exchangeOauthCode();
+    } catch {
+      toast.error("OAuth token exchange failed. Please try again.");
       await router.replace(route.path);
       return;
     }
 
-    persistAuthTokens({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      token_type: "bearer",
-      expires_in: 900,
-    });
+    persistAuthTokens(tokens);
 
     try {
       const me = await getCurrentAuthUser();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watchEffect, watch } from "vue";
+import { computed, onMounted, ref, watchEffect, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import BaseButton from "../components/ui/BaseButton.vue";
@@ -19,6 +19,7 @@ import {
   persistAuthUserProfile,
   registerWithPassword,
 } from "../api/auth";
+import { wakeupServer } from "../api/wakeup";
 import { validatePassword } from "../utils/passwordValidator";
 
 const route = useRoute();
@@ -115,10 +116,20 @@ const queryStringValue = (value: unknown): string | null => {
   return null;
 };
 
-const startSocialLogin = (provider: string) => {
+const isWakingServer = ref(false);
+
+const startSocialLogin = async (provider: string) => {
   if (isSubmitting.value || oauthProcessing.value) {
     return;
   }
+
+  isWakingServer.value = true;
+  try {
+    await wakeupServer();
+  } finally {
+    isWakingServer.value = false;
+  }
+
   const oauthStartUrl = `/api/v1/auth/oauth/${provider}/start`;
   window.location.assign(oauthStartUrl);
 };
@@ -261,6 +272,10 @@ watchEffect(() => {
   document.title = isSignUpRoute.value ? t("login.signUpMetaTitle") : t("login.metaTitle");
 });
 
+onMounted(() => {
+  wakeupServer();
+});
+
 watch(
   () => route.path,
   () => {
@@ -339,7 +354,7 @@ watch(
             :key="provider.key"
             type="button"
             class="social-buttons__item"
-            :disabled="isSubmitting || oauthProcessing"
+            :disabled="isSubmitting || oauthProcessing || isWakingServer"
             @click="startSocialLogin(provider.key)"
           >
             <span class="social-buttons__icon" aria-hidden="true">

@@ -21,6 +21,7 @@ const DungeonScholarPrivacyPolicyPage = () => import("../pages/DungeonScholarPri
 const DungeonScholarHelpCenterPage = () => import("../pages/DungeonScholarHelpCenterPage.vue");
 const DungeonScholarTermsPage = () => import("../pages/DungeonScholarTermsPage.vue");
 const DungeonScholarFeaturesPage = () => import("../pages/DungeonScholarFeaturesPage.vue");
+const DungeonScholarPricingPage = () => import("../pages/DungeonScholarPricingPage.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -144,6 +145,11 @@ const router = createRouter({
       path: ROUTES.features,
       name: "features",
       component: DungeonScholarFeaturesPage,
+    },
+    {
+      path: ROUTES.pricing,
+      name: "pricing",
+      component: DungeonScholarPricingPage,
     },
     {
       path: "/:pathMatch(.*)*",

@@ -14,6 +14,7 @@ import ShopItemCard from "../components/shop/ShopItemCard.vue";
 import CoinPackTopUpModal from "../components/shop/modals/CoinPackTopUpModal.vue";
 import ItemUseConfirmModal from "../components/shop/modals/ItemUseConfirmModal.vue";
 import { useInventory } from "../composables/useInventory";
+import { useCoinPurchase } from "../composables/useCoinPurchase";
 
 type ShopItem = {
   offerId: string;
@@ -48,6 +49,8 @@ const selectedInventoryItem = ref<{ itemCode: string; name: string; description:
 const selectedTopUpOffer = ref<{ id: string; coin_amount: number; price_usd: number; label: string } | null>(null);
 
 const { inventory, refresh: refreshInventory, quantityOf } = useInventory();
+
+const { openPurchaseModal: openSharedPurchaseModal } = useCoinPurchase();
 
 const iconMap: Record<string, string> = {
   streak_freeze: "❄",
@@ -349,12 +352,18 @@ const handleTopUpPurchase = async (offerId: string) => {
 
 const confirmTopUpPurchase = async () => {
   if (!selectedTopUpOffer.value) return;
+
+  const mappedOffer = {
+    id: selectedTopUpOffer.value.id,
+    coin_amount: selectedTopUpOffer.value.coin_amount,
+    price_usd: selectedTopUpOffer.value.price_usd,
+    label: selectedTopUpOffer.value.label,
+    recommended: false,
+  };
+
+  openSharedPurchaseModal(mappedOffer);
   showTopUpConfirmModal.value = false;
   showTopUpModal.value = false;
-  purchaseError.value = "充值接口暂未接入，当前为前端流程占位。";
-  window.setTimeout(() => {
-    purchaseError.value = null;
-  }, 2200);
   selectedTopUpOffer.value = null;
 };
 

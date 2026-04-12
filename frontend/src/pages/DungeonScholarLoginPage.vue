@@ -8,7 +8,16 @@ import { useScholarData } from "../composables/useScholarData";
 import { useToast } from "../composables/useToast";
 import { ROUTES } from "../constants/routes";
 import { SUPPORTED_LOCALES, type SupportedLocale } from "../i18n";
-import { loginWithPassword, registerWithPassword, persistAuthSession, getAuthErrorMessage } from "../api/auth";
+import {
+  clearAuthSessionStorage,
+  getAuthErrorMessage,
+  getCurrentAuthUser,
+  loginWithPassword,
+  persistAuthSession,
+  persistAuthTokens,
+  persistAuthUserProfile,
+  registerWithPassword,
+} from "../api/auth";
 import { validatePassword } from "../utils/passwordValidator";
 
 const route = useRoute();
@@ -91,6 +100,82 @@ const goToSignUp = async () => {
     return;
   }
   await router.push(ROUTES.signUp);
+};
+
+const oauthProcessing = ref(false);
+
+const queryStringValue = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value) && typeof value[0] === "string") {
+    return value[0];
+  }
+  return null;
+};
+
+const startSocialLogin = (provider: string) => {
+  if (isSubmitting.value || oauthProcessing.value) {
+    return;
+  }
+  const oauthStartUrl = `/api/v1/auth/oauth/${provider}/start`;
+  window.location.assign(oauthStartUrl);
+};
+
+const handleOauthCallback = async () => {
+  const status = queryStringValue(route.query.oauth_status);
+  if (!status || status === "callback_received") {
+    return;
+  }
+
+  if (oauthProcessing.value) {
+    return;
+  }
+
+  oauthProcessing.value = true;
+
+  try {
+    if (status !== "success") {
+      const provider = queryStringValue(route.query.oauth_provider) || "oauth";
+      const errorCode = queryStringValue(route.query.oauth_error) || "unknown_error";
+      const errorDescription = queryStringValue(route.query.oauth_error_description) || "";
+      const message = errorDescription || `${provider} login failed: ${errorCode}`;
+      toast.error(message);
+      await router.replace(route.path);
+      return;
+    }
+
+    const accessToken = queryStringValue(route.query.access_token);
+    const refreshToken = queryStringValue(route.query.refresh_token);
+
+    if (!accessToken || !refreshToken) {
+      toast.error("OAuth login succeeded but token payload is incomplete.");
+      await router.replace(route.path);
+      return;
+    }
+
+    persistAuthTokens({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: "bearer",
+      expires_in: 900,
+    });
+
+    try {
+      const me = await getCurrentAuthUser();
+      persistAuthUserProfile(me);
+    } catch {
+      clearAuthSessionStorage();
+      toast.error("OAuth login verification failed. Please try again.");
+      await router.replace(route.path);
+      return;
+    }
+
+    toast.success(t("notifications.loginSuccess"));
+    await router.replace(ROUTES.home);
+  } finally {
+    oauthProcessing.value = false;
+  }
 };
 
 const clearFieldErrors = () => {
@@ -187,6 +272,14 @@ watch(
     formState.value = { username: "", email: "", password: "", confirmPassword: "" };
   }
 );
+
+watch(
+  () => route.query,
+  () => {
+    void handleOauthCallback();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -245,7 +338,14 @@ watch(
         </header>
 
         <div class="social-buttons">
-          <button v-for="provider in socialProviders" :key="provider.key" type="button" class="social-buttons__item">
+          <button
+            v-for="provider in socialProviders"
+            :key="provider.key"
+            type="button"
+            class="social-buttons__item"
+            :disabled="isSubmitting || oauthProcessing"
+            @click="startSocialLogin(provider.key)"
+          >
             <span class="social-buttons__icon" aria-hidden="true">
               <img :src="provider.icon" alt="" />
             </span>

@@ -119,6 +119,29 @@ export const persistAuthSession = (payload: AuthResponse): void => {
   storage.setItem("xirang:isAuthenticated", "true");
 };
 
+export const persistAuthTokens = (tokens: AuthTokens): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const storage = window.localStorage;
+  storage.setItem("xirang:accessToken", tokens.access_token);
+  storage.setItem("xirang:token", tokens.access_token);
+  storage.setItem("xirang:refreshToken", tokens.refresh_token);
+  storage.setItem("xirang:isAuthenticated", "true");
+};
+
+export const persistAuthUserProfile = (user: AuthMeResponse): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const storage = window.localStorage;
+  storage.setItem("xirang:userId", user.id);
+  storage.setItem("xirang:username", user.username);
+  storage.setItem("xirang:email", user.email);
+};
+
 export const getCurrentAuthUser = async (): Promise<AuthMeResponse> => {
   return apiRequest<AuthMeResponse>("/api/v1/auth/me", {
     headers: getAuthHeaders(),

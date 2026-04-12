@@ -69,6 +69,19 @@ class AuthRepositoryProtocol(Protocol):
 
     async def get_auth_credential(self, user_id: UUID) -> Any | None: ...
 
+    async def get_auth_identity(
+        self, *, provider_key: Any, provider_user_key: str
+    ) -> Any | None: ...
+
+    async def create_auth_identity(
+        self,
+        *,
+        user_id: UUID,
+        provider_key: Any,
+        provider_user_key: str,
+        provider_email: str | None,
+    ) -> Any: ...
+
     async def create_auth_session(
         self,
         *,
@@ -108,6 +121,96 @@ class AuthService:
     password_service: Any
     token_service: Any
 
+    async def _issue_tokens_for_user(self, *, user_id: UUID) -> TokenPair:
+        session_token = self.token_service.create_session_token()
+        refresh_token_plain = self.token_service.create_session_token()
+        session = await self.repository.create_auth_session(
+            user_id=user_id,
+            session_token_hash=self.token_service.hash_token(session_token),
+            refresh_token_hash=self.token_service.hash_token(refresh_token_plain),
+            expires_at=datetime.now(UTC)
+            + timedelta(days=self.token_service.refresh_token_expire_days),
+        )
+        if session is None:
+            raise AuthServiceError("Failed to create auth session")
+
+        access_signed = self.token_service.build_access_token(
+            user_id=user_id,
+            session_id=session.id,
+            session_token=session_token,
+        )
+        refresh_signed = self.token_service.build_refresh_token(
+            user_id=user_id,
+            session_id=session.id,
+            session_token=session_token,
+        )
+        return TokenPair(
+            access_token=access_signed.token,
+            refresh_token=refresh_signed.token,
+        )
+
+    async def oauth_login(
+        self,
+        *,
+        provider_key: Any,
+        provider_user_key: str,
+        provider_email: str | None,
+        display_name: str,
+    ) -> AuthResult:
+        identity = await self.repository.get_auth_identity(
+            provider_key=provider_key,
+            provider_user_key=provider_user_key,
+        )
+
+        user = None
+        email_normalized = provider_email.lower().strip() if provider_email else None
+        if identity is not None:
+            user = await self.repository.get_user_by_id(identity.user_id)
+
+        if user is None and email_normalized:
+            user = await self.repository.get_user_by_email(email_normalized)
+
+        if user is None:
+            base_username = (
+                "".join(ch for ch in display_name.lower() if ch.isalnum())[:20] or "user"
+            )
+            username_candidate = base_username
+            suffix = 1
+            while await self.repository.get_user_by_username(username_candidate):
+                suffix += 1
+                username_candidate = f"{base_username}{suffix}"
+
+            if provider_email:
+                email_value = provider_email
+                email_norm = email_normalized or provider_email.lower().strip()
+            else:
+                provider_value = str(getattr(provider_key, "value", provider_key))
+                email_value = f"{provider_user_key}@{provider_value}.oauth.local"
+                email_norm = email_value.lower()
+
+            user = await self.repository.create_user(
+                username=username_candidate,
+                username_normalized=username_candidate,
+                email=email_value,
+                email_normalized=email_norm,
+            )
+            await self.repository.create_profile_for_user(user_id=user.id)
+            await self.repository.create_settings_for_user(user_id=user.id)
+            await self.repository.create_wallet_for_user(user_id=user.id)
+
+        if identity is None:
+            await self.repository.create_auth_identity(
+                user_id=user.id,
+                provider_key=provider_key,
+                provider_user_key=provider_user_key,
+                provider_email=provider_email,
+            )
+
+        await self.repository.update_last_login(user_id=user.id, last_login_at=datetime.now(UTC))
+        tokens = await self._issue_tokens_for_user(user_id=user.id)
+        await self.repository.commit()
+        return AuthResult(user=user, tokens=tokens)
+
     async def register(self, username: str, email: str, password: str) -> AuthResult:
         email_normalized = email.lower().strip()
         username_normalized = username.lower().strip()
@@ -138,36 +241,9 @@ class AuthService:
         await self.repository.create_settings_for_user(user_id=user.id)
         await self.repository.create_wallet_for_user(user_id=user.id)
 
-        session_token = self.token_service.create_session_token()
-        refresh_token_plain = self.token_service.create_session_token()
-        session = await self.repository.create_auth_session(
-            user_id=user.id,
-            session_token_hash=self.token_service.hash_token(session_token),
-            refresh_token_hash=self.token_service.hash_token(refresh_token_plain),
-            expires_at=datetime.now(UTC)
-            + timedelta(days=self.token_service.refresh_token_expire_days),
-        )
-        if session is None:
-            raise AuthServiceError("Failed to create auth session")
-
-        access_signed = self.token_service.build_access_token(
-            user_id=user.id,
-            session_id=session.id,
-            session_token=session_token,
-        )
-        refresh_signed = self.token_service.build_refresh_token(
-            user_id=user.id,
-            session_id=session.id,
-            session_token=session_token,
-        )
+        tokens = await self._issue_tokens_for_user(user_id=user.id)
         await self.repository.commit()
-        return AuthResult(
-            user=user,
-            tokens=TokenPair(
-                access_token=access_signed.token,
-                refresh_token=refresh_signed.token,
-            ),
-        )
+        return AuthResult(user=user, tokens=tokens)
 
     async def login(self, identity: str, password: str) -> AuthResult:
         identity_normalized = identity.lower().strip()
@@ -188,36 +264,9 @@ class AuthService:
 
         await self.repository.update_last_login(user_id=user.id, last_login_at=datetime.now(UTC))
 
-        session_token = self.token_service.create_session_token()
-        refresh_token_plain = self.token_service.create_session_token()
-        session = await self.repository.create_auth_session(
-            user_id=user.id,
-            session_token_hash=self.token_service.hash_token(session_token),
-            refresh_token_hash=self.token_service.hash_token(refresh_token_plain),
-            expires_at=datetime.now(UTC)
-            + timedelta(days=self.token_service.refresh_token_expire_days),
-        )
-        if session is None:
-            raise AuthServiceError("Failed to create auth session")
-
-        access_signed = self.token_service.build_access_token(
-            user_id=user.id,
-            session_id=session.id,
-            session_token=session_token,
-        )
-        refresh_signed = self.token_service.build_refresh_token(
-            user_id=user.id,
-            session_id=session.id,
-            session_token=session_token,
-        )
+        tokens = await self._issue_tokens_for_user(user_id=user.id)
         await self.repository.commit()
-        return AuthResult(
-            user=user,
-            tokens=TokenPair(
-                access_token=access_signed.token,
-                refresh_token=refresh_signed.token,
-            ),
-        )
+        return AuthResult(user=user, tokens=tokens)
 
     async def get_current_user(self, access_token: str) -> Any:
         try:

@@ -64,6 +64,20 @@ class Settings(BaseSettings):
             "http://localhost:3000",
         ],
     )
+    frontend_base_url: str = "http://localhost:5173"
+
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    github_callback_url: str = "http://localhost:8000/api/v1/auth/oauth/github/callback"
+
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_callback_url: str = "http://localhost:8000/api/v1/auth/oauth/google/callback"
+
+    microsoft_client_id: str | None = None
+    microsoft_client_secret: str | None = None
+    microsoft_tenant_id: str = "common"
+    microsoft_callback_url: str = "http://localhost:8000/api/v1/auth/oauth/microsoft/callback"
 
     @field_validator("cors_origins", mode="before")
     @classmethod

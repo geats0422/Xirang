@@ -7,7 +7,14 @@ from uuid import UUID
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 
-from app.db.models.auth import AuthCredential, AuthSession, User, UserStatus
+from app.db.models.auth import (
+    AuthCredential,
+    AuthIdentity,
+    AuthProvider,
+    AuthSession,
+    User,
+    UserStatus,
+)
 from app.db.models.economy import Wallet
 from app.db.models.profile import Profile, UserSetting
 
@@ -88,6 +95,39 @@ class AuthRepository:
         stmt = select(AuthCredential).where(AuthCredential.user_id == user_id).limit(1)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_auth_identity(
+        self, *, provider_key: AuthProvider, provider_user_key: str
+    ) -> AuthIdentity | None:
+        stmt = (
+            select(AuthIdentity)
+            .where(
+                AuthIdentity.provider_key == provider_key,
+                AuthIdentity.provider_user_key == provider_user_key,
+                AuthIdentity.unlinked_at.is_(None),
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_auth_identity(
+        self,
+        *,
+        user_id: UUID,
+        provider_key: AuthProvider,
+        provider_user_key: str,
+        provider_email: str | None,
+    ) -> AuthIdentity:
+        identity = AuthIdentity(
+            user_id=user_id,
+            provider_key=provider_key,
+            provider_user_key=provider_user_key,
+            provider_email=provider_email,
+        )
+        self._session.add(identity)
+        await self._session.flush()
+        return identity
 
     async def create_auth_session(
         self,

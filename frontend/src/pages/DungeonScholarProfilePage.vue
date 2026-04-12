@@ -33,28 +33,28 @@ const { profileName, profileLevel, coins, streak, leaderboard, linkedEmail, hydr
 const identities = computed<IdentityItem[]>(() => [
   {
     key: "github",
-    name: "GitHub",
+    name: t("profile.identityProvider.github"),
     icon: "⌘",
     connected: false,
     status: t("profile.notConnected"),
   },
   {
     key: "google",
-    name: "Google",
+    name: t("profile.identityProvider.google"),
     icon: "G",
     connected: false,
     status: t("profile.notConnected"),
   },
   {
     key: "microsoft",
-    name: "Microsoft",
+    name: t("profile.identityProvider.microsoft"),
     icon: "◰",
     connected: false,
     status: t("profile.notConnected"),
   },
   {
     key: "email",
-    name: "Email",
+    name: t("profile.identityProvider.email"),
     icon: "✉",
     connected: Boolean(linkedEmail.value),
     status: linkedEmail.value || t("profile.notConnected"),
@@ -84,7 +84,7 @@ onMounted(async () => {
     <main class="profile-main">
       <div class="profile-overlay" aria-hidden="true" />
 
-      <section class="profile-modal" aria-label="Profile dialog">
+      <section class="profile-modal" :aria-label="t('profile.dialogAria')">
         <div class="profile-modal__decor profile-modal__decor--teal" />
         <div class="profile-modal__decor profile-modal__decor--amber" />
 
@@ -101,8 +101,8 @@ onMounted(async () => {
 
           <div class="identity-stats">
             <article class="stat-pill">
-              <span>XP</span>
-              <strong>{{ userXp.toLocaleString("en-US") }}</strong>
+              <span>{{ t("profile.xpLabel") }}</span>
+              <strong>{{ userXp.toLocaleString(locale) }}</strong>
             </article>
             <article class="stat-pill">
               <span>🔥 {{ t("profile.streak") }}</span>
@@ -110,7 +110,7 @@ onMounted(async () => {
             </article>
             <button class="stat-pill stat-pill--shop" type="button" @click="navigateTo(shopRoute)">
               <span>🪙 {{ t("profile.coins") }}</span>
-              <strong>{{ coins.toLocaleString("en-US") }}</strong>
+              <strong>{{ coins.toLocaleString(locale) }}</strong>
             </button>
           </div>
         </header>

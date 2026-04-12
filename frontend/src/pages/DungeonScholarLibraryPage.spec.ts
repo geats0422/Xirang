@@ -10,8 +10,7 @@ import DungeonScholarModeSelectionPage from "./DungeonScholarModeSelectionPage.v
 const mocks = vi.hoisted(() => ({
   listDocuments: vi.fn(),
   deleteDocument: vi.fn(),
-  batchDeleteDocuments: vi.fn(),
-  retryDocument: vi.fn(),
+  listMistakes: vi.fn(),
   uploadAndRefresh: vi.fn(),
   hydrate: vi.fn(),
 }));
@@ -19,8 +18,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../api/documents", () => ({
   listDocuments: mocks.listDocuments,
   deleteDocument: mocks.deleteDocument,
-  batchDeleteDocuments: mocks.batchDeleteDocuments,
-  retryDocument: mocks.retryDocument,
+  batchDeleteDocuments: vi.fn(),
+  getDocumentProgress: vi.fn(),
+  retryDocument: vi.fn(),
+}));
+
+vi.mock("../api/mistakes", () => ({
+  listMistakes: mocks.listMistakes,
 }));
 
 vi.mock("../composables/useScholarData", () => ({
@@ -38,6 +42,7 @@ function createTestRouter() {
     routes: [
       { component: DungeonScholarLibraryPage, path: ROUTES.library },
       { component: DungeonScholarModeSelectionPage, path: ROUTES.gameModes },
+      { component: { template: "<div>Level Path</div>" }, path: ROUTES.levelPath },
     ],
   });
 }
@@ -48,10 +53,9 @@ describe("DungeonScholarLibraryPage", () => {
     mocks.hydrate.mockResolvedValue(undefined);
     mocks.uploadAndRefresh.mockResolvedValue(undefined);
     mocks.deleteDocument.mockResolvedValue({ id: "doc-1", deleted: true });
-    mocks.batchDeleteDocuments.mockResolvedValue({ deleted_ids: [], deleted_count: 0 });
-    mocks.retryDocument.mockResolvedValue({ id: "doc-1", status: "processing" });
+    mocks.listMistakes.mockResolvedValue({ items: [], total: 0 });
     mocks.listDocuments.mockResolvedValue([
-      { id: "doc-1", title: "library-upload-test.pptx", status: "ready" },
+      { id: "doc-1", title: "library-upload-test.pptx", status: "processing" },
     ]);
   });
 
@@ -87,6 +91,10 @@ describe("DungeonScholarLibraryPage", () => {
   });
 
   it("navigates to game modes when clicking begin study", async () => {
+    mocks.listDocuments.mockResolvedValueOnce([
+      { id: "doc-ready-1", title: "ready-scroll.pdf", status: "ready" },
+    ]);
+
     const router = createTestRouter();
     await router.push(ROUTES.library);
     await router.isReady();
@@ -96,14 +104,15 @@ describe("DungeonScholarLibraryPage", () => {
     });
     await flushPromises();
 
-    await wrapper.find(".scroll-card__action--begin").trigger("click");
+    await wrapper.find(".scroll-card__action").trigger("click");
     await flushPromises();
 
     expect(router.currentRoute.value.path).toBe(ROUTES.gameModes);
   });
-  it("does not navigate for processing documents", async () => {
+
+  it("shows reprocess wording for failed documents", async () => {
     mocks.listDocuments.mockResolvedValueOnce([
-      { id: "doc-1", title: "library-upload-test.pptx", status: "processing" },
+      { id: "doc-failed-1", title: "failed-scroll.pdf", status: "failed" },
     ]);
 
     const router = createTestRouter();
@@ -115,20 +124,24 @@ describe("DungeonScholarLibraryPage", () => {
     });
     await flushPromises();
 
-    await wrapper.find(".scroll-card__action").trigger("click");
-    await flushPromises();
-
-    expect(router.currentRoute.value.path).toBe(ROUTES.library);
-    expect(wrapper.find(".library-notice").text()).toContain("still processing");
+    expect(wrapper.find(".scroll-card__action").text()).toContain("Reprocess");
   });
 
-  it("retries failed document instead of navigating", async () => {
-    mocks.listDocuments.mockResolvedValueOnce([
-      { id: "doc-1", title: "library-upload-test.pptx", status: "failed" },
-    ]);
-    mocks.listDocuments.mockResolvedValueOnce([
-      { id: "doc-1", title: "library-upload-test.pptx", status: "processing" },
-    ]);
+  it("navigates to review path when clicking mistake review card", async () => {
+    mocks.listMistakes.mockResolvedValueOnce({
+      items: [
+        {
+          id: "mistake-1",
+          user_id: "user-1",
+          question_id: "q-1",
+          document_id: "doc-1",
+          run_id: "run-1",
+          explanation: null,
+          created_at: "2026-04-08T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
 
     const router = createTestRouter();
     await router.push(ROUTES.library);
@@ -139,11 +152,11 @@ describe("DungeonScholarLibraryPage", () => {
     });
     await flushPromises();
 
-    await wrapper.find(".scroll-card__action").trigger("click");
+    await wrapper.find(".scroll-card--mistake-review").trigger("click");
     await flushPromises();
 
-    expect(mocks.retryDocument).toHaveBeenCalledWith("doc-1");
-    expect(router.currentRoute.value.path).toBe(ROUTES.library);
+    expect(router.currentRoute.value.path).toBe(ROUTES.levelPath);
+    expect(router.currentRoute.value.query.mode).toBe("review");
+    expect(router.currentRoute.value.query.mistakeReview).toBe("true");
   });
-
 });

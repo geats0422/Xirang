@@ -1,8 +1,10 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies.auth import get_current_user_id
+from app.db.session import get_db_session
 from app.schemas.review import (
     ExplainMistakeRequest,
     ExplainMistakeResponse,
@@ -12,12 +14,15 @@ from app.schemas.review import (
     RuleCandidateResponse,
 )
 from app.services.review.facade import ReviewService
+from app.services.review.service import create_review_service
 
 router = APIRouter(prefix="/review", tags=["review"])
 
 
-async def get_review_service() -> ReviewService:
-    raise NotImplementedError("ReviewService dependency must be overridden")
+async def get_review_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> ReviewService:
+    return create_review_service(session)
 
 
 @router.post("/mistakes", response_model=MistakeResponse, status_code=status.HTTP_201_CREATED)
@@ -53,7 +58,15 @@ async def get_mistake(
 ) -> MistakeResponse:
     mistake = await service.get_mistake(mistake_id)
     if not mistake:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mistake not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mistake not found",
+        )
+    if mistake.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this mistake",
+        )
     return MistakeResponse(
         id=mistake.id,
         user_id=mistake.user_id,
@@ -66,11 +79,17 @@ async def get_mistake(
 
 
 @router.get("/mistakes", response_model=MistakeListResponse)
-async def list_user_mistakes(
+async def list_mistakes(
+    limit: int = 50,
+    offset: int = 0,
     user_id: UUID = Depends(get_current_user_id),
     service: ReviewService = Depends(get_review_service),
 ) -> MistakeListResponse:
-    mistakes = await service.list_mistakes_by_user(user_id)
+    mistakes = await service.list_mistakes_by_user(
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+    )
     return MistakeListResponse(
         items=[
             MistakeResponse(
@@ -92,37 +111,39 @@ async def list_user_mistakes(
 async def explain_mistake(
     mistake_id: UUID,
     request: ExplainMistakeRequest,
-    user_id: UUID = Depends(get_current_user_id),
     service: ReviewService = Depends(get_review_service),
 ) -> ExplainMistakeResponse:
-    try:
-        explanation = await service.explain_mistake(
-            mistake_id=mistake_id,
-            question_text=request.question_text,
-            document_context=request.document_context,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    explanation = await service.explain_mistake(
+        mistake_id=mistake_id,
+        question_text=request.question_text,
+        document_context=request.document_context,
+    )
     return ExplainMistakeResponse(mistake_id=mistake_id, explanation=explanation)
 
 
-@router.get("/rules", response_model=RuleCandidateListResponse)
+@router.get("/rules/candidates", response_model=RuleCandidateListResponse)
 async def list_rule_candidates(
-    status_filter: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+    user_id: UUID = Depends(get_current_user_id),
     service: ReviewService = Depends(get_review_service),
 ) -> RuleCandidateListResponse:
-    rules = await service.list_rule_candidates(status=status_filter)
+    candidates = await service.list_rule_candidates(
+        status=status,
+        limit=limit,
+    )
     return RuleCandidateListResponse(
         items=[
             RuleCandidateResponse(
-                id=UUID(r["id"]),
-                rule_type=r["rule_type"],
-                title=r["title"],
-                content=r["content"],
-                status=r["status"],
-                source_job_id=UUID(r["source_job_id"]),
+                id=c["id"],
+                source_job_id=c["source_job_id"],
+                rule_type=c["rule_type"],
+                title=c["title"],
+                content=c["content"],
+                status=c["status"],
+                created_at=c["created_at"],
             )
-            for r in rules
+            for c in candidates
         ],
-        total=len(rules),
+        total=len(candidates),
     )

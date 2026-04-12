@@ -14,6 +14,7 @@ class QuestionType(StrEnum):
     SINGLE_CHOICE = "single_choice"
     MULTIPLE_CHOICE = "multiple_choice"
     TRUE_FALSE = "true_false"
+    FILL_IN_BLANK = "fill_in_blank"  # Used for Endless Abyss mode
 
 
 class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):

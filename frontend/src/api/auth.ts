@@ -119,8 +119,110 @@ export const persistAuthSession = (payload: AuthResponse): void => {
   storage.setItem("xirang:isAuthenticated", "true");
 };
 
+export const persistAuthTokens = (tokens: AuthTokens): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const storage = window.localStorage;
+  storage.setItem("xirang:accessToken", tokens.access_token);
+  storage.setItem("xirang:token", tokens.access_token);
+  storage.setItem("xirang:refreshToken", tokens.refresh_token);
+  storage.setItem("xirang:isAuthenticated", "true");
+};
+
+export const persistAuthUserProfile = (user: AuthMeResponse): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const storage = window.localStorage;
+  storage.setItem("xirang:userId", user.id);
+  storage.setItem("xirang:username", user.username);
+  storage.setItem("xirang:email", user.email);
+};
+
 export const getCurrentAuthUser = async (): Promise<AuthMeResponse> => {
   return apiRequest<AuthMeResponse>("/api/v1/auth/me", {
     headers: getAuthHeaders(),
   });
 };
+
+export const refreshToken = async (): Promise<AuthTokens> => {
+  const refreshTokenValue = window.localStorage.getItem("xirang:refreshToken")?.trim();
+  if (!refreshTokenValue) {
+    throw new Error("No refresh token available");
+  }
+
+  const response = await fetch("/api/v1/auth/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshTokenValue }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Token refresh failed");
+  }
+
+  const data = await response.json();
+  const tokens: AuthTokens = {
+    access_token: data.tokens.access_token,
+    refresh_token: data.tokens.refresh_token,
+    token_type: data.tokens.token_type || "bearer",
+    expires_in: data.tokens.expires_in || 900,
+  };
+
+  // Persist new tokens
+  window.localStorage.setItem("xirang:accessToken", tokens.access_token);
+  window.localStorage.setItem("xirang:token", tokens.access_token);
+  window.localStorage.setItem("xirang:refreshToken", tokens.refresh_token);
+
+  return tokens;
+};
+
+export const exchangeOauthCode = async (): Promise<AuthTokens> => {
+  const resp = await fetch("/api/v1/auth/oauth/exchange", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.detail || "OAuth token exchange failed");
+  }
+  const data = await resp.json();
+  return {
+    access_token: data.tokens.access_token,
+    refresh_token: data.tokens.refresh_token,
+    token_type: data.tokens.token_type || "bearer",
+    expires_in: data.tokens.expires_in || 900,
+  };
+};
+
+export const clearAuthSessionStorage = (): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem("xirang:accessToken");
+  window.localStorage.removeItem("xirang:token");
+  window.localStorage.removeItem("xirang:refreshToken");
+  window.localStorage.removeItem("xirang:userId");
+  window.localStorage.removeItem("xirang:username");
+  window.localStorage.removeItem("xirang:email");
+  window.localStorage.removeItem("xirang:isAuthenticated");
+};
+
+export const logoutApi = async (): Promise<void> => {
+  return apiRequest<void>("/api/v1/auth/logout", {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+};
+
+export const deleteAccount = async (): Promise<void> => {
+  return apiRequest<void>("/api/v1/auth/me", {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+};
+

@@ -2,14 +2,13 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { listDocuments } from "../api/documents";
 import { ROUTES } from "../constants/routes";
 
 type ModeFlow = "begin" | "review";
-type DocumentGateState = "ready" | "processing" | "failed" | "missing";
+type ModeId = "endless-abyss" | "speed-survival" | "knowledge-draft" | "review";
 
 type DungeonMode = {
-  id: string;
+  id: ModeId;
   icon: string;
   iconClass: string;
   title: string;
@@ -20,11 +19,13 @@ type DungeonMode = {
 
 const { t, locale } = useI18n();
 
+onMounted(() => {
+  document.title = t("modeSelection.metaTitle");
+});
 
 watch(locale, () => {
   document.title = t("modeSelection.metaTitle");
 });
-
 const libraryRoute = ROUTES.library;
 
 const modeOptions = computed<DungeonMode[]>(() => [
@@ -55,64 +56,20 @@ const modeOptions = computed<DungeonMode[]>(() => [
     description: t("modeSelection.options.knowledgeDraft.description"),
     previewClass: "mode-card__preview--draft",
   },
+  {
+    id: "review",
+    icon: "↺",
+    iconClass: "mode-card__icon--jade",
+    title: t("modeSelection.options.review.title"),
+    tag: t("modeSelection.options.review.tag"),
+    description: t("modeSelection.options.review.description"),
+    previewClass: "mode-card__preview--review",
+  },
 ]);
 
 const router = useRouter();
 const route = useRoute();
-const selectedModeId = ref<string | null>(null);
-const documentGateState = ref<DocumentGateState>("ready");
-const documentGateMessage = ref("");
-
-const normalizeDocumentStatus = (status: string | undefined): DocumentGateState => {
-  if (status === "ready" || status === "failed") {
-    return status;
-  }
-  if (status === "processing") {
-    return "processing";
-  }
-  return "missing";
-};
-
-const ensureDocumentReady = async () => {
-  const rawDocumentId = route.query.documentId;
-  if (typeof rawDocumentId !== "string" || rawDocumentId.length === 0) {
-    documentGateState.value = "ready";
-    documentGateMessage.value = "";
-    return;
-  }
-
-  try {
-    const docs = await listDocuments();
-    const target = docs.find((doc) => doc.id === rawDocumentId);
-    const status = normalizeDocumentStatus(target?.status);
-    documentGateState.value = status;
-
-    if (status === "ready") {
-      documentGateMessage.value = "";
-    } else if (status === "processing") {
-      documentGateMessage.value = "This document is still processing. Please wait.";
-    } else if (status === "failed") {
-      documentGateMessage.value = "Document parsing failed. Retry it from Library first.";
-    } else {
-      documentGateMessage.value = "Document not found in your library.";
-    }
-  } catch {
-    documentGateState.value = "missing";
-    documentGateMessage.value = "Unable to verify document status right now.";
-  }
-};
-
-onMounted(async () => {
-  document.title = t("modeSelection.metaTitle");
-  await ensureDocumentReady();
-});
-
-watch(
-  () => route.query.documentId,
-  async () => {
-    await ensureDocumentReady();
-  },
-);
+const selectedModeId = ref<ModeId | null>(null);
 
 const modeFlow = computed<ModeFlow>(() => (route.query.flow === "review" ? "review" : "begin"));
 
@@ -182,16 +139,32 @@ const selectedMode = computed(
   () => modeOptions.value.find((mode) => mode.id === selectedModeId.value) ?? null,
 );
 
-const canSelectMode = computed(() => documentGateState.value === "ready");
-
 const modeLabels = computed<Record<string, string>>(() => ({
   "endless-abyss": t("modeSelection.labels.endlessAbyss"),
   "speed-survival": t("modeSelection.labels.speedSurvival"),
   "knowledge-draft": t("modeSelection.labels.knowledgeDraft"),
+  review: t("modeSelection.labels.review"),
 }));
 
+const isMistakeReview = computed(() => route.query.mistakeReview === "true");
+
+watch(
+  () => [modeFlow.value, isMistakeReview.value] as const,
+  ([nextFlow, nextMistakeReview]) => {
+    if (nextFlow === "review" || nextMistakeReview) {
+      selectedModeId.value = "review";
+      return;
+    }
+
+    if (selectedModeId.value === "review") {
+      selectedModeId.value = null;
+    }
+  },
+  { immediate: true },
+);
+
 const enterDungeon = async () => {
-  if (!selectedModeId.value || !canSelectMode.value) {
+  if (!selectedModeId.value) {
     return;
   }
   await router.push({
@@ -203,6 +176,7 @@ const enterDungeon = async () => {
       title: materialTitle.value,
       subtitle: materialSubtitle.value,
       format: route.query.format || "SCROLL",
+      mistakeReview: isMistakeReview.value ? "true" : undefined,
     },
   });
 };
@@ -251,16 +225,15 @@ const closeModal = async () => {
           </p>
         </header>
 
-        <p v-if="!canSelectMode" class="mode-content__warning">{{ documentGateMessage }}</p>
         <div class="mode-grid">
           <button
             v-for="mode in modeOptions"
             :key="mode.id"
             class="mode-card"
-            :class="{ 'mode-card--active': selectedMode?.id === mode.id, 'mode-card--disabled': !canSelectMode }"
+            :class="{ 'mode-card--active': selectedMode?.id === mode.id }"
             type="button"
             :aria-pressed="selectedMode?.id === mode.id"
-            @click="canSelectMode && (selectedModeId = mode.id)"
+            @click="selectedModeId = mode.id"
           >
             <span class="mode-card__icon" :class="mode.iconClass">{{ mode.icon }}</span>
             <h3>{{ mode.title }}</h3>
@@ -272,7 +245,7 @@ const closeModal = async () => {
         </div>
 
         <footer class="mode-actions">
-          <button class="mode-actions__primary" type="button" :disabled="!selectedModeId || !canSelectMode" @click="enterDungeon">
+          <button class="mode-actions__primary" type="button" :disabled="!selectedModeId" @click="enterDungeon">
             {{ t("modeSelection.actions.enterDungeon") }}
           </button>
           <button class="mode-actions__secondary" type="button" @click="closeModal">
@@ -495,26 +468,10 @@ const closeModal = async () => {
   font-weight: 700;
 }
 
-
-.mode-content__warning {
-  background: var(--color-chip-gold-bg);
-  border: 1px solid var(--color-muted-gold);
-  border-radius: 10px;
-  color: var(--color-chip-gold-text);
-  font-size: 13px;
-  margin: 14px 0 0;
-  padding: 10px 12px;
-}
-
-.mode-card--disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
 .mode-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 24px;
 }
 
@@ -565,6 +522,11 @@ const closeModal = async () => {
 .mode-card__icon--gold {
   background: var(--color-streak-bg);
   color: var(--color-coin-value);
+}
+
+.mode-card__icon--jade {
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
 }
 
 .mode-card h3 {
@@ -658,6 +620,25 @@ const closeModal = async () => {
       color-mix(in srgb, var(--color-badge-blue-text) 66%, var(--color-surface) 34%),
       color-mix(in srgb, var(--color-chip-violet-text) 70%, var(--color-text-primary) 30%) 44%,
       color-mix(in srgb, var(--color-badge-blue-bg) 54%, var(--color-badge-blue-text) 46%)
+    );
+}
+
+.mode-card__preview--review {
+  background: radial-gradient(
+      circle at 24% 28%,
+      color-mix(in srgb, var(--color-primary-100) 94%, transparent),
+      transparent 22%
+    ),
+    radial-gradient(
+      circle at 74% 34%,
+      color-mix(in srgb, var(--color-cyan-100) 88%, transparent),
+      transparent 20%
+    ),
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--color-primary-50) 92%, var(--color-surface) 8%),
+      color-mix(in srgb, var(--color-cyan-50) 88%, var(--color-surface) 12%) 48%,
+      color-mix(in srgb, var(--color-primary-100) 76%, var(--color-surface) 24%)
     );
 }
 

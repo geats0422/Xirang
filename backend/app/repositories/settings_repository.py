@@ -31,7 +31,9 @@ class SettingsRepository:
             setattr(settings, key, value)
 
         await self._session.flush()
-        return settings
+        stmt = select(UserSetting).where(UserSetting.user_id == user_id).limit(1)
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def commit(self) -> None:
         await self._session.commit()

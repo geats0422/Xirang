@@ -3,14 +3,12 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
-import MistakeReviewPanel from "../components/MistakeReviewPanel.vue";
-import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
+import MarkdownRichText from "../components/ui/MarkdownRichText.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type MistakeReviewItem, type RunAnswerFeedback, type RunQuestion } from '../api/runs';
-import { submitFeedback } from '../api/feedback';
+import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
+import { submitFeedback } from "../api/feedback";
 import { getShopBalance } from "../api/shop";
-import { buildMistakeReviewItem } from "../utils/mistakeReview";
-import { stripQuestionFormatting } from "../utils/questionText";
+import { getDailyGoal } from "../api/user";
 
 const { t, locale } = useI18n();
 
@@ -40,82 +38,32 @@ let tickerId: number | null = null;
 
 const showSettlement = ref(false);
 const runStatus = ref<RunStatus>("normal");
-const wrongFeedback = ref<RunAnswerFeedback | null>(null);
-const showMistakeReview = ref(false);
-const mistakeReviewItems = ref<MistakeReviewItem[]>([]);
 const settlementXp = ref(0);
 const settlementCoins = ref(0);
 const settlementCombo = ref(0);
 const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(8);
+const settlementTopPercent = ref<number | null>(null);
+const isSubmittingAnswer = ref(false);
+const selectedAnswer = ref<"false" | "true" | null>(null);
+
+// Feedback state for showing correct answer and explanation
+const showFeedback = ref(false);
+const lastAnswerCorrect = ref(false);
+const feedbackCorrectAnswer = ref<string | null>(null);
+const feedbackExplanation = ref<string | null>(null);
+const awaitingCorrection = ref(false);
+const expectedCorrectOptionIds = ref<string[]>([]);
 
 
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 
 const questionText = computed(() => {
   if (currentQuestion.value?.text) {
-    return stripQuestionFormatting(currentQuestion.value.text);
+    return currentQuestion.value.text;
   }
-  return "Loading question...";
+  return t("speedSurvival.loadingQuestion");
 });
-
-const questionSourceLocator = computed(() => {
-  const locator = currentQuestion.value?.source_locator;
-  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
-});
-
-const questionSupportingExcerpt = computed(() => {
-  const excerpt = currentQuestion.value?.supporting_excerpt;
-  return typeof excerpt === "string" && excerpt.trim()
-    ? stripQuestionFormatting(excerpt).trim()
-    : null;
-});
-
-const wrongFeedbackAnswerText = computed(() => {
-  if (!wrongFeedback.value?.correct_options?.length) {
-    return null;
-  }
-  return wrongFeedback.value.correct_options
-    .map((option) => stripQuestionFormatting(option.text).trim())
-    .filter(Boolean)
-    .join(" / ");
-});
-
-const wrongFeedbackExplanation = computed(() => {
-  const explanation = wrongFeedback.value?.explanation;
-  return typeof explanation === "string" && explanation.trim()
-    ? stripQuestionFormatting(explanation).trim()
-    : null;
-});
-
-const wrongFeedbackSourceLocator = computed(() => {
-  const locator = wrongFeedback.value?.source_locator;
-  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
-});
-
-const wrongFeedbackExcerpt = computed(() => {
-  const excerpt = wrongFeedback.value?.supporting_excerpt;
-  return typeof excerpt === "string" && excerpt.trim()
-    ? stripQuestionFormatting(excerpt).trim()
-    : null;
-});
-
-const reviewLabel = computed(() => (mistakeReviewItems.value.length > 0 ? "Review Mistakes" : "No mistakes this run"));
-
-const appendMistakeReviewItem = (
-  question: RunQuestion,
-  feedback: RunAnswerFeedback | null,
-  selectedAnswerText?: string | null,
-) => {
-  const item = buildMistakeReviewItem(question, feedback, selectedAnswerText);
-  if (!item) {
-    return;
-  }
-  if (mistakeReviewItems.value.some((entry) => entry.question_id === item.question_id)) {
-    return;
-  }
-  mistakeReviewItems.value = [...mistakeReviewItems.value, item];
-};
 
 const progressPercent = computed(() => {
   if (maxRunTime.value === null || timeRemaining.value === null || maxRunTime.value <= 0) {
@@ -126,23 +74,109 @@ const progressPercent = computed(() => {
 
 const answerPrompt = computed(() => {
   if (!currentQuestion.value) {
-    return "Loading options...";
+    return t("speedSurvival.loadingOptions");
   }
   return currentQuestion.value.options.length === 2
-    ? "Choose the best option"
-    : "Tap the option that matches the statement";
+    ? t("speedSurvival.chooseBestOption")
+    : t("speedSurvival.tapOption");
 });
 
-const falseOptionLabel = computed(() =>
-  currentQuestion.value?.options[0]?.text
-    ? stripQuestionFormatting(currentQuestion.value.options[0].text)
-    : "--",
-);
-const trueOptionLabel = computed(() =>
-  currentQuestion.value?.options[1]?.text
-    ? stripQuestionFormatting(currentQuestion.value.options[1].text)
-    : "--",
-);
+const TRUE_TOKENS = ["true", "對", "正确", "正確", "正确的"];
+const FALSE_TOKENS = ["false", "錯", "错", "错误", "錯誤"];
+
+const normalizeOptionLabel = (value: string): string => value.trim().toLowerCase();
+
+const matchesAnyToken = (label: string, tokens: string[]): boolean => {
+  const normalized = normalizeOptionLabel(label);
+  return tokens.some((token) => normalized.includes(token));
+};
+
+const trueOption = computed(() => {
+  const options = currentQuestion.value?.options ?? [];
+  const matched = options.find((option) => matchesAnyToken(option.text, TRUE_TOKENS));
+  return matched ?? options[0] ?? null;
+});
+
+const falseOption = computed(() => {
+  const options = currentQuestion.value?.options ?? [];
+  const matched = options.find((option) => matchesAnyToken(option.text, FALSE_TOKENS));
+  if (matched) {
+    return matched;
+  }
+  if (options.length > 1 && trueOption.value?.id === options[0]?.id) {
+    return options[1] ?? null;
+  }
+  return options[0] ?? null;
+});
+
+const trueOptionLabel = computed(() => trueOption.value?.text || "--");
+const falseOptionLabel = computed(() => falseOption.value?.text || "--");
+
+const resolveLeagueTopPercent = (accuracy: number | null | undefined): number | null => {
+  if (typeof accuracy !== "number" || !Number.isFinite(accuracy)) {
+    return null;
+  }
+  const normalized = Math.min(1, Math.max(0, accuracy));
+  return Math.max(1, 100 - Math.round(normalized * 100));
+};
+
+const areSameOptionSet = (left: string[], right: string[]): boolean => {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const leftSet = new Set(left);
+  return right.every((item) => leftSet.has(item));
+};
+
+const normalizeComparableText = (value: string): string => {
+  return value.trim().toLowerCase().replace(/\u3000/g, " ").replace(/\s+/g, "");
+};
+
+const normalizeTokens = (value: string): string[] => {
+  return value
+    .toLowerCase()
+    .split(/[\s,，。！？!?;；:：/]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+};
+
+const resolveExpectedCorrectOptionIds = (payload: {
+  correctOptionIds: string[];
+  correctAnswerText: string | null;
+  options: { id: string; text: string }[];
+}): string[] => {
+  if (payload.correctOptionIds.length > 0) {
+    return payload.correctOptionIds;
+  }
+  if (!payload.correctAnswerText) {
+    return [];
+  }
+  const answerTokens = normalizeTokens(payload.correctAnswerText);
+  if (answerTokens.length === 0) {
+    return [];
+  }
+  return payload.options
+    .filter((option) => normalizeTokens(option.text).some((token) => answerTokens.includes(token)))
+    .map((option) => option.id);
+};
+
+const resolveDisplayCorrectAnswer = (payload: {
+  correctAnswerText: string | null;
+  correctOptionIds: string[];
+  options: { id: string; text: string }[];
+}): string | null => {
+  if (payload.correctAnswerText && payload.correctAnswerText.trim()) {
+    return payload.correctAnswerText;
+  }
+  if (!payload.correctOptionIds.length) {
+    return null;
+  }
+  const optionMap = new Map(payload.options.map((option) => [option.id, option.text]));
+  const values = payload.correctOptionIds
+    .map((id) => optionMap.get(id)?.trim())
+    .filter((item): item is string => Boolean(item));
+  return values.length > 0 ? values.join(", ") : null;
+};
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
@@ -190,27 +224,17 @@ const refreshBalance = async () => {
   }
 };
 
+const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
+
 const bootstrapRun = async () => {
   await refreshBalance();
   const rawDocumentId = route.query.documentId;
-  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
+  const documentId = typeof rawDocumentId === "string" && rawDocumentId.trim() ? rawDocumentId : undefined;
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
-  const rawPathVersionId = route.query.pathVersionId;
-  const pathVersionId = typeof rawPathVersionId === "string" ? rawPathVersionId : undefined;
-  const rawLevelNodeId = route.query.levelNodeId;
-  const levelNodeId = typeof rawLevelNodeId === "string" ? rawLevelNodeId : undefined;
-
-  if (!documentId) {
-    return;
-  }
 
   try {
-    const created = await createRun(documentId, "speed", 8, {
-      pathId,
-      pathVersionId,
-      levelNodeId,
-    });
+    const created = await createRun(documentId, "speed", 8, pathId, isMistakeReview);
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
@@ -223,55 +247,104 @@ const bootstrapRun = async () => {
   }
 };
 
-const goBack = async () => {
-  await router.push({
-    path: route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
-    query: route.query,
-  });
-};
+  const goBack = async () => {
+    await router.push({
+      path: isMistakeReview ? ROUTES.gameModes : route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
+      query: route.query,
+    });
+  };
 
 const goLibrary = async () => {
   await router.push(ROUTES.library);
 };
 
-const chooseAnswer = async (answer: "false" | "true") => {
-  if (showSettlement.value || !runId.value || !currentQuestion.value) {
+const chooseAnswer = async (answerChoice: "false" | "true") => {
+  if (showSettlement.value || isSubmittingAnswer.value || !runId.value || !currentQuestion.value) {
     return;
   }
 
-  const selectedOption = answer === "false"
-    ? currentQuestion.value.options[0]
-    : currentQuestion.value.options[1] || currentQuestion.value.options[0];
-  const selectedAnswerText = selectedOption?.text ?? answer;
+  const selectedOption = answerChoice === "false" ? falseOption.value : trueOption.value;
+  const selectedOptionIds = selectedOption ? [selectedOption.id] : [];
+  selectedAnswer.value = answerChoice;
+
+  if (awaitingCorrection.value) {
+    const matchedByOption =
+      expectedCorrectOptionIds.value.length > 0 &&
+      areSameOptionSet(selectedOptionIds, expectedCorrectOptionIds.value);
+    const normalizedCurrentAnswer = normalizeComparableText(selectedOption?.text ?? "");
+    const normalizedCorrectAnswer = normalizeComparableText(feedbackCorrectAnswer.value ?? "");
+    const matchedByAnswer =
+      normalizedCurrentAnswer.length > 0 &&
+      normalizedCorrectAnswer.length > 0 &&
+      normalizedCurrentAnswer === normalizedCorrectAnswer;
+
+    if (!matchedByOption && !matchedByAnswer) {
+      showFeedback.value = true;
+      return;
+    }
+
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+    showFeedback.value = false;
+    questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
+    questionStartAt.value = Date.now();
+    return;
+  }
+
+  isSubmittingAnswer.value = true;
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
 
   try {
     const result = await submitAnswer(
       runId.value,
       currentQuestion.value.id,
-      selectedOption ? [selectedOption.id] : [],
+      selectedOptionIds,
       elapsedMs,
     );
     applyRunState(result.run.state);
-    wrongFeedback.value = result.is_correct ? null : result.feedback;
-    if (!result.is_correct) {
-      appendMistakeReviewItem(currentQuestion.value, result.feedback, selectedAnswerText);
-    }
+
+    // Store feedback for display
+    lastAnswerCorrect.value = result.is_correct;
+    feedbackCorrectAnswer.value = resolveDisplayCorrectAnswer({
+      correctAnswerText: result.feedback?.correct_answer ?? null,
+      correctOptionIds: result.feedback?.correct_option_ids ?? [],
+      options: currentQuestion.value.options,
+    });
+    feedbackExplanation.value = result.feedback?.explanation ?? null;
 
     if (result.is_correct) {
+      showFeedback.value = false;
       combo.value = (combo.value ?? 0) + 1;
       runStatus.value = elapsedMs <= 1500 ? "fast-answer" : "normal";
-    } else {
+      } else {
       combo.value = 0;
       runStatus.value = "normal";
+      showFeedback.value = true;
+      awaitingCorrection.value = true;
+      expectedCorrectOptionIds.value = resolveExpectedCorrectOptionIds({
+        correctOptionIds: result.feedback?.correct_option_ids ?? [],
+        correctAnswerText: result.feedback?.correct_answer ?? null,
+        options: currentQuestion.value.options,
+      });
+      return;
     }
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
       settlementCoins.value = result.settlement.coins_earned;
       settlementCombo.value = result.settlement.combo_max;
-      settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
-      settlementGoalTotal.value = result.settlement.goal_total ?? 8;
+      settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
+
+      // Fetch real daily goal data from API
+      try {
+        const dailyGoal = await getDailyGoal();
+        settlementGoalCurrent.value = dailyGoal.goal_current;
+        settlementGoalTotal.value = dailyGoal.goal_total;
+      } catch {
+        settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+        settlementGoalTotal.value = result.settlement.goal_total ?? 8;
+      }
+
       showSettlement.value = true;
       stopTicker();
       await refreshBalance();
@@ -281,23 +354,33 @@ const chooseAnswer = async (answer: "false" | "true") => {
     }
   } catch {
     runStatus.value = "reduced-reward";
+  } finally {
+    isSubmittingAnswer.value = false;
   }
 };
 
 const closeSettlement = () => {
-  showSettlement.value = false;
+  void router.push(ROUTES.library);
 };
 
-const openMistakeReview = () => {
-  if (mistakeReviewItems.value.length === 0) {
-    return;
-  }
-  showSettlement.value = false;
-  showMistakeReview.value = true;
+const goToPath = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "speed-survival",
+    },
+  });
 };
 
-const closeMistakeReview = () => {
-  showMistakeReview.value = false;
+const goToReview = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "review",
+    },
+  });
 };
 
 const toggleFeedbackForm = async () => {
@@ -333,6 +416,21 @@ onMounted(async () => {
   await bootstrapRun();
 });
 
+watch(
+  currentQuestion,
+  () => {
+    showFeedback.value = false;
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+    lastAnswerCorrect.value = false;
+    feedbackCorrectAnswer.value = null;
+    feedbackExplanation.value = null;
+    selectedAnswer.value = null;
+    isSubmittingAnswer.value = false;
+  },
+  { immediate: true },
+);
+
 watch(showSettlement, (visible) => {
   if (visible) {
     stopTicker();
@@ -346,24 +444,24 @@ onUnmounted(() => {
 
 <template>
   <main class="speed-page">
-    <section class="speed-shell" aria-label="Speed Survival gameplay">
+    <section class="speed-shell" :aria-label="t('speedSurvival.shellAria')">
       <header class="speed-topbar">
         <div class="speed-topbar__title">
           <span class="speed-topbar__icon">⚡</span>
-          <h1>Speed Survival</h1>
+          <h1>{{ t("speedSurvival.title") }}</h1>
         </div>
 
         <div class="speed-topbar__actions">
           <button class="coin-badge" type="button">🪙 {{ coins ?? "--" }}</button>
-          <button class="exit-btn" type="button" @click="goBack">Exit Game</button>
-          <button class="settings-btn" type="button" aria-label="Settings">⚙</button>
+          <button class="exit-btn" type="button" @click="goBack">{{ t("speedSurvival.exitGame") }}</button>
+          <button class="settings-btn" type="button" :aria-label="t('speedSurvival.settingsAria')">⚙</button>
         </div>
       </header>
 
       <section class="speed-stage">
         <header class="countdown-strip">
           <div class="countdown-strip__meta">
-            <p>TIME REMAINING</p>
+            <p>{{ t("speedSurvival.timeRemaining") }}</p>
             <span>{{ timeRemaining === null ? "--" : `${timeRemaining}s` }}</span>
           </div>
 
@@ -371,78 +469,89 @@ onUnmounted(() => {
             <span class="countdown-strip__fill" :style="{ width: `${progressPercent}%` }" />
           </div>
 
-          <div class="combo-badge">⚡ Combo x{{ combo ?? "--" }}</div>
+          <div class="combo-badge">{{ t("speedSurvival.combo", { combo: combo ?? "--" }) }}</div>
         </header>
 
-        <article class="survival-card" aria-label="True false card">
+        <article class="survival-card" :aria-label="t('speedSurvival.cardAria')">
           <div class="survival-card__art" aria-hidden="true">
             <div class="survival-card__glow" />
           </div>
 
           <div class="survival-card__body">
-            <p class="survival-card__eyebrow">✦ MYTHOLOGY</p>
-            <h2>{{ questionText }}</h2>
-            <div v-if="questionSourceLocator || questionSupportingExcerpt" class="question-provenance">
-              <p v-if="questionSourceLocator" class="question-provenance__line">来源：{{ questionSourceLocator }}</p>
-              <p v-if="questionSupportingExcerpt" class="question-provenance__line">摘录：{{ questionSupportingExcerpt }}</p>
-            </div>
+            <p class="survival-card__eyebrow">{{ t("speedSurvival.eyebrow") }}</p>
+            <MarkdownRichText :content="questionText" class-name="survival-card__title" />
             <p class="survival-card__prompt">{{ answerPrompt }}</p>
           </div>
         </article>
 
         <footer class="answer-pad">
-          <button class="answer-pill answer-pill--false" type="button" @click="chooseAnswer('false')">
+          <button
+            class="answer-pill answer-pill--false"
+            :class="{ 'answer-pill--selected': selectedAnswer === 'false', 'answer-pill--submitting': isSubmittingAnswer && selectedAnswer === 'false' }"
+            type="button"
+            :disabled="isSubmittingAnswer"
+            @click="chooseAnswer('false')"
+          >
             <span class="answer-pill__icon">✕</span>
-            <span class="answer-pill__label">{{ falseOptionLabel }}</span>
+            <MarkdownRichText :content="falseOptionLabel" inline class-name="answer-pill__label" />
           </button>
 
-          <button class="answer-pill answer-pill--true" type="button" @click="chooseAnswer('true')">
+          <button
+            class="answer-pill answer-pill--true"
+            :class="{ 'answer-pill--selected': selectedAnswer === 'true', 'answer-pill--submitting': isSubmittingAnswer && selectedAnswer === 'true' }"
+            type="button"
+            :disabled="isSubmittingAnswer"
+            @click="chooseAnswer('true')"
+          >
             <span class="answer-pill__icon">✓</span>
-            <span class="answer-pill__label">{{ trueOptionLabel }}</span>
+            <MarkdownRichText :content="trueOptionLabel" inline class-name="answer-pill__label" />
           </button>
         </footer>
 
-        <p class="answer-tip">SWIPE OR USE ARROW KEYS</p>
+        <p class="answer-tip" :class="{ 'answer-tip--submitting': isSubmittingAnswer }">
+          {{ isSubmittingAnswer ? t("speedSurvival.submitting") : t("speedSurvival.swipeOrArrowKeys") }}
+        </p>
 
         <button class="feedback-action" type="button" @click="toggleFeedbackForm">
-          这题有误?
+          {{ t("speedSurvival.feedbackButton") }}
         </button>
 
-        <div v-if="runStatus === 'fast-answer'" class="run-status-notice">
-          ⚡ Fast answer! +50% XP bonus
+        <!-- Answer Feedback -->
+        <div v-if="showFeedback && !lastAnswerCorrect" class="answer-feedback" :class="{ 'answer-feedback--wrong': !lastAnswerCorrect }">
+          <div class="answer-feedback__header">
+            <span class="answer-feedback__icon">✗</span>
+            <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
+          </div>
+          <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong>
+            <MarkdownRichText :content="feedbackCorrectAnswer" inline class-name="answer-feedback__markdown" />
+          </div>
+          <div v-if="feedbackExplanation" class="answer-feedback__explanation">
+            <strong>{{ t("speedSurvival.explanation") }}</strong>
+            <MarkdownRichText :content="feedbackExplanation" class-name="answer-feedback__markdown" />
+          </div>
         </div>
-        <div v-if="wrongFeedback" class="run-status-notice run-status-notice--danger wrong-feedback">
-          <WrongAnswerFeedbackCard
-            title="回答错误，已显示正确答案。"
-            :correct-answer-text="wrongFeedbackAnswerText"
-            :explanation="wrongFeedbackExplanation"
-            :source-locator="wrongFeedbackSourceLocator"
-            :supporting-excerpt="wrongFeedbackExcerpt"
-          />
+
+        <div v-if="runStatus === 'fast-answer'" class="run-status-notice">
+          {{ t("speedSurvival.fastAnswerBonus") }}
         </div>
       </section>
     </section>
 
     <GameSettlementModal
       :visible="showSettlement"
-      mode-name="Speed Survival"
+      :mode-name="t('speedSurvival.modeName')"
       :xp-gained="settlementXp"
       :coin-reward="settlementCoins"
       :combo-count="settlementCombo"
       :goal-current="settlementGoalCurrent"
       :goal-total="settlementGoalTotal"
-      :review-enabled="mistakeReviewItems.length > 0"
-      :review-label="reviewLabel"
-      goal-text="Keep sharpening your reflexes to reach enlightenment through speed." 
+      :league-top-percent="settlementTopPercent"
+      :goal-text="t('speedSurvival.settlementGoalText')"
       @close="closeSettlement"
       @confirm="goLibrary"
-      @review="openMistakeReview"
-    />
-
-    <MistakeReviewPanel
-      :visible="showMistakeReview"
-      :items="mistakeReviewItems"
-      @close="closeMistakeReview"
+      @continue-to-path="goToPath"
+      @review-mistakes="goToReview"
     />
   </main>
 </template>
@@ -668,7 +777,7 @@ onUnmounted(() => {
   margin: 0;
 }
 
-.survival-card__body h2 {
+.survival-card__title {
   color: var(--color-text-primary);
   font-size: 24px;
   font-weight: 800;
@@ -681,20 +790,6 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
   font-size: 13px;
   margin: 22px 0 0;
-}
-
-.question-provenance {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 16px;
-}
-
-.question-provenance__line {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 1.4;
-  margin: 0;
 }
 
 .answer-pad {
@@ -715,6 +810,12 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 700;
   gap: 10px;
+  transition: opacity 0.2s ease;
+}
+
+.answer-pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .answer-pill__icon {
@@ -726,6 +827,7 @@ onUnmounted(() => {
   font-size: 28px;
   height: 64px;
   justify-content: center;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
   width: 64px;
 }
 
@@ -737,6 +839,15 @@ onUnmounted(() => {
   color: var(--color-primary-500);
 }
 
+.answer-pill--selected .answer-pill__icon {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-100) 72%, transparent);
+  transform: translateY(-1px);
+}
+
+.answer-pill--submitting .answer-pill__icon {
+  background: color-mix(in srgb, var(--color-primary-50) 60%, var(--color-surface) 40%);
+}
+
 .answer-tip {
   color: var(--color-text-muted);
   font-size: 10px;
@@ -744,6 +855,10 @@ onUnmounted(() => {
   letter-spacing: 0.08em;
   margin: 18px 0 0;
   text-align: center;
+}
+
+.answer-tip--submitting {
+  color: var(--color-primary-500);
 }
 
 .feedback-action {
@@ -774,13 +889,6 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.run-status-notice--danger {
-  background: var(--color-danger-surface);
-  border-color: var(--color-danger-border);
-  color: var(--color-danger-title);
-}
-
-
 @media (max-width: 900px) {
   .speed-page {
     padding: 12px;
@@ -807,7 +915,7 @@ onUnmounted(() => {
     padding: 20px 16px;
   }
 
-  .survival-card__body h2 {
+  .survival-card__title {
     font-size: 22px;
     max-width: none;
   }
@@ -815,5 +923,56 @@ onUnmounted(() => {
   .answer-pad {
     gap: 20px;
   }
+}
+
+/* Answer Feedback Styles */
+.answer-feedback {
+  background: var(--color-danger-surface);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  text-align: left;
+}
+
+.answer-feedback--wrong {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+}
+
+.answer-feedback__header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.answer-feedback__icon {
+  background: var(--color-danger-title);
+  border-radius: 50%;
+  color: var(--color-surface);
+  display: inline-flex;
+  font-size: 14px;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.answer-feedback__title {
+  color: var(--color-danger-title);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.answer-feedback__correct {
+  color: var(--color-danger-title);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.answer-feedback__explanation {
+  color: var(--color-danger-title);
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

@@ -1,175 +1,160 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { ApiError } from "../api/http";
-import { listRunPathOptions, regenerateRunPath, type RunPathOption } from "../api/runs";
 import { ROUTES } from "../constants/routes";
+import { listRunPathOptions, type RunPathOption } from "../api/runs";
 
 type PathNode = {
   id: string;
   label: string;
-  type: "battle" | "study" | "checkpoint" | "boss" | "speed" | "draft";
+  type: "battle" | "study" | "checkpoint" | "boss" | "speed" | "draft" | "review";
   description: string;
   floor?: number;
   done?: boolean;
-  pathVersionId?: string;
-  levelNodeId?: string;
+  status: "locked" | "unlocked" | "completed";
 };
 
-type ModeId = "endless-abyss" | "speed-survival" | "knowledge-draft";
-type PathLoadState = "idle" | "loading" | "generating" | "ready" | "not_ready" | "error";
-
-const POLL_INTERVAL_MS = 2000;
-const MAX_POLL_ATTEMPTS = 15;
+type ModeId = "endless-abyss" | "speed-survival" | "knowledge-draft" | "review";
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
 const mode = computed<ModeId>(() => {
   const rawMode = route.query.mode;
-  if (rawMode === "speed-survival" || rawMode === "knowledge-draft") {
+  if (rawMode === "speed-survival" || rawMode === "knowledge-draft" || rawMode === "review") {
     return rawMode;
   }
   return "endless-abyss";
 });
 
 const selectedNodeId = ref<string>("");
-const loadState = ref<PathLoadState>("idle");
-const loadMessage = ref<string>("");
-const isRegenerating = ref(false);
-let pollTimer: number | null = null;
-let pollAttempts = 0;
 
 const modeRouteMap: Record<ModeId, string> = {
   "endless-abyss": ROUTES.endlessAbyss,
   "speed-survival": ROUTES.speedSurvival,
   "knowledge-draft": ROUTES.knowledgeDraft,
+  review: ROUTES.review,
 };
 
-const modeApiMap: Record<ModeId, "endless" | "speed" | "draft"> = {
+const modeApiMap: Record<ModeId, "endless" | "speed" | "draft" | "review"> = {
   "endless-abyss": "endless",
   "speed-survival": "speed",
   "knowledge-draft": "draft",
+  review: "review",
 };
 
-const modeLabelMap: Record<ModeId, string> = {
-  "endless-abyss": "Endless Abyss",
-  "speed-survival": "Speed Survival",
-  "knowledge-draft": "Knowledge Draft",
-};
+const modeLabelMap = computed<Record<ModeId, string>>(() => ({
+  "endless-abyss": t("levelPath.modeLabel.endlessAbyss"),
+  "speed-survival": t("levelPath.modeLabel.speedSurvival"),
+  "knowledge-draft": t("levelPath.modeLabel.knowledgeDraft"),
+  review: t("levelPath.modeLabel.review"),
+}));
 
-const endlessNodes: PathNode[] = [
-  { id: "F1", label: "F1", floor: 1, type: "battle", description: "Warm-up floor", done: true },
-  { id: "F2", label: "F2", floor: 2, type: "study", description: "Steady learning", done: true },
-  { id: "F3", label: "F3", floor: 3, type: "checkpoint", description: "Risk check" },
-  { id: "F4", label: "F4", floor: 4, type: "study", description: "Pattern practice" },
-  { id: "F5", label: "F5", floor: 5, type: "battle", description: "High pressure" },
-  { id: "F6", label: "F6", floor: 6, type: "boss", description: "Abyss boss" },
-];
+const endlessNodes = computed<PathNode[]>(() => [
+  { id: "F1", label: "F1", floor: 1, type: "battle", description: t("levelPath.nodeDescription.endless.f1"), status: "unlocked" },
+  { id: "F2", label: "F2", floor: 2, type: "study", description: t("levelPath.nodeDescription.endless.f2"), status: "locked" },
+  { id: "F3", label: "F3", floor: 3, type: "checkpoint", description: t("levelPath.nodeDescription.endless.f3"), status: "locked" },
+  { id: "F4", label: "F4", floor: 4, type: "study", description: t("levelPath.nodeDescription.endless.f4"), status: "locked" },
+  { id: "F5", label: "F5", floor: 5, type: "battle", description: t("levelPath.nodeDescription.endless.f5"), status: "locked" },
+  { id: "F6", label: "F6", floor: 6, type: "boss", description: t("levelPath.nodeDescription.endless.f6"), status: "locked" },
+]);
 
-const speedNodes: PathNode[] = [
+const speedNodes = computed<PathNode[]>(() => [
   {
     id: "speed-route-focus",
     label: "R1",
     type: "speed",
-    description: "Short rounds, higher accuracy bonus",
-    done: true,
+    description: t("levelPath.nodeDescription.speed.r1"),
+    status: "unlocked",
   },
   {
     id: "speed-route-burst",
     label: "R2",
     type: "speed",
-    description: "Fast tempo with combo scaling",
+    description: t("levelPath.nodeDescription.speed.r2"),
+    status: "locked",
   },
   {
     id: "speed-route-endurance",
     label: "R3",
     type: "speed",
-    description: "Long timer, stable output",
+    description: t("levelPath.nodeDescription.speed.r3"),
+    status: "locked",
   },
-];
+]);
 
-const draftNodes: PathNode[] = [
+const draftNodes = computed<PathNode[]>(() => [
   {
     id: "draft-route-classic",
     label: "R1",
     type: "draft",
-    description: "Balanced drafting journey",
-    done: true,
+    description: t("levelPath.nodeDescription.draft.r1"),
+    status: "unlocked",
   },
   {
     id: "draft-route-theory",
     label: "R2",
     type: "draft",
-    description: "Focus on concept-heavy cards",
+    description: t("levelPath.nodeDescription.draft.r2"),
+    status: "locked",
   },
   {
     id: "draft-route-memory",
     label: "R3",
     type: "draft",
-    description: "Retention-oriented drafting",
+    description: t("levelPath.nodeDescription.draft.r3"),
+    status: "locked",
   },
-];
+]);
 
-const fallbackNodesForMode = (): PathNode[] => {
+const reviewNodes = computed<PathNode[]>(() => [
+  {
+    id: "review-stage-1",
+    label: "R1",
+    type: "review",
+    description: t("levelPath.nodeDescription.review.r1"),
+    status: "unlocked",
+  },
+  {
+    id: "review-stage-2",
+    label: "R2",
+    type: "review",
+    description: t("levelPath.nodeDescription.review.r2"),
+    status: "locked",
+  },
+  {
+    id: "review-stage-3",
+    label: "R3",
+    type: "review",
+    description: t("levelPath.nodeDescription.review.r3"),
+    status: "locked",
+  },
+]);
+
+const fallbackNodes = computed<PathNode[]>(() => {
   if (mode.value === "endless-abyss") {
-    return endlessNodes;
+    return endlessNodes.value;
   }
   if (mode.value === "speed-survival") {
-    return speedNodes;
+    return speedNodes.value;
   }
-  return draftNodes;
-};
-
-const clearPollTimer = () => {
-  if (pollTimer !== null) {
-    window.clearTimeout(pollTimer);
-    pollTimer = null;
+  if (mode.value === "knowledge-draft") {
+    return draftNodes.value;
   }
-};
-
-const schedulePoll = () => {
-  clearPollTimer();
-  if (pollAttempts >= MAX_POLL_ATTEMPTS) {
-    loadState.value = "error";
-    loadMessage.value = "Path generation timed out. Please retry.";
-    return;
-  }
-
-  pollTimer = window.setTimeout(async () => {
-    pollAttempts += 1;
-    await loadPathOptions({ fromPoll: true });
-  }, POLL_INTERVAL_MS);
-};
-
-const toUserMessage = (error: unknown): { state: PathLoadState; message: string } => {
-  if (error instanceof ApiError && error.status === 409) {
-    const detail = typeof error.detail === "object" && error.detail && "detail" in error.detail
-      ? (error.detail as { detail?: unknown }).detail
-      : error.detail;
-
-    if (detail === "document_not_ready") {
-      return { state: "not_ready", message: "Document is still processing. Please wait and retry." };
-    }
-    if (detail === "question_set_not_ready") {
-      return { state: "not_ready", message: "Questions are still generating for this document." };
-    }
-    if (detail === "document_not_found") {
-      return { state: "error", message: "Document not found." };
-    }
-    if (typeof detail === "string" && detail.trim().length > 0) {
-      return { state: "error", message: detail };
-    }
-  }
-
-  if (error instanceof ApiError && error.status === 429) {
-    return { state: "error", message: "Regeneration limit reached (3 times in 24h)." };
-  }
-
-  return { state: "error", message: "Failed to load learning path. Please retry." };
-};
+  return reviewNodes.value;
+});
 
 const nodes = ref<PathNode[]>([]);
+
+const noRoutesMessage = computed(() => {
+  if (mode.value === "review") {
+    return t("levelPath.reviewNoQuestions");
+  }
+  return t("levelPath.noRouteSelected");
+});
 
 const mapOptionToNode = (option: RunPathOption): PathNode => {
   if (mode.value === "endless-abyss") {
@@ -181,104 +166,56 @@ const mapOptionToNode = (option: RunPathOption): PathNode => {
       floor: validFloor,
       type: option.kind === "floor" ? "battle" : "checkpoint",
       description: option.description,
-      done: option.path_id === "F1",
-      pathVersionId: option.path_version_id,
-      levelNodeId: option.level_node_id,
+      done: option.status === "completed",
+      status: option.status ?? "locked",
     };
   }
 
   return {
     id: option.path_id,
     label: option.label,
-    type: mode.value === "speed-survival" ? "speed" : "draft",
+    type:
+      mode.value === "speed-survival"
+        ? "speed"
+        : mode.value === "knowledge-draft"
+          ? "draft"
+          : "review",
     description: option.description,
-    done: option.path_id.endsWith("focus") || option.path_id.endsWith("classic"),
-    pathVersionId: option.path_version_id,
-    levelNodeId: option.level_node_id,
+    done: option.status === "completed",
+    status: option.status ?? "locked",
   };
 };
 
-const loadPathOptions = async ({ fromPoll = false }: { fromPoll?: boolean } = {}) => {
+const loadPathOptions = async () => {
   const rawDocumentId = route.query.documentId;
-  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
-  if (!documentId) {
-    clearPollTimer();
-    pollAttempts = 0;
-    nodes.value = fallbackNodesForMode();
-    loadState.value = "ready";
-    loadMessage.value = "";
+  const documentId =
+    typeof rawDocumentId === "string" && rawDocumentId.trim().length > 0
+      ? rawDocumentId
+      : undefined;
+  if (!documentId && mode.value !== "review") {
+    nodes.value = fallbackNodes.value;
     return;
-  }
-
-  if (!fromPoll) {
-    clearPollTimer();
-    pollAttempts = 0;
-    loadState.value = "loading";
-    loadMessage.value = "Loading learning path...";
   }
 
   try {
     const response = await listRunPathOptions(documentId, modeApiMap[mode.value]);
-
-    if (response.generation_status === "generating") {
-      nodes.value = [];
-      selectedNodeId.value = "";
-      loadState.value = "generating";
-      loadMessage.value = "Generating learning path...";
-      schedulePoll();
-      return;
-    }
-
     const mapped = response.options.map(mapOptionToNode);
-    clearPollTimer();
-    pollAttempts = 0;
-
-    if (!mapped.length) {
-      nodes.value = [];
-      selectedNodeId.value = "";
-      loadState.value = "error";
-      loadMessage.value = "No path options generated yet. Please retry.";
+    if (mode.value === "review") {
+      nodes.value = mapped;
       return;
     }
-
-    nodes.value = mapped;
-    loadState.value = "ready";
-    loadMessage.value = "";
+    nodes.value = mapped.length ? mapped : fallbackNodes.value;
   } catch (error) {
-    clearPollTimer();
-    nodes.value = [];
-    selectedNodeId.value = "";
-    const { state, message } = toUserMessage(error);
-    loadState.value = state;
-    loadMessage.value = message;
-  }
-};
-
-const triggerRegeneration = async () => {
-  const rawDocumentId = route.query.documentId;
-  const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
-  if (!documentId || isRegenerating.value) {
-    return;
-  }
-
-  isRegenerating.value = true;
-  try {
-    await regenerateRunPath(documentId, modeApiMap[mode.value]);
-    loadState.value = "generating";
-    loadMessage.value = "Regenerating learning path...";
-    pollAttempts = 0;
-    schedulePoll();
-  } catch (error) {
-    const { state, message } = toUserMessage(error);
-    loadState.value = state;
-    loadMessage.value = message;
-  } finally {
-    isRegenerating.value = false;
+    if (mode.value === "review" && error instanceof ApiError && error.status === 409) {
+      nodes.value = [];
+      return;
+    }
+    nodes.value = mode.value === "review" ? [] : fallbackNodes.value;
   }
 };
 
 watch(
-  [() => mode.value, () => route.query.documentId],
+  () => mode.value,
   async () => {
     await loadPathOptions();
   },
@@ -299,47 +236,66 @@ watch(
   { immediate: true },
 );
 
+onMounted(async () => {
+  await loadPathOptions();
+});
 
 const selectedNode = computed(() => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null);
 
-onUnmounted(() => {
-  clearPollTimer();
+const pageEyebrow = computed(() => {
+  if (mode.value === "review") {
+    return flow.value === "review"
+      ? t("levelPath.pageEyebrow.reviewMode")
+      : t("levelPath.pageEyebrow.beginReviewMode");
+  }
+
+  if (flow.value === "review") {
+    return mode.value === "endless-abyss"
+      ? t("levelPath.pageEyebrow.reviewAbyss")
+      : t("levelPath.pageEyebrow.reviewLearning");
+  }
+  return mode.value === "endless-abyss"
+    ? t("levelPath.pageEyebrow.beginAbyss")
+    : t("levelPath.pageEyebrow.beginLearning");
 });
 
-const hasDocumentId = computed(() => typeof route.query.documentId === "string" && route.query.documentId.length > 0);
-const canStart = computed(() => loadState.value === "ready" && !!selectedNode.value);
+const actionLabel = computed(() => t("levelPath.enterAction", { mode: modeLabelMap.value[mode.value] }));
 
-const pageEyebrow = computed(() =>
-  mode.value === "endless-abyss"
-    ? flow.value === "review"
-      ? "Review Abyss Route"
-      : "Begin Abyss Route"
-    : flow.value === "review"
-      ? "Review Learning Route"
-      : "Begin Learning Route",
-);
-
-const actionLabel = computed(() => `进入 ${modeLabelMap[mode.value]}`);
+const guideLabel = computed(() => t("levelPath.guide"));
+const backLabel = computed(() => t("levelPath.back"));
+const pathSelectionAriaLabel = computed(() => t("levelPath.selectionAria"));
 
 const selectedSummary = computed(() => {
-  if (loadState.value === "generating") {
-    return "Learning path is generating...";
-  }
-  if (loadState.value === "not_ready" || loadState.value === "error") {
-    return loadMessage.value;
-  }
   if (!selectedNode.value) {
-    return "No route selected";
+    return t("levelPath.noRouteSelected");
   }
+
+  const description = selectedNode.value.description.trim();
+
   if (mode.value === "endless-abyss") {
-    return `Selected Floor ${selectedNode.value.floor ?? 1}`;
+    return description
+      ? t("levelPath.selectedSummary.floorWithDesc", {
+          floor: selectedNode.value.floor ?? 1,
+          description,
+        })
+      : t("levelPath.selectedSummary.floor", {
+          floor: selectedNode.value.floor ?? 1,
+        });
   }
-  return `Selected Route: ${selectedNode.value.description}`;
+
+  return description
+    ? t("levelPath.selectedSummary.routeWithDesc", {
+        route: selectedNode.value.label,
+        description,
+      })
+    : t("levelPath.selectedSummary.route", {
+        route: selectedNode.value.label,
+      });
 });
 
 const title = computed(() => {
   const raw = route.query.title;
-  return typeof raw === "string" && raw.trim() ? raw : "Scroll Trial";
+  return typeof raw === "string" && raw.trim() ? raw : t("levelPath.defaultTitle");
 });
 
 const flow = computed(() => (route.query.flow === "review" ? "review" : "begin"));
@@ -350,33 +306,43 @@ const nodeIcon = (type: PathNode["type"]) => {
   if (type === "checkpoint") return "✓";
   if (type === "speed") return "⚡";
   if (type === "draft") return "✎";
+  if (type === "review") return "↺";
   return "♛";
 };
 
 const startLearning = async () => {
-  if (!selectedNode.value || !canStart.value) {
+  if (!selectedNode.value) {
     return;
   }
+  const rawDocumentId = route.query.documentId;
+  const documentId =
+    typeof rawDocumentId === "string" && rawDocumentId.trim().length > 0
+      ? rawDocumentId
+      : undefined;
   await router.push({
     path: modeRouteMap[mode.value],
     query: {
       ...route.query,
+      documentId,
       flow: flow.value,
       mode: mode.value,
       pathId: selectedNode.value.id,
       floor: mode.value === "endless-abyss" ? String(selectedNode.value.floor ?? 1) : undefined,
-      pathVersionId: selectedNode.value.pathVersionId,
-      levelNodeId: selectedNode.value.levelNodeId,
       title: title.value,
     },
   });
 };
 
-const backToModes = async () => {
+const backToModes = () => {
+  router.back();
+};
+
+const openGuide = async () => {
   await router.push({
-    path: ROUTES.gameModes,
+    path: ROUTES.modeGuide,
     query: {
       ...route.query,
+      mode: mode.value,
       title: title.value,
     },
   });
@@ -385,71 +351,47 @@ const backToModes = async () => {
 
 <template>
   <main class="path-page">
-    <section class="path-shell" aria-label="Dungeon level path selection">
+    <section class="path-shell" :aria-label="pathSelectionAriaLabel">
       <header class="path-header">
-        <button class="path-back" type="button" @click="backToModes">←</button>
+        <button class="path-back" type="button" :aria-label="backLabel" @click="backToModes">
+          <span aria-hidden="true">←</span>
+          <span class="path-back__label">{{ backLabel }}</span>
+        </button>
         <div>
           <p class="path-sub">{{ pageEyebrow }}</p>
           <h1>{{ title }}</h1>
         </div>
-        <button class="path-guide" type="button">指南</button>
+        <button class="path-guide" type="button" @click="openGuide">{{ guideLabel }}</button>
       </header>
 
       <section class="path-map">
-        <div v-if="loadState === 'loading'" class="path-status path-status--loading">Loading path...</div>
-        <div v-else-if="loadState === 'generating'" class="path-status path-status--loading">{{ loadMessage }}</div>
-        <div v-else-if="loadState === 'not_ready' || loadState === 'error'" class="path-status">
-          <p>{{ loadMessage }}</p>
-          <div class="path-status__actions">
-            <button class="path-secondary" type="button" @click="loadPathOptions()">Retry</button>
-            <button
-              v-if="hasDocumentId"
-              class="path-secondary"
-              type="button"
-              :disabled="isRegenerating"
-              @click="triggerRegeneration"
-            >
-              {{ isRegenerating ? "Regenerating..." : "Regenerate Path" }}
-            </button>
-          </div>
-        </div>
-        <template v-else>
-          <button
-            v-for="node in nodes"
-            :key="node.id"
-            class="path-node"
-            :class="[
-              `path-node--${node.type}`,
-              {
-                'path-node--done': node.done,
-                'path-node--active': selectedNodeId === node.id,
-              },
-            ]"
-            type="button"
-            @click="selectedNodeId = node.id"
-          >
-            <span class="path-node__icon">{{ nodeIcon(node.type) }}</span>
-            <span class="path-node__floor">{{ node.label }}</span>
-          </button>
-        </template>
+        <button
+          v-for="node in nodes"
+          :key="node.id"
+          class="path-node"
+          :class="[
+            `path-node--${node.type}`,
+            {
+              'path-node--done': node.done,
+              'path-node--locked': node.status === 'locked',
+              'path-node--unlocked': node.status === 'unlocked',
+              'path-node--completed': node.status === 'completed',
+              'path-node--active': selectedNodeId === node.id,
+            },
+          ]"
+          type="button"
+          @click="selectedNodeId = node.id"
+        >
+          <span class="path-node__icon">{{ nodeIcon(node.type) }}</span>
+          <span class="path-node__floor">{{ node.label }}</span>
+        </button>
       </section>
+
+      <p v-if="!nodes.length" class="path-empty">{{ noRoutesMessage }}</p>
 
       <footer class="path-actions">
         <p>{{ selectedSummary }}</p>
-        <div class="path-actions__right">
-          <button
-            v-if="hasDocumentId"
-            class="path-secondary"
-            type="button"
-            :disabled="isRegenerating"
-            @click="triggerRegeneration"
-          >
-            {{ isRegenerating ? "Regenerating..." : "Regenerate Path" }}
-          </button>
-          <button class="path-start" type="button" :disabled="!canStart" @click="startLearning">
-            {{ actionLabel }}
-          </button>
-        </div>
+        <button class="path-start" type="button" :disabled="!selectedNode" @click="startLearning">{{ actionLabel }}</button>
       </footer>
     </section>
   </main>
@@ -494,6 +436,16 @@ const backToModes = async () => {
   min-height: 40px;
   min-width: 40px;
   padding: 0 12px;
+}
+
+.path-back {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.path-back__label {
+  font-size: 13px;
 }
 
 .path-sub {
@@ -544,6 +496,31 @@ const backToModes = async () => {
   border-color: var(--color-primary-500);
 }
 
+.path-node--locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.path-node--unlocked {
+  border-color: var(--color-primary-500);
+  animation: pulse 2s infinite;
+}
+
+.path-node--completed {
+  border-color: var(--color-success);
+  animation: glow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.2); }
+  50% { box-shadow: 0 0 0 8px rgba(0, 0, 0, 0); }
+}
+
+@keyframes glow {
+  from { box-shadow: 0 0 4px var(--color-success); }
+  to { box-shadow: 0 0 12px var(--color-success); }
+}
+
 .path-node--active {
   border-color: var(--color-muted-gold);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-muted-gold) 20%, transparent);
@@ -573,6 +550,12 @@ const backToModes = async () => {
   margin: 0;
 }
 
+.path-empty {
+  color: var(--color-text-muted);
+  margin: 28px 0 0;
+  text-align: center;
+}
+
 .path-start {
   background: linear-gradient(90deg, var(--color-primary-600), var(--color-primary-500));
   border: 0;
@@ -586,55 +569,8 @@ const backToModes = async () => {
   padding: 0 20px;
 }
 
-.path-status {
-  align-items: center;
-  color: var(--color-text-secondary);
-  display: flex;
-  flex-direction: column;
-  font-size: 14px;
-  gap: 12px;
-  grid-column: 1 / -1;
-  justify-content: center;
-  min-height: 220px;
-  text-align: center;
-}
-
-.path-status--loading {
-  color: var(--color-primary-600);
-  font-weight: 700;
-}
-
-.path-status p {
-  margin: 0;
-}
-
-.path-status__actions {
-  display: flex;
-  gap: 10px;
-}
-
-.path-actions__right {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-}
-
-.path-secondary {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
-  min-height: 44px;
-  padding: 0 16px;
-}
-
-.path-start:disabled,
-.path-secondary:disabled {
+.path-start:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.6;
 }
-
 </style>

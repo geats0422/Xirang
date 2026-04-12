@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 
 const props = withDefaults(
   defineProps<{
@@ -12,23 +13,22 @@ const props = withDefaults(
     goalCurrent?: number;
     goalTotal?: number;
     xpGainPercent?: number;
-    reviewEnabled?: boolean;
-    reviewLabel?: string;
+    leagueTopPercent?: number | null;
   }>(),
   {
     comboCount: 12,
     goalCurrent: 5,
     goalTotal: 10,
     xpGainPercent: 15,
-    reviewEnabled: true,
-    reviewLabel: "Review Mistakes",
+    leagueTopPercent: null,
   }
 );
 
 const emit = defineEmits<{
   close: [];
   confirm: [];
-  review: [];
+  continueToPath: [];
+  reviewMistakes: [];
 }>();
 
 const goalProgressPercent = computed(() => {
@@ -37,15 +37,31 @@ const goalProgressPercent = computed(() => {
 });
 
 const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
+const goalTitle = computed(() => {
+  const todayGoal = t("settlement.todayGoal");
+  return todayGoal === "settlement.todayGoal" ? t("settlement.cultivationGoal") : todayGoal;
+});
+const goalCopy = computed(() => {
+  const remaining = Math.max(0, props.goalTotal - props.goalCurrent);
+  const summary = t("settlement.todayGoalSummary", { remaining });
+  return summary === "settlement.todayGoalSummary" ? props.goalText : summary;
+});
+const leagueTopPercentLabel = computed(() => {
+  if (props.leagueTopPercent === null || !Number.isFinite(props.leagueTopPercent)) {
+    return t("settlement.topPercentFallback");
+  }
+  return t("settlement.topPercentValue", { percent: props.leagueTopPercent });
+});
+const { t } = useI18n();
 </script>
 
 <template>
   <transition name="settlement-fade">
     <div v-if="visible" class="settlement-overlay" @click="emit('close')">
-      <section class="settlement-modal" aria-label="Dungeon cultivation report" @click.stop>
+      <section class="settlement-modal" :aria-label="t('settlement.dialogAria')" @click.stop>
         <header class="settlement-header">
           <div>
-            <h2>Dungeon Secured!</h2>
+            <h2>{{ t("settlement.title") }}</h2>
           </div>
         </header>
 
@@ -60,7 +76,7 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
 
         <article class="settlement-card settlement-card--stats">
           <div class="stat-col">
-            <p>XP GAINED</p>
+            <p>{{ t("settlement.xpGained") }}</p>
             <div class="settlement-value-row">
               <strong>{{ xpGained }}</strong>
               <span class="gain-pill">↗{{ xpGainPercent }}%</span>
@@ -68,14 +84,14 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
           </div>
 
           <div class="stat-col">
-            <p>DOPAMINE COINS</p>
+            <p>{{ t("settlement.dopamineCoins") }}</p>
             <div class="settlement-value-row">
               <strong class="coin-value">🪙 {{ coinReward }}</strong>
             </div>
           </div>
 
           <div class="stat-col">
-            <p>PERFECT COMBO</p>
+            <p>{{ t("settlement.perfectCombo") }}</p>
             <div class="settlement-value-row">
               <strong>{{ comboCount }}x</strong>
               <span class="combo-bolt">⚡</span>
@@ -86,32 +102,28 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
         <section class="settlement-lower">
           <article class="settlement-card settlement-card--goal">
             <div class="goal-row">
-              <p class="settlement-goal-title">✿ Cultivation Goal</p>
-              <span>{{ goalCurrent }}/{{ goalTotal }} mins</span>
+              <p class="settlement-goal-title">✿ {{ goalTitle }}</p>
+              <span>{{ t("settlement.goalMins", { current: goalCurrent, total: goalTotal }) }}</span>
             </div>
             <div class="settlement-goal-track" role="presentation">
               <span class="settlement-goal-fill" :style="{ width: goalFillWidth }" />
             </div>
-            <p class="settlement-goal-copy">{{ goalText }}</p>
+            <p class="settlement-goal-copy">{{ goalCopy }}</p>
           </article>
 
           <article class="settlement-card settlement-card--league">
-            <p>Weekly League</p>
-            <strong>Top 12%</strong>
-            <span>Keep climbing the ladder</span>
+            <p>{{ t("settlement.weeklyLeague") }}</p>
+            <strong>{{ leagueTopPercentLabel }}</strong>
+            <span>{{ t("settlement.keepClimbing") }}</span>
           </article>
         </section>
 
         <footer class="settlement-actions">
-          <button class="settlement-cta" type="button" @click="emit('confirm')">Continue to Library →</button>
-          <button
-            class="settlement-secondary"
-            type="button"
-            :disabled="!reviewEnabled"
-            @click="emit('review')"
-          >
-            {{ reviewLabel }}
-          </button>
+          <button class="settlement-cta" type="button" @click="emit('continueToPath')">{{ t("settlement.continueToPath") }}</button>
+          <div class="settlement-secondary-actions">
+            <button class="settlement-secondary" type="button" @click="emit('reviewMistakes')">{{ t("settlement.reviewMistakes") }}</button>
+            <button class="settlement-tertiary" type="button" @click="emit('close')">{{ t("settlement.backToLibrary") }}</button>
+          </div>
         </footer>
       </section>
     </div>
@@ -339,10 +351,16 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
 }
 
 .settlement-actions {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-top: 16px;
+}
+
+.settlement-secondary-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
 }
 
 .settlement-cta {
@@ -368,13 +386,20 @@ const goalFillWidth = computed(() => `${goalProgressPercent.value}%`);
   cursor: pointer;
   font-size: 14px;
   font-weight: 700;
-  height: 54px;
-  padding: 0 16px;
+  height: 48px;
+  padding: 0 20px;
 }
 
-.settlement-secondary:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+.settlement-tertiary {
+  background: transparent;
+  border: 0;
+  color: #a0aeb2;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  height: 48px;
+  padding: 0 16px;
+  text-decoration: underline;
 }
 
 @media (max-width: 760px) {

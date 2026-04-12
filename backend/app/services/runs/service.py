@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, cast
 from uuid import UUID
 
 from app.db.models.runs import RunMode, RunStatus
-from app.services.learning_paths.reward_policy import DailyCapUsage, RewardComputation, RewardPolicy
 from app.services.runs.exceptions import (
     DuplicateAnswerError,
     InvalidRunStateError,
@@ -16,13 +16,79 @@ from app.services.runs.exceptions import (
     RunNotFoundError,
 )
 from app.services.runs.schemas import (
-    AnswerFeedback,
-    AnswerFeedbackOption,
     AnswerResult,
     QuestionData,
     Settlement,
     SubmitAnswerResult,
 )
+
+_TRAILING_ZH_SUFFIXES = (
+    "字符",
+    "操作",
+    "命令",
+    "标记",
+    "符号",
+    "符",
+)
+
+_CANONICAL_EQUIVALENT_GROUPS: tuple[set[str], ...] = (
+    {
+        "\\n",
+        "newline",
+        "linebreak",
+        "linefeed",
+        "换行",
+        "换行符",
+        "换行操作",
+    },
+)
+
+
+def _normalize_fill_answer(text: str) -> str:
+    normalized = text.strip().lower()
+    normalized = normalized.replace("\u3000", " ")
+    normalized = re.sub(r"\s+", "", normalized)
+    strip_chars = "'\"`"
+    strip_chars += "\u201c\u201d\u2018\u2019"
+    strip_chars += "()[]{}:,.!?"
+    strip_chars += "\u3002\u3001\uff01\uff1f\uff1b\uff1a\uff08\uff09\uff0c"
+    normalized = normalized.strip(strip_chars)
+    return normalized
+
+
+def _strip_zh_suffixes(text: str) -> set[str]:
+    variants = {text}
+    for suffix in _TRAILING_ZH_SUFFIXES:
+        if text.endswith(suffix) and len(text) > len(suffix):
+            variants.add(text[: -len(suffix)])
+    return variants
+
+
+def _expand_equivalent_group(tokens: set[str]) -> set[str]:
+    expanded = set(tokens)
+    for group in _CANONICAL_EQUIVALENT_GROUPS:
+        if tokens.intersection(group):
+            expanded.update(group)
+    return expanded
+
+
+def _build_fill_answer_variants(answer: str) -> set[str]:
+    base = _normalize_fill_answer(answer)
+    if not base:
+        return set()
+    variants = _strip_zh_suffixes(base)
+    variants = _expand_equivalent_group(variants)
+    return {item for item in variants if item}
+
+
+def _is_fill_in_blank_correct(text_answer: str | None, correct_answer: str | None) -> bool:
+    if not text_answer or not correct_answer:
+        return False
+    submitted_variants = _build_fill_answer_variants(text_answer)
+    correct_variants = _build_fill_answer_variants(correct_answer)
+    if not submitted_variants or not correct_variants:
+        return False
+    return bool(submitted_variants.intersection(correct_variants))
 
 
 class RunRepositoryProtocol(Protocol):
@@ -30,17 +96,18 @@ class RunRepositoryProtocol(Protocol):
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         total_questions: int,
         mode_state: Mapping[str, object] | None = None,
-        source_path_version_id: UUID | None = None,
-        source_level_node_id: UUID | None = None,
-        is_legend_review: bool = False,
     ) -> Any: ...
 
     async def get_run(self, run_id: UUID) -> Any: ...
     async def list_runs(self, user_id: UUID) -> list[Any]: ...
+
+    async def get_completed_path_ids(
+        self, user_id: UUID, document_id: UUID | None, mode: RunMode
+    ) -> set[str]: ...
 
     async def update_run(
         self,
@@ -53,18 +120,49 @@ class RunRepositoryProtocol(Protocol):
         combo_count: int | None = None,
         mode_state: Mapping[str, object] | None = None,
         ended_at: datetime | None = None,
-        legend_reward_rate: float | None = None,
-        version_reward_discount: float | None = None,
+        clear_ended_at: bool = False,
     ) -> None: ...
 
     async def list_document_questions(
         self,
         *,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         count: int,
         path_id: str | None = None,
+        user_id: UUID | None = None,
     ) -> list[QuestionData]: ...
+
+    async def count_review_questions(self, *, document_id: UUID | None, user_id: UUID) -> int: ...
+
+    async def create_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID,
+        run_id: UUID,
+        explanation: str | None = None,
+    ) -> None: ...
+
+    async def remove_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID | None = None,
+    ) -> None: ...
+
+    async def count_document_questions(self, *, document_id: UUID) -> int: ...
+
+    async def list_document_knowledge_points(
+        self,
+        *,
+        document_id: UUID,
+        limit: int = 8,
+    ) -> list[str]: ...
+
+    async def get_user_language_code(self, user_id: UUID) -> str: ...
 
     async def add_run_questions(self, run_id: UUID, questions: list[QuestionData]) -> None: ...
     async def get_run_questions(self, run_id: UUID) -> list[dict[str, Any]]: ...
@@ -97,78 +195,42 @@ class RunRepositoryProtocol(Protocol):
 
     async def get_settlement(self, run_id: UUID) -> Any | None: ...
 
-    async def upsert_learning_path_progress(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        node_id: UUID,
-        completed_run_id: UUID,
-        completed_at: datetime,
-    ) -> None: ...
-
-    async def resolve_unit_node_id(self, *, node_id: UUID) -> UUID | None: ...
-
-    async def increment_legend_review_progress(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        unit_node_id: UUID,
-        completed_at: datetime,
-    ) -> None: ...
-
-    async def get_path_version_meta(
-        self, *, path_version_id: UUID
-    ) -> tuple[UUID, str, int] | None: ...
-
-    async def get_latest_ready_path_version_no(
-        self, *, document_id: UUID, mode: str
-    ) -> int | None: ...
-
-    async def get_legend_round_count(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        unit_node_id: UUID,
-    ) -> int: ...
-
-    async def is_subscription_active(self, *, user_id: UUID, at: datetime) -> bool: ...
-
-    async def get_daily_reward_cap_usage(self, *, user_id: UUID, date_key: date) -> Any | None: ...
-
-    async def upsert_daily_reward_cap_usage(
-        self,
-        *,
-        user_id: UUID,
-        date_key: date,
-        xp_delta: int,
-        coin_delta: int,
-    ) -> Any: ...
-
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...
 
 
 class RunService:
-    def __init__(self, *, repository: Any, wallet_service: Any | None = None) -> None:
+    REVIVE_COIN_COST = 10
+    REVIVE_SHIELD_SECONDS = 180
+
+    def __init__(
+        self,
+        *,
+        repository: Any,
+        wallet_service: Any | None = None,
+        effect_repo: Any | None = None,
+        shop_repo: Any | None = None,
+    ) -> None:
         self._repository = cast("RunRepositoryProtocol", repository)
         self._wallet_service = wallet_service
+        self._effect_repo = effect_repo
+        self._shop_repo = shop_repo
 
     async def create_run(
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         question_count: int,
         path_id: str | None = None,
-        path_version_id: UUID | None = None,
-        level_node_id: UUID | None = None,
-        is_legend_review: bool = False,
     ) -> tuple[Any, list[QuestionData]]:
-        strategy = self._resolve_path_strategy(mode=mode, path_id=path_id)
+        strategy = await self._resolve_path_strategy(
+            mode=mode,
+            path_id=path_id,
+            document_id=document_id,
+            user_id=user_id,
+        )
         strategy_path_id = str(strategy.get("path_id") or "")
         strategy_goal_total_raw = strategy.get("goal_total")
         strategy_time_left_raw = strategy.get("time_left_sec")
@@ -190,8 +252,11 @@ class RunService:
             mode=mode,
             count=effective_question_count,
             path_id=strategy_path_id,
+            user_id=user_id,
         )
         if not questions:
+            if mode == RunMode.REVIEW:
+                raise QuestionNotFoundError("No review questions available")
             raise QuestionNotFoundError(f"No questions available for document {document_id}")
 
         run = await self._repository.create_run(
@@ -206,25 +271,76 @@ class RunService:
                 goal_total=strategy_goal_total,
                 time_left_sec=strategy_time_left,
             ),
-            source_path_version_id=path_version_id,
-            source_level_node_id=level_node_id,
-            is_legend_review=is_legend_review,
         )
         await self._repository.add_run_questions(run.id, questions)
         await self._repository.commit()
         return run, questions
 
-    def list_path_options(self, *, mode: RunMode) -> list[dict[str, object]]:
-        return [
-            {
-                "path_id": item["path_id"],
-                "label": item["label"],
-                "kind": item["kind"],
-                "description": item["description"],
-                "goal_total": item["goal_total"],
-            }
-            for item in self._path_options(mode)
-        ]
+    async def list_path_options(
+        self,
+        *,
+        mode: RunMode,
+        document_id: UUID | None = None,
+        user_id: UUID | None = None,
+    ) -> list[dict[str, object]]:
+        question_count = 0
+        knowledge_points: list[str] = []
+        language_code = "en"
+        if mode == RunMode.REVIEW and user_id is not None:
+            question_count = await self._repository.count_review_questions(
+                document_id=document_id,
+                user_id=user_id,
+            )
+        elif document_id is not None:
+            question_count = await self._repository.count_document_questions(
+                document_id=document_id
+            )
+        if document_id is not None:
+            knowledge_points = await self._repository.list_document_knowledge_points(
+                document_id=document_id
+            )
+        if user_id is not None:
+            language_code = await self._repository.get_user_language_code(user_id)
+
+        if mode == RunMode.REVIEW and question_count == 0:
+            return []
+
+        path_items = self._generate_dynamic_path_options(
+            mode,
+            question_count,
+            knowledge_points,
+            language_code,
+        )
+
+        completed_path_ids: set[str] = set()
+        if user_id is not None:
+            completed_path_ids = await self._repository.get_completed_path_ids(
+                user_id, document_id, mode
+            )
+
+        result: list[dict[str, object]] = []
+        for idx, item in enumerate(path_items):
+            path_id = item["path_id"]
+            if path_id in completed_path_ids:
+                status = "completed"
+            elif idx == 0 or path_items[idx - 1]["path_id"] in completed_path_ids:
+                status = "unlocked"
+            else:
+                all_prev_completed = all(
+                    path_items[j]["path_id"] in completed_path_ids for j in range(idx)
+                )
+                status = "unlocked" if all_prev_completed else "locked"
+            result.append(
+                {
+                    "path_id": path_id,
+                    "label": item["label"],
+                    "kind": item["kind"],
+                    "description": item["description"],
+                    "goal_total": item["goal_total"],
+                    "status": status,
+                }
+            )
+        return result
 
     async def get_run(self, run_id: UUID, owner_user_id: UUID | None = None) -> Any:
         run = await self._repository.get_run(run_id)
@@ -237,6 +353,14 @@ class RunService:
     async def list_runs(self, user_id: UUID) -> list[Any]:
         return await self._repository.list_runs(user_id)
 
+    async def get_question_info(self, run_id: UUID, question_id: UUID) -> dict[str, Any] | None:
+        """Get question details including correct answer and explanation for feedback."""
+        run_questions = await self._repository.get_run_questions(run_id)
+        for q in run_questions:
+            if q["question_id"] == question_id:
+                return q
+        return None
+
     async def submit_answer(
         self,
         *,
@@ -245,6 +369,7 @@ class RunService:
         selected_option_ids: list[UUID],
         answer_time_ms: int | None = None,
         owner_user_id: UUID | None = None,
+        text_answer: str | None = None,  # For FILL_IN_BLANK questions
     ) -> SubmitAnswerResult:
         run = await self._repository.get_run(run_id)
         if run is None:
@@ -267,10 +392,21 @@ class RunService:
         if target_question is None:
             raise QuestionNotFoundError(f"Question {question_id} not in run {run_id}")
 
-        provided_ids = {str(v) for v in selected_option_ids}
-        correct_ids = {str(v) for v in target_question.get("correct_option_ids", [])}
-        is_correct = provided_ids == correct_ids
-        feedback = None if is_correct else self._build_wrong_answer_feedback(target_question)
+        # Handle FILL_IN_BLANK questions (text comparison) vs option-based questions
+        question_type = target_question.get("question_type", "single_choice")
+        is_correct = False
+
+        if question_type == "fill_in_blank":
+            correct_answer = target_question.get("correct_answer")
+            is_correct = _is_fill_in_blank_correct(
+                text_answer=text_answer,
+                correct_answer=str(correct_answer) if correct_answer is not None else None,
+            )
+        else:
+            # For choice-based questions, compare option IDs
+            provided_ids = {str(v) for v in selected_option_ids}
+            correct_ids = {str(v) for v in target_question.get("correct_option_ids", [])}
+            is_correct = provided_ids == correct_ids
 
         answer = await self._repository.record_answer(
             run_id,
@@ -291,13 +427,6 @@ class RunService:
         )
 
         settlement: Settlement | None = None
-        reward_meta = RewardComputation(
-            xp=0,
-            coins=0,
-            legend_rate=1.0,
-            version_discount=1.0,
-            free_cap_applied=False,
-        )
         run_status: RunStatus = RunStatus.RUNNING
         ended_at: datetime | None = None
         mode_state = self._normalize_mode_state(
@@ -316,13 +445,56 @@ class RunService:
             time_left_sec = max(0, time_left_sec - elapsed_sec)
             study_seconds = study_seconds + elapsed_sec
 
-        goal_current = min(goal_total, study_seconds // 60)
+        if run.mode == RunMode.REVIEW:
+            goal_current = min(goal_total, answered_count)
+        else:
+            goal_current = min(goal_total, study_seconds // 60)
+
+        # Mode-specific answer handling
+        current_combo = int(mode_state.get("combo_count", 0))
+        revive_shield_count = int(mode_state.get("revive_shield_count", 0))
+        revive_shield_expires_at = str(mode_state.get("revive_shield_expires_at") or "")
+        shield_active = False
+        if revive_shield_count > 0 and revive_shield_expires_at:
+            try:
+                shield_active = datetime.fromisoformat(revive_shield_expires_at) > datetime.now(UTC)
+            except ValueError:
+                shield_active = False
+        if not shield_active:
+            revive_shield_count = 0
+            revive_shield_expires_at = ""
 
         if is_correct:
-            floor = min(floor_total, floor + 1)
-            pending_coins = pending_coins + 10
+            if run.mode == RunMode.ENDLESS:
+                floor = min(floor_total, floor + 1)
+                pending_coins = pending_coins + 10
+            elif run.mode == RunMode.SPEED:
+                current_combo = current_combo + 1
+            elif run.mode == RunMode.REVIEW:
+                floor = min(floor_total, answered_count + 1)
+                await self._repository.remove_mistake(
+                    user_id=run.user_id,
+                    question_id=question_id,
+                    document_id=run.document_id,
+                )
         else:
-            hp = max(0, hp - 1)
+            if run.mode == RunMode.ENDLESS:
+                if shield_active and revive_shield_count > 0:
+                    revive_shield_count = 0
+                    revive_shield_expires_at = ""
+                else:
+                    hp = max(0, hp - 1)
+            elif run.mode == RunMode.SPEED:
+                current_combo = 0
+
+            if run.document_id is not None:
+                await self._repository.create_mistake(
+                    user_id=run.user_id,
+                    question_id=question_id,
+                    document_id=run.document_id,
+                    run_id=run.id,
+                    explanation=target_question.get("explanation"),
+                )
 
         mode_state["hp"] = hp
         mode_state["floor"] = floor
@@ -332,16 +504,18 @@ class RunService:
         mode_state["study_seconds"] = study_seconds
         mode_state["goal_current"] = goal_current
         mode_state["goal_total"] = goal_total
+        mode_state["combo_count"] = current_combo
+        mode_state["revive_shield_count"] = revive_shield_count
+        mode_state["revive_shield_expires_at"] = revive_shield_expires_at
 
-        if hp <= 0:
+        if run.mode == RunMode.ENDLESS and hp <= 0:
             run_status = RunStatus.ABORTED
             ended_at = datetime.now(UTC)
 
         if answered_count >= run.total_questions:
             run_status = RunStatus.COMPLETED
             ended_at = datetime.now(UTC)
-            settlement, reward_meta = await self._build_settlement(
-                run=run,
+            settlement = await self._build_settlement(
                 run_id=run.id,
                 user_id=run.user_id,
                 mode=run.mode,
@@ -353,7 +527,6 @@ class RunService:
                 goal_total=goal_total,
             )
             mode_state["pending_coins"] = 0
-            await self._record_learning_path_progress(run=run, completed_at=ended_at)
 
         await self._repository.update_run(
             run_id,
@@ -364,12 +537,6 @@ class RunService:
             combo_count=combo_count,
             mode_state=mode_state,
             ended_at=ended_at,
-            legend_reward_rate=reward_meta.legend_rate
-            if run_status == RunStatus.COMPLETED
-            else None,
-            version_reward_discount=reward_meta.version_discount
-            if run_status == RunStatus.COMPLETED
-            else None,
         )
 
         await self._repository.commit()
@@ -379,54 +546,72 @@ class RunService:
             is_correct=is_correct,
             run=refreshed_run,
             settlement=settlement,
-            feedback=feedback,
         )
 
-    @staticmethod
-    def _build_wrong_answer_feedback(target_question: dict[str, Any]) -> AnswerFeedback:
-        correct_ids = {str(v) for v in target_question.get("correct_option_ids", [])}
-        raw_options = target_question.get("options", [])
-        correct_options = [
-            AnswerFeedbackOption(id=str(option.get("id", "")), text=str(option.get("text", "")))
-            for option in raw_options
-            if isinstance(option, dict) and str(option.get("id", "")) in correct_ids
-        ]
+    async def use_revive(
+        self, *, run_id: UUID, owner_user_id: UUID | None = None
+    ) -> tuple[Any, int, int]:
+        run = await self._repository.get_run(run_id)
+        if run is None:
+            raise RunNotFoundError(f"Run {run_id} not found")
+        if owner_user_id is not None and run.user_id != owner_user_id:
+            raise RunNotFoundError(f"Run {run_id} not found")
+        if run.mode != RunMode.ENDLESS:
+            raise InvalidRunStateError("revive_only_supported_for_endless")
 
-        explanation = target_question.get("explanation")
-        source_locator = target_question.get("source_locator")
-        supporting_excerpt = target_question.get("supporting_excerpt")
-        explanation_text = explanation if isinstance(explanation, str) else None
-        source_locator_text = source_locator if isinstance(source_locator, str) else None
-        supporting_excerpt_text = (
-            supporting_excerpt if isinstance(supporting_excerpt, str) else None
+        mode_state = self._normalize_mode_state(
+            raw_mode_state=run.mode_state,
+            total_questions=run.total_questions,
         )
-        if explanation_text is None or len(explanation_text.strip()) < 12:
-            explanation_text = RunService._build_fallback_explanation(
-                correct_options=correct_options,
-                supporting_excerpt=supporting_excerpt_text,
+        hp = int(mode_state["hp"])
+        max_hp = int(mode_state["max_hp"])
+        if hp > 0 and run.status == RunStatus.RUNNING:
+            raise InvalidRunStateError("revive_not_needed")
+        if run.status not in (RunStatus.ABORTED, RunStatus.RUNNING):
+            raise InvalidRunStateError("run_not_revivable")
+
+        use_revival_from_inventory = False
+        coin_cost = 0
+
+        if self._shop_repo is not None:
+            inventory = await self._shop_repo.get_inventory(run.user_id)
+            inv_item = next((i for i in inventory if i.item_code == "revival"), None)
+            use_revival_from_inventory = inv_item is not None and inv_item.quantity > 0
+
+        if use_revival_from_inventory and self._shop_repo is not None:
+            await self._shop_repo.upsert_inventory(run.user_id, "revival", -1)
+            coin_cost = 0
+        elif self._wallet_service is not None:
+            coin_cost = self.REVIVE_COIN_COST
+            await self._wallet_service.debit(
+                user_id=run.user_id,
+                amount=self.REVIVE_COIN_COST,
+                asset_code="COIN",
+                reason_code="run_revive_purchase",
+                source_type="run",
+                source_id=run.id,
+                idempotency_key=f"run:{run.id}:revive:{await self._repository.count_answers(run.id)}",
             )
 
-        return AnswerFeedback(
-            correct_options=correct_options,
-            explanation=explanation_text,
-            source_locator=source_locator_text,
-            supporting_excerpt=supporting_excerpt_text,
-        )
+        mode_state["hp"] = min(max_hp, hp + 1)
+        mode_state["revive_shield_count"] = 1
+        mode_state["revive_shield_expires_at"] = (
+            datetime.now(UTC) + timedelta(seconds=self.REVIVE_SHIELD_SECONDS)
+        ).isoformat()
 
-    @staticmethod
-    def _build_fallback_explanation(
-        *,
-        correct_options: list[AnswerFeedbackOption],
-        supporting_excerpt: str | None,
-    ) -> str | None:
-        correct_answer_text = "/".join(option.text for option in correct_options if option.text)
-        if supporting_excerpt and correct_answer_text:
-            return f"The document excerpt supports the correct answer ({correct_answer_text}): {supporting_excerpt}"
-        if supporting_excerpt:
-            return f"The document excerpt explains the correct answer: {supporting_excerpt}"
-        if correct_answer_text:
-            return f"The correct answer is {correct_answer_text}."
-        return None
+        await self._repository.update_run(
+            run_id,
+            status=RunStatus.RUNNING,
+            mode_state=mode_state,
+            clear_ended_at=True,
+        )
+        await self._repository.commit()
+        refreshed_run = await self.get_run(run_id)
+        balance = 0
+        if self._wallet_service is not None:
+            bal = await self._wallet_service.get_balance(run.user_id, asset_code="COIN")
+            balance = bal.balance
+        return refreshed_run, balance, coin_cost
 
     async def get_settlement(self, run_id: UUID) -> Settlement:
         run = await self._repository.get_run(run_id)
@@ -437,15 +622,13 @@ class RunService:
 
         stored = await self._repository.get_settlement(run_id)
         if stored is None:
-            settlement, _ = await self._build_settlement(
-                run=run,
+            return await self._build_settlement(
                 run_id=run.id,
                 user_id=run.user_id,
                 mode=run.mode,
                 correct_count=run.correct_answers,
                 total_count=run.total_questions,
             )
-            return settlement
 
         return Settlement(
             run_id=stored.run_id,
@@ -457,115 +640,9 @@ class RunService:
             total_count=run.total_questions,
         )
 
-    async def _record_learning_path_progress(self, *, run: Any, completed_at: datetime) -> None:
-        path_version_id = getattr(run, "source_path_version_id", None)
-        level_node_id = getattr(run, "source_level_node_id", None)
-
-        if not isinstance(path_version_id, UUID) or not isinstance(level_node_id, UUID):
-            return
-
-        await self._repository.upsert_learning_path_progress(
-            user_id=run.user_id,
-            path_version_id=path_version_id,
-            node_id=level_node_id,
-            completed_run_id=run.id,
-            completed_at=completed_at,
-        )
-
-        if not bool(getattr(run, "is_legend_review", False)):
-            return
-
-        unit_node_id = await self._repository.resolve_unit_node_id(node_id=level_node_id)
-        if unit_node_id is None:
-            return
-
-        await self._repository.increment_legend_review_progress(
-            user_id=run.user_id,
-            path_version_id=path_version_id,
-            unit_node_id=unit_node_id,
-            completed_at=completed_at,
-        )
-
-    async def _compute_reward(
-        self,
-        *,
-        run: Any,
-        base_xp: int,
-        base_coins: int,
-    ) -> RewardComputation:
-        now = datetime.now(UTC)
-
-        path_version_id = getattr(run, "source_path_version_id", None)
-        level_node_id = getattr(run, "source_level_node_id", None)
-        is_latest_ready_version: bool | None = None
-
-        if isinstance(path_version_id, UUID):
-            path_meta = await self._repository.get_path_version_meta(
-                path_version_id=path_version_id
-            )
-            if path_meta is not None:
-                document_id, mode_value, version_no = path_meta
-                latest_ready_version_no = await self._repository.get_latest_ready_path_version_no(
-                    document_id=document_id,
-                    mode=mode_value,
-                )
-                if latest_ready_version_no is not None:
-                    is_latest_ready_version = version_no >= latest_ready_version_no
-
-        legend_round_count = 0
-        if (
-            bool(getattr(run, "is_legend_review", False))
-            and isinstance(path_version_id, UUID)
-            and isinstance(level_node_id, UUID)
-        ):
-            unit_node_id = await self._repository.resolve_unit_node_id(node_id=level_node_id)
-            if unit_node_id is not None:
-                legend_round_count = await self._repository.get_legend_round_count(
-                    user_id=run.user_id,
-                    path_version_id=path_version_id,
-                    unit_node_id=unit_node_id,
-                )
-
-        subscription_active = await self._repository.is_subscription_active(
-            user_id=run.user_id, at=now
-        )
-        usage = DailyCapUsage(xp_earned=0, coin_earned=0)
-        usage_date_key = RewardPolicy.utc8_date_key(now)
-        if not subscription_active:
-            usage_row = await self._repository.get_daily_reward_cap_usage(
-                user_id=run.user_id,
-                date_key=usage_date_key,
-            )
-            if usage_row is not None:
-                usage = DailyCapUsage(
-                    xp_earned=int(usage_row.xp_legend_earned),
-                    coin_earned=int(usage_row.coin_legend_earned),
-                )
-
-        reward = RewardPolicy.build_reward(
-            base_xp=base_xp,
-            base_coins=base_coins,
-            is_legend_review=bool(getattr(run, "is_legend_review", False)),
-            historical_legend_round_count=legend_round_count,
-            is_latest_ready_version=is_latest_ready_version,
-            subscription_active=subscription_active,
-            daily_usage=usage,
-        )
-
-        if not subscription_active and (reward.xp > 0 or reward.coins > 0):
-            await self._repository.upsert_daily_reward_cap_usage(
-                user_id=run.user_id,
-                date_key=usage_date_key,
-                xp_delta=reward.xp,
-                coin_delta=reward.coins,
-            )
-
-        return reward
-
     async def _build_settlement(
         self,
         *,
-        run: Any,
         run_id: UUID,
         user_id: UUID,
         mode: RunMode,
@@ -575,7 +652,7 @@ class RunService:
         path_id: str | None = None,
         goal_current: int | None = None,
         goal_total: int | None = None,
-    ) -> tuple[Settlement, RewardComputation]:
+    ) -> Settlement:
         combo_max = await self._repository.get_combo_max(run_id)
         score = self._calculate_score(
             mode=mode,
@@ -583,22 +660,17 @@ class RunService:
             answered_count=total_count,
             combo_count=combo_max,
         )
+        xp_gained = await self._calculate_settlement_xp(user_id, score)
         accuracy = (correct_count / total_count) if total_count > 0 else 0.0
-        base_coins = max(0, score // 10)
+        coins = max(0, score // 10)
         if mode == RunMode.ENDLESS and pending_coins is not None:
-            base_coins = max(0, pending_coins)
-
-        reward_meta = await self._compute_reward(
-            run=run,
-            base_xp=score,
-            base_coins=base_coins,
-        )
+            coins = max(0, pending_coins)
 
         await self._repository.upsert_settlement(
             run_id=run_id,
             user_id=user_id,
-            xp_gained=reward_meta.xp,
-            coin_reward=reward_meta.coins,
+            xp_gained=xp_gained,
+            coin_reward=coins,
             combo_count=combo_max,
             accuracy_pct=accuracy,
             payload={
@@ -608,47 +680,52 @@ class RunService:
                 "path_id": path_id,
                 "goal_current": goal_current,
                 "goal_total": goal_total,
-                "base_xp": score,
-                "base_coins": base_coins,
-                "legend_rate": reward_meta.legend_rate,
-                "version_discount": reward_meta.version_discount,
-                "free_cap_applied": reward_meta.free_cap_applied,
             },
         )
 
         if self._wallet_service is not None:
-            if reward_meta.coins > 0:
-                await self._wallet_service.credit(
-                    user_id=user_id,
-                    amount=reward_meta.coins,
-                    asset_code="COIN",
-                    reason_code="run_settlement",
-                    source_type="run",
-                    source_id=run_id,
-                    idempotency_key=f"run:{run_id}:coins",
-                )
-            if reward_meta.xp > 0:
-                await self._wallet_service.credit(
-                    user_id=user_id,
-                    amount=reward_meta.xp,
-                    asset_code="XP",
-                    reason_code="run_settlement",
-                    source_type="run",
-                    source_id=run_id,
-                    idempotency_key=f"run:{run_id}:xp",
-                )
-        return (
-            Settlement(
-                run_id=run_id,
-                xp_earned=reward_meta.xp,
-                coins_earned=reward_meta.coins,
-                combo_max=combo_max,
-                accuracy=accuracy,
-                correct_count=correct_count,
-                total_count=total_count,
-            ),
-            reward_meta,
+            await self._wallet_service.credit(
+                user_id=user_id,
+                amount=coins,
+                asset_code="COIN",
+                reason_code="run_settlement",
+                source_type="run",
+                source_id=run_id,
+                idempotency_key=f"run:{run_id}:coins",
+            )
+            await self._wallet_service.credit(
+                user_id=user_id,
+                amount=xp_gained,
+                asset_code="XP",
+                reason_code="run_settlement",
+                source_type="run",
+                source_id=run_id,
+                idempotency_key=f"run:{run_id}:xp",
+            )
+        return Settlement(
+            run_id=run_id,
+            xp_earned=xp_gained,
+            coins_earned=coins,
+            combo_max=combo_max,
+            accuracy=accuracy,
+            correct_count=correct_count,
+            total_count=total_count,
         )
+
+    async def _calculate_settlement_xp(self, user_id: UUID, base_xp: int) -> int:
+        if self._effect_repo is None:
+            return base_xp
+        now = datetime.now(tz=UTC)
+        active = await self._effect_repo.list_active_effects(user_id)
+        xp_boosts = [
+            e
+            for e in active
+            if e.effect_type == "xp_boost" and (e.expires_at is None or e.expires_at > now)
+        ]
+        if xp_boosts:
+            max_mult = max((float(e.multiplier or 1.0) for e in xp_boosts), default=1.0)
+            return int(base_xp * max_mult)
+        return base_xp
 
     @staticmethod
     def _build_initial_mode_state(
@@ -667,10 +744,12 @@ class RunService:
             "time_left_sec": time_left_sec,
             "pending_coins": 0,
             "path_id": path_id,
-            "goal_metric": "study_minutes",
+            "goal_metric": "questions_answered" if mode == RunMode.REVIEW else "study_minutes",
             "goal_current": 0,
             "goal_total": max(1, goal_total),
             "study_seconds": 0,
+            "revive_shield_count": 0,
+            "revive_shield_expires_at": "",
         }
         if mode != RunMode.ENDLESS:
             base_state["floor"] = 1
@@ -708,25 +787,344 @@ class RunService:
             "goal_current": parse_int("goal_current", 0),
             "goal_total": parse_int("goal_total", 10),
             "study_seconds": parse_int("study_seconds", 0),
+            "revive_shield_count": parse_int("revive_shield_count", 0),
+            "revive_shield_expires_at": str(state.get("revive_shield_expires_at") or ""),
         }
 
     @staticmethod
-    def _resolve_path_strategy(mode: RunMode, path_id: str | None) -> dict[str, object]:
-        options = RunService._path_options(mode)
+    def _resolve_language_family(language_code: str | None) -> str:
+        normalized = (language_code or "en").strip().lower()
+        if normalized.startswith("zh"):
+            return "zh"
+        if normalized.startswith("en"):
+            return "en"
+        return "en"
+
+    @staticmethod
+    def _generate_dynamic_path_options(
+        mode: RunMode,
+        question_count: int,
+        knowledge_points: list[str] | None = None,
+        language_code: str = "en",
+    ) -> list[dict[str, object]]:
+        """Generate path options dynamically based on question count.
+
+        Each unit/path contains 10-12 questions. The number of paths is determined
+        by the total question count.
+        """
+        import math
+
+        language_family = RunService._resolve_language_family(language_code)
+        use_zh = language_family == "zh"
+
+        if question_count <= 0:
+            if mode == RunMode.REVIEW:
+                return []
+            # Fallback to defaults if no questions available
+            return RunService._path_options(mode, language_code)
+
+        # Calculate number of units based on question count
+        # Each unit has 10-12 questions, target 10-11 average
+        if question_count <= 12:
+            num_units = 1
+        else:
+            num_units = math.ceil(question_count / 11)
+            num_units = max(1, min(num_units, 8))  # Cap between 1 and 8 units
+
+        topics = [str(item).strip() for item in (knowledge_points or []) if str(item).strip()]
+        if topics:
+            num_units = max(num_units, min(len(topics), 8))
+
+        def topic_for(index: int) -> str | None:
+            if not topics:
+                return None
+            return topics[index % len(topics)]
+
+        def describe(base_description: str, index: int) -> str:
+            topic = topic_for(index)
+            if topic is None:
+                return base_description
+            if use_zh:
+                return f"{topic}章节: {base_description}"
+            return f"{topic}: {base_description}"
+
+        def draft_describe(base_description: str, index: int) -> str:
+            topic = topic_for(index)
+            if topic is None:
+                return base_description
+            if use_zh:
+                if index == 0:
+                    route_title = "基础章节线"
+                elif index == 1:
+                    route_title = "进阶深化线"
+                else:
+                    route_title = "巩固强化线"
+            elif index == 0:
+                route_title = "Foundation Route"
+            elif index == 1:
+                route_title = "Deep-dive Route"
+            else:
+                route_title = "Consolidation Route"
+            return f"{route_title} · {topic}"
+
+        questions_per_unit = max(10, min(12, math.ceil(question_count / num_units)))
+
+        if mode == RunMode.ENDLESS:
+            path_items = []
+            for i in range(num_units):
+                floor_num = i + 1
+                path_id = f"F{floor_num}"
+                label = f"F{floor_num}"
+
+                # Vary difficulty and time based on floor
+                if floor_num == 1:
+                    description = "热身关, 先把节奏找回来" if use_zh else "Warm-up floor"
+                    time_sec = 900
+                elif floor_num == num_units:
+                    description = (
+                        ("深渊终章, 拿下收官战" if num_units > 2 else "终章冲刺, 完成最后挑战")
+                        if use_zh
+                        else ("Abyss boss" if num_units > 2 else "Final challenge")
+                    )
+                    time_sec = 780
+                else:
+                    mid = num_units // 2
+                    if floor_num <= mid:
+                        description = (
+                            ("稳扎稳打, 夯实基础" if floor_num == 2 else "题型磨合, 形成手感")
+                            if use_zh
+                            else ("Steady learning" if floor_num == 2 else "Pattern practice")
+                        )
+                        time_sec = 840
+                    else:
+                        description = "高压冲刺, 保持准确率" if use_zh else "High pressure"
+                        time_sec = 800
+
+                path_items.append(
+                    {
+                        "path_id": path_id,
+                        "label": label,
+                        "kind": "floor",
+                        "description": describe(description, i),
+                        "question_count": questions_per_unit,
+                        "time_left_sec": time_sec,
+                        "goal_total": questions_per_unit,
+                    }
+                )
+            return path_items
+
+        if mode == RunMode.SPEED:
+            # Speed mode: fewer questions per path, shorter times
+            if num_units == 1:
+                focus_desc = (
+                    "短局快练, 命中率越高收益越好"
+                    if use_zh
+                    else "Short rounds, higher accuracy bonus"
+                )
+                return [
+                    {
+                        "path_id": "speed-route-focus",
+                        "label": "R1",
+                        "kind": "checkpoint",
+                        "description": describe(focus_desc, 0),
+                        "question_count": min(questions_per_unit, 10),
+                        "time_left_sec": 90,
+                        "goal_total": 8,
+                    }
+                ]
+            routes = []
+            route_configs = [
+                (
+                    "speed-route-focus",
+                    "R1",
+                    "短局快练, 命中率越高收益越好"
+                    if use_zh
+                    else "Short rounds, higher accuracy bonus",
+                    90,
+                    8,
+                ),
+                (
+                    "speed-route-burst",
+                    "R2",
+                    "极速连击线, 连对越多加成越高" if use_zh else "Fast tempo with combo scaling",
+                    60,
+                    8,
+                ),
+                (
+                    "speed-route-endurance",
+                    "R3",
+                    "耐力节奏线, 更长计时更稳推进" if use_zh else "Long timer, stable output",
+                    150,
+                    10,
+                ),
+            ]
+            for _i, (path_id, label, desc, time_sec, goal) in enumerate(
+                route_configs[: min(num_units, 3)]
+            ):
+                routes.append(
+                    {
+                        "path_id": path_id,
+                        "label": label,
+                        "kind": "checkpoint",
+                        "description": describe(desc, _i),
+                        "question_count": min(questions_per_unit, 10),
+                        "time_left_sec": time_sec,
+                        "goal_total": goal,
+                    }
+                )
+            return routes
+
+        if mode == RunMode.REVIEW:
+            review_units = max(1, min(math.ceil(question_count / 20), 8))
+            return [
+                {
+                    "path_id": f"review-stage-{index + 1}",
+                    "label": f"S{index + 1}",
+                    "kind": "review",
+                    "description": (
+                        f"错题回顾 · 第{index + 1}关"
+                        if use_zh
+                        else f"Mistake review · Stage {index + 1}"
+                    ),
+                    "question_count": 20,
+                    "time_left_sec": 1200,
+                    "goal_total": 20,
+                }
+                for index in range(review_units)
+            ]
+
+        # DRAFT mode
+        if num_units == 1:
+            classic_desc = "均衡组卡线, 覆盖核心考点" if use_zh else "Balanced drafting journey"
+            return [
+                {
+                    "path_id": "draft-route-classic",
+                    "label": "R1",
+                    "kind": "round",
+                    "description": draft_describe(classic_desc, 0),
+                    "question_count": questions_per_unit,
+                    "time_left_sec": 600,
+                    "goal_total": 10,
+                }
+            ]
+        return [
+            {
+                "path_id": "draft-route-classic",
+                "label": "R1",
+                "kind": "round",
+                "description": draft_describe(
+                    "均衡组卡线, 覆盖核心考点" if use_zh else "Balanced drafting journey",
+                    0,
+                ),
+                "question_count": questions_per_unit,
+                "time_left_sec": 600,
+                "goal_total": 10,
+            },
+            {
+                "path_id": "draft-route-theory",
+                "label": "R2",
+                "kind": "round",
+                "description": draft_describe(
+                    "概念强化线, 聚焦高权重知识点" if use_zh else "Focus on concept-heavy cards",
+                    1,
+                ),
+                "question_count": questions_per_unit,
+                "time_left_sec": 720,
+                "goal_total": 10,
+            },
+            {
+                "path_id": "draft-route-memory",
+                "label": "R3",
+                "kind": "round",
+                "description": draft_describe(
+                    "记忆回收线, 强化长期留存" if use_zh else "Retention-oriented drafting",
+                    2,
+                ),
+                "question_count": questions_per_unit,
+                "time_left_sec": 540,
+                "goal_total": 10,
+            },
+        ]
+
+    # @staticmethod removed - needs async and repository access
+    async def _resolve_path_strategy(
+        self,
+        *,
+        mode: RunMode,
+        path_id: str | None,
+        document_id: UUID | None = None,
+        user_id: UUID | None = None,
+    ) -> dict[str, object]:
+        # Get question count for dynamic path generation
+        question_count = 0
+        knowledge_points: list[str] = []
+        if mode == RunMode.REVIEW and user_id is not None:
+            question_count = await self._repository.count_review_questions(
+                document_id=document_id,
+                user_id=user_id,
+            )
+        elif document_id is not None:
+            question_count = await self._repository.count_document_questions(
+                document_id=document_id
+            )
+        if document_id is not None:
+            knowledge_points = await self._repository.list_document_knowledge_points(
+                document_id=document_id
+            )
+
+        language_code = "en"
+        if user_id is not None:
+            language_code = await self._repository.get_user_language_code(user_id)
+
+        # Generate dynamic options
+        options = self._generate_dynamic_path_options(
+            mode,
+            question_count,
+            knowledge_points,
+            language_code,
+        )
+
+        if mode == RunMode.REVIEW and path_id and options:
+            prefix = "review-stage-"
+            if path_id.startswith(prefix):
+                try:
+                    requested_stage = int(path_id[len(prefix) :])
+                except ValueError:
+                    requested_stage = 1
+                requested_stage = max(1, min(requested_stage, len(options)))
+                clamped_path_id = f"{prefix}{requested_stage}"
+                for option in options:
+                    if option["path_id"] == clamped_path_id:
+                        return option
+
         for option in options:
             if option["path_id"] == path_id:
                 return option
-        return options[0]
+        return options[0] if options else self._path_options(mode)[0]
 
     @staticmethod
-    def _path_options(mode: RunMode) -> list[dict[str, object]]:
+    def _path_options(mode: RunMode, language_code: str = "en") -> list[dict[str, object]]:
+        use_zh = RunService._resolve_language_family(language_code) == "zh"
+
+        if mode == RunMode.REVIEW:
+            return [
+                {
+                    "path_id": "review-stage-1",
+                    "label": "S1",
+                    "kind": "review",
+                    "description": "错题回顾 · 第1关" if use_zh else "Mistake review · Stage 1",
+                    "question_count": 20,
+                    "time_left_sec": 1200,
+                    "goal_total": 20,
+                }
+            ]
         if mode == RunMode.ENDLESS:
             return [
                 {
                     "path_id": "F1",
                     "label": "F1",
                     "kind": "floor",
-                    "description": "Warm-up floor",
+                    "description": "热身关, 先把节奏找回来" if use_zh else "Warm-up floor",
                     "question_count": 8,
                     "time_left_sec": 900,
                     "goal_total": 10,
@@ -735,7 +1133,7 @@ class RunService:
                     "path_id": "F2",
                     "label": "F2",
                     "kind": "floor",
-                    "description": "Steady learning",
+                    "description": "稳扎稳打, 夯实基础" if use_zh else "Steady learning",
                     "question_count": 8,
                     "time_left_sec": 900,
                     "goal_total": 10,
@@ -744,7 +1142,7 @@ class RunService:
                     "path_id": "F3",
                     "label": "F3",
                     "kind": "floor",
-                    "description": "Risk check",
+                    "description": "风险试探, 别丢关键分" if use_zh else "Risk check",
                     "question_count": 9,
                     "time_left_sec": 840,
                     "goal_total": 10,
@@ -753,7 +1151,7 @@ class RunService:
                     "path_id": "F4",
                     "label": "F4",
                     "kind": "floor",
-                    "description": "Pattern practice",
+                    "description": "题型磨合, 形成手感" if use_zh else "Pattern practice",
                     "question_count": 10,
                     "time_left_sec": 840,
                     "goal_total": 10,
@@ -762,7 +1160,7 @@ class RunService:
                     "path_id": "F5",
                     "label": "F5",
                     "kind": "floor",
-                    "description": "High pressure",
+                    "description": "高压冲刺, 保持准确率" if use_zh else "High pressure",
                     "question_count": 10,
                     "time_left_sec": 780,
                     "goal_total": 10,
@@ -771,7 +1169,7 @@ class RunService:
                     "path_id": "F6",
                     "label": "F6",
                     "kind": "floor",
-                    "description": "Abyss boss",
+                    "description": "深渊终章, 拿下收官战" if use_zh else "Abyss boss",
                     "question_count": 12,
                     "time_left_sec": 780,
                     "goal_total": 10,
@@ -783,7 +1181,9 @@ class RunService:
                     "path_id": "speed-route-focus",
                     "label": "R1",
                     "kind": "checkpoint",
-                    "description": "Short rounds, higher accuracy bonus",
+                    "description": "短局快练, 命中率越高收益越好"
+                    if use_zh
+                    else "Short rounds, higher accuracy bonus",
                     "question_count": 8,
                     "time_left_sec": 90,
                     "goal_total": 8,
@@ -792,7 +1192,9 @@ class RunService:
                     "path_id": "speed-route-burst",
                     "label": "R2",
                     "kind": "checkpoint",
-                    "description": "Fast tempo with combo scaling",
+                    "description": "极速连击线, 连对越多加成越高"
+                    if use_zh
+                    else "Fast tempo with combo scaling",
                     "question_count": 10,
                     "time_left_sec": 60,
                     "goal_total": 8,
@@ -801,7 +1203,9 @@ class RunService:
                     "path_id": "speed-route-endurance",
                     "label": "R3",
                     "kind": "checkpoint",
-                    "description": "Long timer, stable output",
+                    "description": "耐力节奏线, 更长计时更稳推进"
+                    if use_zh
+                    else "Long timer, stable output",
                     "question_count": 12,
                     "time_left_sec": 150,
                     "goal_total": 8,
@@ -812,7 +1216,9 @@ class RunService:
                 "path_id": "draft-route-classic",
                 "label": "R1",
                 "kind": "round",
-                "description": "Balanced drafting journey",
+                "description": "均衡组卡线, 覆盖核心考点"
+                if use_zh
+                else "Balanced drafting journey",
                 "question_count": 8,
                 "time_left_sec": 600,
                 "goal_total": 10,
@@ -821,7 +1227,9 @@ class RunService:
                 "path_id": "draft-route-theory",
                 "label": "R2",
                 "kind": "round",
-                "description": "Focus on concept-heavy cards",
+                "description": "概念强化线, 聚焦高权重知识点"
+                if use_zh
+                else "Focus on concept-heavy cards",
                 "question_count": 10,
                 "time_left_sec": 720,
                 "goal_total": 10,
@@ -830,7 +1238,9 @@ class RunService:
                 "path_id": "draft-route-memory",
                 "label": "R3",
                 "kind": "round",
-                "description": "Retention-oriented drafting",
+                "description": "记忆回收线, 强化长期留存"
+                if use_zh
+                else "Retention-oriented drafting",
                 "question_count": 8,
                 "time_left_sec": 540,
                 "goal_total": 10,

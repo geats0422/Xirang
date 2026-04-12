@@ -63,8 +63,15 @@ class QuestionValidator:
         prompt: str,
         options: list[dict[str, Any]],
     ) -> bool:
+        from app.db.models.questions import QuestionType
+
         if not prompt:
             raise ValidationError("prompt cannot be empty")
+
+        # Fill-in-blank questions don't need options
+        if question_type == QuestionType.FILL_IN_BLANK:
+            return True
+
         if not options or len(options) < 2:
             raise ValidationError("at least 2 options required")
         correct = [o for o in options if isinstance(o, dict) and o.get("is_correct")]

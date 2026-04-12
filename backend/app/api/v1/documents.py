@@ -77,6 +77,69 @@ async def upload_document(
     }
 
 
+@router.get("/{document_id}/progress")
+async def get_document_progress(
+    document_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    service: Any = Depends(get_document_service),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Get document processing progress.
+    Returns real progress based on document/job/tree/question_set status.
+    """
+    try:
+        document = await service.get_document(document_id=document_id, owner_user_id=user_id)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+
+    repo = DocumentRepository(session)
+    job = await repo.get_latest_job_for_document(document_id)
+    tree = await repo.get_pageindex_tree(document_id)
+    question_set = await repo.get_question_set_for_document(document_id)
+
+    status_str = str(document.ingest_status).lower()
+
+    if status_str == "failed":
+        progress = 0
+        stage = "Processing failed"
+    elif status_str == "ready":
+        progress = 100
+        stage = "Complete"
+    elif status_str == "pending":
+        progress = 0
+        stage = "Waiting to start"
+    else:
+        job_status = str(job.status).lower() if job else "unknown"
+        tree_status = str(tree.status).lower() if tree else "none"
+        qs_status = str(question_set.status).lower() if question_set else "none"
+
+        if job_status == "failed":
+            progress = 0
+            stage = "Processing failed"
+        elif qs_status == "ready":
+            progress = 95
+            stage = "Finalizing"
+        elif tree_status == "indexed":
+            progress = 80
+            stage = "Generating questions"
+        elif tree_status == "indexing":
+            progress = 60
+            stage = "Building search index"
+        elif job_status == "processing":
+            progress = 30
+            stage = "Parsing document"
+        else:
+            progress = 15
+            stage = "Queued for processing"
+
+    return {
+        "document_id": str(document.id),
+        "status": status_str,
+        "progress": progress,
+        "stage": stage,
+    }
+
+
 @router.post("/batch-delete")
 async def batch_delete_documents(
     payload: dict[str, list[str]],
@@ -129,6 +192,8 @@ async def list_documents(
             {
                 "id": str(d.id),
                 "title": d.title,
+                "file_name": d.file_name,
+                "format": str(d.format),
                 "status": str(d.ingest_status),
                 "created_at": d.created_at.isoformat() if d.created_at else None,
             }
@@ -183,3 +248,29 @@ async def delete_document(
         }
     except DocumentServiceError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
+
+
+@router.get("/diagnostics/queue")
+async def get_queue_diagnostics(
+    user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Get queue diagnostics for document ingestion jobs."""
+    from app.db.models.documents import JobStatus
+
+    repo = DocumentRepository(session)
+    stats = await repo.get_queue_stats(queue_name="default")
+
+    pending = stats.get(str(JobStatus.PENDING), 0)
+    processing = stats.get(str(JobStatus.PROCESSING), 0)
+    completed = stats.get(str(JobStatus.COMPLETED), 0)
+    failed = stats.get(str(JobStatus.FAILED), 0)
+
+    return {
+        "queue": "default",
+        "pending": pending,
+        "processing": processing,
+        "completed": completed,
+        "failed": failed,
+        "total": pending + processing + completed + failed,
+    }

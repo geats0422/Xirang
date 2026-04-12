@@ -7,7 +7,6 @@ from app.db.models.documents import (
     Job,
 )
 from app.db.models.economy import (
-    DailyRewardCapUsage,
     Inventory,
     LeaderboardSnapshot,
     PaymentTransaction,
@@ -16,14 +15,10 @@ from app.db.models.economy import (
     Wallet,
     WalletLedger,
 )
-from app.db.models.learning_paths import (
-    LearningPathNode,
-    LearningPathProgress,
-    LearningPathVersion,
-    LegendReviewProgress,
-    PathRegenerationRecord,
-)
+from app.db.models.learning_path import LearningPath, LearningPathStage
+from app.db.models.notification import Notification
 from app.db.models.profile import Profile, UserSetting
+from app.db.models.quest import QuestAssignment
 from app.db.models.questions import Question, QuestionOption
 from app.db.models.review import (
     AuditLog,
@@ -34,14 +29,12 @@ from app.db.models.review import (
     ReviewRuleCandidate,
 )
 from app.db.models.runs import Run, RunAnswer, RunQuestion, Season, Settlement
-from app.db.models.subscriptions import Subscription
 
 __all__ = [
     "AuditLog",
     "AuthCredential",
     "AuthIdentity",
     "AuthSession",
-    "DailyRewardCapUsage",
     "Document",
     "DocumentIngestionJob",
     "DocumentPageIndexTree",
@@ -50,16 +43,15 @@ __all__ = [
     "Inventory",
     "Job",
     "LeaderboardSnapshot",
-    "LearningPathNode",
-    "LearningPathProgress",
-    "LearningPathVersion",
-    "LegendReviewProgress",
+    "LearningPath",
+    "LearningPathStage",
     "Mistake",
     "MistakeEmbedding",
-    "PathRegenerationRecord",
+    "Notification",
     "PaymentTransaction",
     "Profile",
     "PurchaseRecord",
+    "QuestAssignment",
     "Question",
     "QuestionFeedback",
     "QuestionOption",
@@ -70,7 +62,6 @@ __all__ = [
     "Season",
     "Settlement",
     "ShopOffer",
-    "Subscription",
     "User",
     "UserSetting",
     "Wallet",

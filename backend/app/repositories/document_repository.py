@@ -117,6 +117,14 @@ class DocumentRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_document_titles_by_owner(self, owner_user_id: UUID) -> list[str]:
+        stmt = select(Document.title).where(
+            Document.owner_user_id == owner_user_id,
+            Document.deleted_at.is_(None),
+        )
+        result = await self._session.execute(stmt)
+        return [title for title in result.scalars().all() if isinstance(title, str)]
+
     async def create_job(
         self,
         *,
@@ -124,6 +132,7 @@ class DocumentRepository:
         queue_name: str,
         payload: dict[str, object],
         max_attempts: int = 3,
+        available_at: datetime | None = None,
     ) -> Job:
         job = Job(
             job_type=job_type,
@@ -132,10 +141,18 @@ class DocumentRepository:
             attempt_count=0,
             max_attempts=max_attempts,
             payload=payload,
+            available_at=available_at or datetime.now(UTC),
         )
         self._session.add(job)
         await self._session.flush()
         return job
+
+    async def delete_document_by_id(self, document_id: UUID) -> None:
+        document = await self.get_document_by_id(document_id)
+        if document is None:
+            return
+        await self._session.delete(document)
+        await self._session.flush()
 
     async def create_ingestion_job(
         self,
@@ -408,6 +425,42 @@ class DocumentRepository:
             return
         job.attempt_count += 1
         await self._session.flush()
+
+    async def get_latest_job_for_document(self, document_id: UUID) -> Job | None:
+        stmt = (
+            select(Job)
+            .where(
+                Job.payload["document_id"].as_string() == str(document_id),
+                Job.job_type == "document_ingestion",
+            )
+            .order_by(Job.created_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_pageindex_tree(self, document_id: UUID) -> DocumentPageIndexTree | None:
+        stmt = (
+            select(DocumentPageIndexTree)
+            .where(DocumentPageIndexTree.document_id == document_id)
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_queue_stats(self, queue_name: str = "default") -> dict[str, int]:
+        from sqlalchemy import func
+
+        stmt = (
+            select(Job.status, func.count())
+            .where(Job.queue_name == queue_name)
+            .group_by(Job.status)
+        )
+        result = await self._session.execute(stmt)
+        stats: dict[str, int] = {}
+        for status, count in result.all():
+            stats[str(status)] = int(count)
+        return stats
 
     async def commit(self) -> None:
         await self._session.commit()

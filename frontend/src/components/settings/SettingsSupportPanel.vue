@@ -29,14 +29,14 @@ const navigateTo = (path: string) => {
     </div>
 
     <div class="legal-links">
-      <button type="button" @click="navigateTo('/settings/user-agreement')">
-        {{ $t("settings.support.userAgreement") }}
+      <button type="button" @click="navigateTo('/terms-of-service')">
+        {{ $t("settings.support.termsOfService") }}
       </button>
-      <button type="button" @click="navigateTo('/settings/privacy-policy')">
+      <button type="button" @click="navigateTo('/help-center')">
+        {{ $t("settings.support.contactUs") }}
+      </button>
+      <button type="button" @click="navigateTo('/privacy-policy')">
         {{ $t("settings.support.privacyPolicy") }}
-      </button>
-      <button type="button" @click="navigateTo('/settings/help-center')">
-        {{ $t("settings.support.helpCenter") }}
       </button>
     </div>
   </section>

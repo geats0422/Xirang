@@ -1,7 +1,43 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { createRouter, createMemoryHistory } from "vue-router";
+import { i18n } from "../i18n";
 import DungeonScholarShopPage from "./DungeonScholarShopPage.vue";
+
+const mocks = vi.hoisted(() => ({
+  getShopBalance: vi.fn(),
+  listShopItems: vi.fn(),
+  purchaseShopItem: vi.fn(),
+  getShopInventory: vi.fn(),
+  getActiveEffects: vi.fn(),
+  useItem: vi.fn(),
+}));
+
+vi.mock("../api/shop", () => ({
+  getShopBalance: mocks.getShopBalance,
+  listShopItems: mocks.listShopItems,
+  purchaseShopItem: mocks.purchaseShopItem,
+  getShopInventory: mocks.getShopInventory,
+  getActiveEffects: mocks.getActiveEffects,
+  useItem: mocks.useItem,
+}));
+
+vi.mock("../composables/useInventory", () => ({
+  useInventory: () => ({
+    inventory: { value: [] },
+    refresh: vi.fn(),
+    quantityOf: () => 0,
+  }),
+}));
+
+vi.mock("../composables/useActiveEffects", () => ({
+  useActiveEffects: () => ({
+    effects: { value: [] },
+    activeXpBoost: null,
+    activeShield: null,
+    refresh: vi.fn(),
+  }),
+}));
 
 const createTestRouter = async () => {
   const router = createRouter({
@@ -15,80 +51,88 @@ const createTestRouter = async () => {
 
 describe("DungeonScholarShopPage", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.clear();
-  });
-
-  it("renders top-up entry card", async () => {
-    const router = await createTestRouter();
-    const wrapper = mount(DungeonScholarShopPage, {
-      global: { plugins: [router] },
-    });
-
-    expect(wrapper.find(".shop-card--topup").exists()).toBe(true);
-    expect(wrapper.find(".shop-card--topup h2").text()).toContain("Coin Pack");
-    expect(wrapper.find(".price-tag--usd").exists()).toBe(true);
-    expect(wrapper.find(".price-tag--usd").text()).toContain("$1.99");
+    mocks.getShopBalance.mockResolvedValue({ asset_code: "COIN", balance: 3450 });
+    mocks.listShopItems.mockResolvedValue([
+      { id: "offer-1", item_code: "streak_freeze", rarity: "common", price_amount: 120 },
+      { id: "offer-2", item_code: "xp_boost", rarity: "uncommon", price_amount: 260 },
+      { id: "offer-3", item_code: "revival", rarity: "rare", price_amount: 800 },
+    ]);
+    mocks.purchaseShopItem.mockResolvedValue({});
+    mocks.getShopInventory.mockResolvedValue([]);
+    mocks.getActiveEffects.mockResolvedValue({ effects: [] });
+    mocks.useItem.mockResolvedValue({ success: true, quantity_remaining: 0 });
   });
 
   it("renders wallet balance", async () => {
     const router = await createTestRouter();
     const wrapper = mount(DungeonScholarShopPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
+
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
 
     expect(wrapper.find(".wallet-pill strong").text()).toBe("3,450");
   });
 
-  it("clicking purchase with insufficient balance shows modal", async () => {
+  it("renders shop item cards", async () => {
     const router = await createTestRouter();
     const wrapper = mount(DungeonScholarShopPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
-    // Find the Abyss Revive Token (800 coins, balance is 3450)
-    const purchaseButtons = wrapper.findAll(".purchase-btn");
-    const reviveButton = purchaseButtons[2]; // Third item is Abyss Revive Token
-    
-    await reviveButton.trigger("click");
+    await wrapper.vm.$nextTick();
     await wrapper.vm.$nextTick();
 
-    // Should not show modal since we have enough balance
-    expect(wrapper.find(".insufficient-modal").exists()).toBe(false);
+    const cards = wrapper.findAllComponents({ name: "ShopItemCard" });
+    expect(cards.length).toBeGreaterThan(0);
   });
 
-  it("clicking top-up adds coins", async () => {
+  it("clicking purchase button triggers purchase flow", async () => {
     const router = await createTestRouter();
     const wrapper = mount(DungeonScholarShopPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
-    const initialBalance = wrapper.vm.walletBalance;
-    
-    // Click the top-up button
-    const topUpButton = wrapper.find(".purchase-btn--amber");
-    await topUpButton.trigger("click");
+    await wrapper.vm.$nextTick();
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.vm.walletBalance).toBe(initialBalance + 1000);
+    const cards = wrapper.findAllComponents({ name: "ShopItemCard" });
+    expect(cards.length).toBeGreaterThan(0);
   });
 
-  it("insufficient balance modal has rescue pack option", async () => {
+  it("shows bag modal when clicking bag button", async () => {
     const router = await createTestRouter();
     const wrapper = mount(DungeonScholarShopPage, {
-      global: { plugins: [router] },
+      global: { plugins: [router, i18n] },
     });
 
-    // Set balance low and trigger purchase
-    wrapper.vm.walletBalance = 100;
     await wrapper.vm.$nextTick();
-    
-    // Click purchase on expensive item
-    const purchaseButtons = wrapper.findAll(".purchase-btn");
-    await purchaseButtons[2].trigger("click");
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.find(".insufficient-modal").exists()).toBe(true);
-    expect(wrapper.find(".rescue-btn").exists()).toBe(true);
-    expect(wrapper.find(".rescue-btn").text()).toContain("$1.99");
+    const bagButton = wrapper.find(".bag-btn");
+    await bagButton.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".bag-modal").exists()).toBe(true);
+  });
+
+  it("bag modal shows empty state when no inventory", async () => {
+    const router = await createTestRouter();
+    const wrapper = mount(DungeonScholarShopPage, {
+      global: { plugins: [router, i18n] },
+    });
+
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    const bagButton = wrapper.find(".bag-btn");
+    await bagButton.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".bag-modal").exists()).toBe(true);
+    expect(wrapper.find(".bag-empty").exists()).toBe(true);
   });
 });

@@ -31,8 +31,11 @@ class FakeLLMProvider:
     async def generate(
         self,
         prompt: str,
+        *,
+        response_format: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
+        _ = response_format
         _ = kwargs
         self.call_count += 1
         self.last_prompt = prompt
@@ -216,21 +219,6 @@ class TestQuestionValidator:
             validator.validate(question)
         assert "at least 2 options" in str(exc_info.value).lower()
 
-    def test_validate_explanation_rejects_generic_text_without_excerpt_overlap(self) -> None:
-        validator = QuestionValidator()
-
-        with pytest.raises(ValidationError) as exc_info:
-            validator.validate_explanation(
-                "According to the text, this is correct.",
-                "Python syntax and dynamic typing make it an interpreted language.",
-                "Why is Python interpreted?",
-            )
-
-        assert (
-            "supporting excerpt" in str(exc_info.value).lower()
-            or "stay close" in str(exc_info.value).lower()
-        )
-
 
 class TestQuestionGenerator:
     def make_fake_provider(self, responses: list[dict[str, Any]]) -> FakeLLMProvider:
@@ -254,9 +242,7 @@ class TestQuestionGenerator:
                     {"option_key": "C", "content": "3", "is_correct": False},
                     {"option_key": "D", "content": "4", "is_correct": False},
                 ],
-                "explanation": "The excerpt states that 1 + 1 = 2.",
-                "source_locator": "Math Basics",
-                "metadata": {"supporting_excerpt": "1 + 1 = 2"},
+                "explanation": "1 + 1 = 2",
                 "difficulty": 1,
             }
         ]
@@ -265,7 +251,7 @@ class TestQuestionGenerator:
 
         result = await generator.generate(
             document_id=uuid4(),
-            context="Math Basics: 1 + 1 = 2.",
+            context="Basic math",
             question_types=[QuestionType.SINGLE_CHOICE],
             count=1,
         )
@@ -284,9 +270,7 @@ class TestQuestionGenerator:
                     {"option_key": "A", "content": "1", "is_correct": True},
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
-                "explanation": "The excerpt states that this is the valid question.",
-                "source_locator": "Test context",
-                "metadata": {"supporting_excerpt": "Valid question"},
+                "explanation": "Valid",
                 "difficulty": 1,
             },
             {
@@ -304,7 +288,7 @@ class TestQuestionGenerator:
 
         result = await generator.generate(
             document_id=uuid4(),
-            context="Test context. Valid question",
+            context="Test context",
             question_types=[QuestionType.SINGLE_CHOICE],
             count=2,
         )
@@ -318,9 +302,12 @@ class TestQuestionGenerator:
             async def generate(
                 self,
                 prompt: str,
+                *,
+                response_format: dict[str, Any] | None = None,
                 **kwargs: Any,
             ) -> dict[str, Any]:
                 _ = prompt
+                _ = response_format
                 _ = kwargs
                 raise RuntimeError("LLM service unavailable")
 
@@ -349,8 +336,6 @@ class TestQuestionGenerator:
                                 {"option_key": "B", "content": "No", "is_correct": False},
                             ],
                             "explanation": "Test",
-                            "source_locator": "Plant Notes",
-                            "metadata": {"supporting_excerpt": "photosynthesis in plants"},
                             "difficulty": 1,
                         }
                     ]
@@ -368,11 +353,6 @@ class TestQuestionGenerator:
 
         assert provider.last_prompt is not None
         assert "photosynthesis" in provider.last_prompt
-        assert "ONLY use facts that are explicitly stated in the context" in provider.last_prompt
-        assert "Do not use outside knowledge" in provider.last_prompt
-        assert "source_locator" in provider.last_prompt
-        assert '"supporting_excerpt"' in provider.last_prompt
-        assert "Generate exactly 1 questions" in provider.last_prompt
 
     @pytest.mark.asyncio
     async def test_generate_supports_multiple_question_types(self) -> None:
@@ -384,9 +364,7 @@ class TestQuestionGenerator:
                     {"option_key": "A", "content": "1", "is_correct": True},
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
-                "explanation": "The supporting excerpt explicitly identifies this as the single choice question.",
-                "source_locator": "Mixed types",
-                "metadata": {"supporting_excerpt": "Single choice question"},
+                "explanation": "Single",
                 "difficulty": 1,
             },
             {
@@ -396,9 +374,7 @@ class TestQuestionGenerator:
                     {"option_key": "A", "content": "True", "is_correct": True},
                     {"option_key": "B", "content": "False", "is_correct": False},
                 ],
-                "explanation": "The supporting excerpt explicitly identifies this as the true false question.",
-                "source_locator": "Mixed types",
-                "metadata": {"supporting_excerpt": "True false question"},
+                "explanation": "TF",
                 "difficulty": 1,
             },
         ]
@@ -407,7 +383,7 @@ class TestQuestionGenerator:
 
         result = await generator.generate(
             document_id=uuid4(),
-            context="Mixed types. Single choice question. True false question.",
+            context="Mixed types",
             question_types=[QuestionType.SINGLE_CHOICE, QuestionType.TRUE_FALSE],
             count=2,
         )
@@ -426,9 +402,7 @@ class TestQuestionGenerator:
                     {"option_key": "A", "content": "1", "is_correct": True},
                     {"option_key": "B", "content": "2", "is_correct": False},
                 ],
-                "explanation": f"The excerpt explicitly references Question {i} as the supported item.",
-                "source_locator": "Count Test",
-                "metadata": {"supporting_excerpt": f"Question {i}"},
+                "explanation": f"Exp {i}",
                 "difficulty": 1,
             }
             for i in range(5)
@@ -438,7 +412,7 @@ class TestQuestionGenerator:
 
         result = await generator.generate(
             document_id=uuid4(),
-            context="Question 0. Question 1. Question 2. Question 3. Question 4.",
+            context="Test",
             question_types=[QuestionType.SINGLE_CHOICE],
             count=3,
         )
@@ -447,57 +421,81 @@ class TestQuestionGenerator:
         assert all(q.question_type == QuestionType.SINGLE_CHOICE for q in result)
 
     @pytest.mark.asyncio
-    async def test_generate_filters_questions_without_context_grounding(self) -> None:
-        questions_data = [
-            {
-                "question_type": "single_choice",
-                "prompt": "Which year was Python created?",
-                "options": [
-                    {"option_key": "A", "content": "1989", "is_correct": False},
-                    {"option_key": "B", "content": "1991", "is_correct": True},
-                ],
-                "explanation": "External trivia",
-                "source_locator": "Python History",
-                "metadata": {"supporting_excerpt": "This quote is absent from the source"},
-                "difficulty": 1,
-            }
-        ]
-        provider = self.make_fake_provider([self.build_structured_response(questions_data)])
+    @pytest.mark.parametrize(
+        "game_mode",
+        ["endless-abyss", "speed-survival", "knowledge-draft", None],
+    )
+    async def test_generate_prompt_includes_study_material_guardrails_and_language_requirement(
+        self,
+        game_mode: str | None,
+    ) -> None:
+        provider = self.make_fake_provider(
+            [
+                self.build_structured_response(
+                    [
+                        {
+                            "question_type": "single_choice",
+                            "prompt": "Test",
+                            "options": [
+                                {"option_key": "A", "content": "Yes", "is_correct": True},
+                                {"option_key": "B", "content": "No", "is_correct": False},
+                            ],
+                            "explanation": "Test",
+                            "difficulty": 1,
+                        }
+                    ]
+                )
+            ]
+        )
         generator = QuestionGenerator(llm_client=provider)
 
-        result = await generator.generate(
+        await generator.generate(
             document_id=uuid4(),
-            context="Python supports multiple programming paradigms.",
+            context="Only this study material should be used.",
             question_types=[QuestionType.SINGLE_CHOICE],
             count=1,
+            game_mode=game_mode,
+            language_code="zh-CN",
         )
 
-        assert result == []
+        assert provider.last_prompt is not None
+        assert "<STUDY_MATERIAL>" in provider.last_prompt
+        assert "</STUDY_MATERIAL>" in provider.last_prompt
+        assert "Use Simplified Chinese (zh-CN)" in provider.last_prompt
+        assert "Generate questions ONLY from facts explicitly present" in provider.last_prompt
+        assert "question_type, options, correct_answer" in provider.last_prompt
 
     @pytest.mark.asyncio
-    async def test_generate_filters_questions_with_low_quality_explanations(self) -> None:
-        questions_data = [
-            {
-                "question_type": "single_choice",
-                "prompt": "Why is Python interpreted?",
-                "options": [
-                    {"option_key": "A", "content": "Because it is dynamic", "is_correct": True},
-                    {"option_key": "B", "content": "Because it is compiled", "is_correct": False},
-                ],
-                "explanation": "According to the text, this is correct.",
-                "source_locator": "一、Python简介",
-                "metadata": {"supporting_excerpt": "Python语法和动态类型，以及解释型语言的本质"},
-                "difficulty": 1,
-            }
-        ]
-        provider = self.make_fake_provider([self.build_structured_response(questions_data)])
+    async def test_generate_speed_survival_localizes_true_false_option_labels(self) -> None:
+        provider = self.make_fake_provider(
+            [
+                self.build_structured_response(
+                    [
+                        {
+                            "question_type": "true_false",
+                            "prompt": "陈述",
+                            "options": [
+                                {"option_key": "A", "content": "正确", "is_correct": True},
+                                {"option_key": "B", "content": "错误", "is_correct": False},
+                            ],
+                            "explanation": "说明",
+                            "difficulty": 1,
+                        }
+                    ]
+                )
+            ]
+        )
         generator = QuestionGenerator(llm_client=provider)
 
-        result = await generator.generate(
+        await generator.generate(
             document_id=uuid4(),
-            context="一、Python简介：Python语法和动态类型，以及解释型语言的本质。",
-            question_types=[QuestionType.SINGLE_CHOICE],
+            context="测试材料",
+            question_types=[QuestionType.TRUE_FALSE],
             count=1,
+            game_mode="speed-survival",
+            language_code="zh-CN",
         )
 
-        assert result == []
+        assert provider.last_prompt is not None
+        assert 'content: "正确"' in provider.last_prompt
+        assert 'content: "错误"' in provider.last_prompt

@@ -115,7 +115,7 @@ class TestPhase1ClosedLoop:
         result = await service.register(
             username="testuser",
             email="test@example.com",
-            password="securepassword123",
+            password="SecurePass123!",
         )
 
         assert result.user.username == "testuser"
@@ -261,19 +261,46 @@ class TestPhase1ClosedLoop:
                 self.display_name = display_name
                 self.total_xp = total_xp
 
+        class FakeViewerRow:
+            def __init__(self, user_id, display_name, total_xp):
+                self.user_id = user_id
+                self.display_name = display_name
+                self.total_xp = total_xp
+
+        class FakeFocusRow:
+            def __init__(self):
+                self.document_id = uuid4()
+                self.title = "Test Document"
+                self.completed_runs = 5
+                self.total_sum = 10
+                self.correct_sum = 8
+
         class FakeRepo:
-            async def get_global_leaderboard(self, limit):
+            async def get_global_leaderboard(self, limit, offset):
                 return [
                     FakeRow(uuid4(), "User A", 1000),
                     FakeRow(uuid4(), "User B", 750),
                     FakeRow(uuid4(), "User C", 500),
                 ]
 
-        service = LeaderboardService(repository=FakeRepo())
-        result = await service.get_global_leaderboard(limit=10)
+            async def count_global_leaderboard_users(self):
+                return 3
 
-        assert len(result) == 3
-        assert result[0].total_xp == 1000
-        assert result[0].rank == 1
-        assert result[1].rank == 2
-        assert result[2].rank == 3
+            async def get_user_total_xp(self, user_id):
+                return FakeViewerRow(user_id, "Test User", 500)
+
+            async def get_user_rank(self, user_id, total_xp):
+                return 3
+
+            async def get_daily_focus_documents(self, *, user_id, start_at, end_at, limit):
+                return [FakeFocusRow()]
+
+        service = LeaderboardService(repository=FakeRepo())
+        test_user_id = uuid4()
+        result = await service.get_global_leaderboard(user_id=test_user_id, limit=10)
+
+        assert len(result.entries) == 3
+        assert result.entries[0].total_xp == 1000
+        assert result.entries[0].rank == 1
+        assert result.entries[1].rank == 2
+        assert result.entries[2].rank == 3

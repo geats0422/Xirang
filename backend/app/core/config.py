@@ -1,18 +1,13 @@
 """Application configuration."""
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from dotenv import load_dotenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
-
-# Load .env file into os.environ so pydantic_settings can read it
-load_dotenv(ENV_FILE, override=True)
 
 
 class Settings(BaseSettings):
@@ -33,7 +28,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/xirang"
     database_echo: bool = False
-    pageindex_url: str = "http://localhost:8080"
+    pageindex_url: str = "http://localhost:8000/pageindex"
     pageindex_auto_start: bool = True
     pageindex_timeout_seconds: int = 30
     pageindex_startup_timeout_seconds: int = 30
@@ -43,15 +38,20 @@ class Settings(BaseSettings):
     pageindex_launch_workdir: str | None = None
     pageindex_launch_shell: bool = True
     pageindex_mock_fallback: bool = True
+    mineru_url: str = "http://127.0.0.1:8300"
+    mineru_timeout_seconds: float = 1800.0
+    mineru_backend: str = "hybrid-auto-engine"
+    mineru_lang_list: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["ch"])
 
     # LLM provider configuration (OpenAI-compatible)
+    # IMPORTANT: API credentials MUST NOT be modified - these are provided by the project
     openai_api_key: str | None = None
     openai_base_url: str | None = None
     openai_model: str = "gpt-4o-mini"
-    nvidia_base_url: str | None = None
+    # NVIDIA Build API (primary LLM provider - DO NOT MODIFY)
     nvidia_api_key: str | None = None
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
-
     storage_mode: str = "local"
     upload_dir: str = ".data/uploads"
     max_file_size_bytes: int = 50 * 1024 * 1024
@@ -64,6 +64,20 @@ class Settings(BaseSettings):
             "http://localhost:3000",
         ],
     )
+    frontend_base_url: str = "http://localhost:5173"
+
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    github_callback_url: str = "http://localhost:8000/api/v1/auth/oauth/github/callback"
+
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_callback_url: str = "http://localhost:8000/api/v1/auth/oauth/google/callback"
+
+    microsoft_client_id: str | None = None
+    microsoft_client_secret: str | None = None
+    microsoft_tenant_id: str = "common"
+    microsoft_callback_url: str = "http://localhost:8000/api/v1/auth/oauth/microsoft/callback"
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -73,6 +87,16 @@ class Settings(BaseSettings):
         if not value:
             return []
         return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+    @field_validator("mineru_lang_list", mode="before")
+    @classmethod
+    def parse_mineru_lang_list(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, list):
+            return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+        if not value:
+            return ["ch"]
+        langs = [item.strip() for item in value.split(",") if item.strip()]
+        return langs or ["ch"]
 
     @property
     def llm_api_key(self) -> str | None:
@@ -101,17 +125,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()
-
-    # Backward compatibility: tolerate old misspelled NIVIDIA_* keys in existing .env
-    if settings.nvidia_base_url is None:
-        legacy_base = os.getenv("NIVIDIA_BASE_URL")
-        if isinstance(legacy_base, str) and legacy_base.strip():
-            settings.nvidia_base_url = legacy_base.strip()
-
-    if settings.nvidia_api_key is None:
-        legacy_key = os.getenv("NIVIDIA_BUILD_API_KEY") or os.getenv("NIVIDIA_API_KEY")
-        if isinstance(legacy_key, str) and legacy_key.strip():
-            settings.nvidia_api_key = legacy_key.strip()
-
-    return settings
+    return Settings()

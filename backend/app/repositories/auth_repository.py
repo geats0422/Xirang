@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 
-from app.db.models.auth import AuthCredential, AuthSession, User
+from app.db.models.auth import (
+    AuthCredential,
+    AuthIdentity,
+    AuthProvider,
+    AuthSession,
+    User,
+    UserStatus,
+)
 from app.db.models.economy import Wallet
 from app.db.models.profile import Profile, UserSetting
 
@@ -88,6 +96,39 @@ class AuthRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_auth_identity(
+        self, *, provider_key: AuthProvider, provider_user_key: str
+    ) -> AuthIdentity | None:
+        stmt = (
+            select(AuthIdentity)
+            .where(
+                AuthIdentity.provider_key == provider_key,
+                AuthIdentity.provider_user_key == provider_user_key,
+                AuthIdentity.unlinked_at.is_(None),
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_auth_identity(
+        self,
+        *,
+        user_id: UUID,
+        provider_key: AuthProvider,
+        provider_user_key: str,
+        provider_email: str | None,
+    ) -> AuthIdentity:
+        identity = AuthIdentity(
+            user_id=user_id,
+            provider_key=provider_key,
+            provider_user_key=provider_user_key,
+            provider_email=provider_email,
+        )
+        self._session.add(identity)
+        await self._session.flush()
+        return identity
+
     async def create_auth_session(
         self,
         *,
@@ -148,6 +189,52 @@ class AuthRepository:
         user.last_login_at = last_login_at
         await self._session.flush()
         return user
+
+    async def soft_delete_user(self, *, user_id: UUID) -> User | None:
+        user = await self.get_user_by_id(user_id)
+        if user is None:
+            return None
+        user.deleted_at = datetime.now(UTC)
+        user.status = UserStatus.DELETED
+        await self._session.flush()
+        return user
+
+    async def hard_delete_user_game_data(self, *, user_id: UUID) -> None:
+        from sqlalchemy import ColumnElement
+
+        from app.db.models.documents import Document
+        from app.db.models.economy import (
+            ActiveEffect,
+            Inventory,
+            LeaderboardSnapshot,
+            PurchaseRecord,
+            UseRecord,
+            WalletLedger,
+        )
+        from app.db.models.review import Mistake, MistakeEmbedding, QuestionFeedback
+        from app.db.models.runs import Run, RunAnswer, RunQuestion, Settlement
+
+        run_ids_stmt = select(Run.id).where(Run.user_id == user_id)
+        mistake_ids_stmt = select(Mistake.id).where(Mistake.user_id == user_id)
+        tables_to_delete: list[tuple[type, ColumnElement[bool]]] = [
+            (RunAnswer, RunAnswer.run_id.in_(run_ids_stmt)),
+            (RunQuestion, RunQuestion.run_id.in_(run_ids_stmt)),
+            (Settlement, Settlement.user_id == user_id),
+            (Run, Run.user_id == user_id),
+            (MistakeEmbedding, MistakeEmbedding.mistake_id.in_(mistake_ids_stmt)),
+            (Mistake, Mistake.user_id == user_id),
+            (QuestionFeedback, QuestionFeedback.user_id == user_id),
+            (ActiveEffect, ActiveEffect.user_id == user_id),
+            (UseRecord, UseRecord.user_id == user_id),
+            (Inventory, Inventory.user_id == user_id),
+            (PurchaseRecord, PurchaseRecord.user_id == user_id),
+            (WalletLedger, WalletLedger.user_id == user_id),
+            (LeaderboardSnapshot, LeaderboardSnapshot.user_id == user_id),
+            (Document, Document.owner_user_id == user_id),
+        ]
+        for model, condition in tables_to_delete:
+            await self._session.execute(sql_delete(model).where(condition))
+        await self._session.flush()
 
     async def commit(self) -> None:
         await self._session.commit()

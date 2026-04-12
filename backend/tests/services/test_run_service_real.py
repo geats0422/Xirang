@@ -1,20 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 
-from app.db.models.learning_paths import LearningPathNodeType, LearningPathProgressStatus
 from app.db.models.runs import RunMode, RunStatus
-from app.services.learning_paths.reward_policy import RewardPolicy
-from app.services.runs.exceptions import (
-    DuplicateAnswerError,
-    QuestionNotFoundError,
-    RunNotCompletedError,
-)
+from app.services.runs.exceptions import DuplicateAnswerError, RunNotCompletedError
 from app.services.runs.schemas import AnswerResult, QuestionData
 from app.services.runs.service import RunService
 
@@ -23,7 +17,7 @@ from app.services.runs.service import RunService
 class FakeRun:
     id: UUID
     user_id: UUID
-    document_id: UUID
+    document_id: UUID | None
     mode: RunMode
     status: RunStatus
     score: int
@@ -32,11 +26,6 @@ class FakeRun:
     combo_count: int
     mode_state: dict[str, object]
     started_at: datetime
-    source_path_version_id: UUID | None = None
-    source_level_node_id: UUID | None = None
-    is_legend_review: bool = False
-    legend_reward_rate: float = 1.0
-    version_reward_discount: float = 1.0
     ended_at: datetime | None = None
 
 
@@ -51,65 +40,26 @@ class FakeSettlementRow:
     payload: dict[str, object]
 
 
-@dataclass
-class FakeLearningPathProgress:
-    user_id: UUID
-    path_version_id: UUID
-    node_id: UUID
-    status: LearningPathProgressStatus
-    first_completed_run_id: UUID
-    completed_runs_count: int
-    last_completed_at: datetime
-
-
-@dataclass
-class FakeLegendReviewProgress:
-    user_id: UUID
-    path_version_id: UUID
-    unit_node_id: UUID
-    legend_round_count: int
-    last_legend_run_at: datetime
-
-
-@dataclass
-class FakeLearningPathNode:
-    id: UUID
-    node_type: LearningPathNodeType
-    parent_node_id: UUID | None = None
-
-
-@dataclass
-class FakeDailyRewardCapUsage:
-    xp_legend_earned: int
-    coin_legend_earned: int
-
-
 class InMemoryRunRepository:
     def __init__(self, questions: list[QuestionData]) -> None:
         self._source_questions = questions
+        self._knowledge_points = ["python", "asyncio", "orm"]
+        self._language_code = "en"
         self._runs: dict[UUID, FakeRun] = {}
         self._run_questions: dict[UUID, list[dict[str, Any]]] = {}
         self._answers: dict[UUID, list[AnswerResult]] = {}
         self._settlements: dict[UUID, FakeSettlementRow] = {}
-        self._learning_path_progress: dict[tuple[UUID, UUID, UUID], FakeLearningPathProgress] = {}
-        self._legend_review_progress: dict[tuple[UUID, UUID, UUID], FakeLegendReviewProgress] = {}
-        self._path_nodes: dict[UUID, FakeLearningPathNode] = {}
-        self._path_version_meta: dict[UUID, tuple[UUID, str, int]] = {}
-        self._latest_ready_versions: dict[tuple[UUID, str], int] = {}
-        self._subscription_active = False
-        self._daily_cap_usage: dict[tuple[UUID, date], FakeDailyRewardCapUsage] = {}
+        self._mistakes: set[tuple[UUID, UUID, UUID | None]] = set()
 
     async def create_run(
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         total_questions: int,
         mode_state: dict[str, object] | None = None,
-        source_path_version_id: UUID | None = None,
-        source_level_node_id: UUID | None = None,
-        is_legend_review: bool = False,
+        path_id: str | None = None,
     ) -> FakeRun:
         run = FakeRun(
             id=uuid4(),
@@ -123,9 +73,6 @@ class InMemoryRunRepository:
             combo_count=0,
             mode_state=mode_state or {},
             started_at=datetime.now(UTC),
-            source_path_version_id=source_path_version_id,
-            source_level_node_id=source_level_node_id,
-            is_legend_review=is_legend_review,
         )
         self._runs[run.id] = run
         return run
@@ -147,8 +94,6 @@ class InMemoryRunRepository:
         combo_count: int | None = None,
         mode_state: dict[str, object] | None = None,
         ended_at: datetime | None = None,
-        legend_reward_rate: float | None = None,
-        version_reward_discount: float | None = None,
     ) -> None:
         run = self._runs[run_id]
         if status is not None:
@@ -165,31 +110,92 @@ class InMemoryRunRepository:
             run.mode_state = mode_state
         if ended_at is not None:
             run.ended_at = ended_at
-        if legend_reward_rate is not None:
-            run.legend_reward_rate = legend_reward_rate
-        if version_reward_discount is not None:
-            run.version_reward_discount = version_reward_discount
 
     async def list_document_questions(
         self,
         *,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         count: int,
         path_id: str | None = None,
+        user_id: UUID | None = None,
     ) -> list[QuestionData]:
+        _ = path_id
+        if mode == RunMode.REVIEW and user_id is not None:
+            mistake_question_ids = {
+                mistake_question_id
+                for mistake_user_id, mistake_question_id, mistake_document_id in self._mistakes
+                if mistake_user_id == user_id
+                and (document_id is None or mistake_document_id == document_id)
+            }
+            candidates = [q for q in self._source_questions if q.id in mistake_question_ids]
+            return candidates[:count]
+        if document_id is None:
+            return self._source_questions[:count]
         return [q for q in self._source_questions if q.document_id == document_id][:count]
+
+    async def count_document_questions(self, *, document_id: UUID) -> int:
+        return sum(1 for q in self._source_questions if q.document_id == document_id)
+
+    async def count_review_questions(self, *, document_id: UUID | None, user_id: UUID) -> int:
+        question_ids = {
+            question_id
+            for mistake_user_id, question_id, mistake_document_id in self._mistakes
+            if mistake_user_id == user_id
+            and (document_id is None or mistake_document_id == document_id)
+        }
+        return len(question_ids)
+
+    async def create_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID,
+        run_id: UUID,
+        explanation: str | None = None,
+    ) -> None:
+        _ = run_id
+        _ = explanation
+        self._mistakes.add((user_id, question_id, document_id))
+
+    async def remove_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID | None = None,
+    ) -> None:
+        self._mistakes = {
+            item
+            for item in self._mistakes
+            if not (
+                item[0] == user_id
+                and item[1] == question_id
+                and (document_id is None or item[2] == document_id)
+            )
+        }
+
+    async def list_document_knowledge_points(
+        self,
+        *,
+        document_id: UUID,
+        limit: int = 8,
+    ) -> list[str]:
+        if not any(q.document_id == document_id for q in self._source_questions):
+            return []
+        return self._knowledge_points[:limit]
+
+    async def get_user_language_code(self, user_id: UUID) -> str:
+        _ = user_id
+        return self._language_code
 
     async def add_run_questions(self, run_id: UUID, questions: list[QuestionData]) -> None:
         self._run_questions[run_id] = [
             {
                 "run_question_id": uuid4(),
                 "question_id": question.id,
-                "options": question.options,
                 "correct_option_ids": [str(v) for v in question.correct_option_ids],
-                "explanation": question.explanation,
-                "source_locator": question.source_locator,
-                "supporting_excerpt": question.supporting_excerpt,
             }
             for question in questions
         ]
@@ -272,119 +278,25 @@ class InMemoryRunRepository:
     async def get_settlement(self, run_id: UUID) -> FakeSettlementRow | None:
         return self._settlements.get(run_id)
 
-    async def upsert_learning_path_progress(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        node_id: UUID,
-        completed_run_id: UUID,
-        completed_at: datetime,
-    ) -> None:
-        key = (user_id, path_version_id, node_id)
-        row = self._learning_path_progress.get(key)
-        if row is None:
-            self._learning_path_progress[key] = FakeLearningPathProgress(
-                user_id=user_id,
-                path_version_id=path_version_id,
-                node_id=node_id,
-                status=LearningPathProgressStatus.COMPLETED,
-                first_completed_run_id=completed_run_id,
-                completed_runs_count=1,
-                last_completed_at=completed_at,
-            )
-            return
-
-        row.status = LearningPathProgressStatus.COMPLETED
-        row.completed_runs_count += 1
-        row.last_completed_at = completed_at
-
-    async def resolve_unit_node_id(self, *, node_id: UUID) -> UUID | None:
-        node = self._path_nodes.get(node_id)
-        if node is None:
-            return None
-        if node.node_type == LearningPathNodeType.UNIT:
-            return node.id
-
-        parent_id = node.parent_node_id
-        while parent_id is not None:
-            parent = self._path_nodes.get(parent_id)
-            if parent is None:
-                return None
-            if parent.node_type == LearningPathNodeType.UNIT:
-                return parent.id
-            parent_id = parent.parent_node_id
-
-        return None
-
-    async def increment_legend_review_progress(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        unit_node_id: UUID,
-        completed_at: datetime,
-    ) -> None:
-        key = (user_id, path_version_id, unit_node_id)
-        row = self._legend_review_progress.get(key)
-        if row is None:
-            self._legend_review_progress[key] = FakeLegendReviewProgress(
-                user_id=user_id,
-                path_version_id=path_version_id,
-                unit_node_id=unit_node_id,
-                legend_round_count=1,
-                last_legend_run_at=completed_at,
-            )
-            return
-
-        row.legend_round_count += 1
-        row.last_legend_run_at = completed_at
-
-    async def get_path_version_meta(self, *, path_version_id: UUID) -> tuple[UUID, str, int] | None:
-        return self._path_version_meta.get(path_version_id)
-
-    async def get_latest_ready_path_version_no(self, *, document_id: UUID, mode: str) -> int | None:
-        return self._latest_ready_versions.get((document_id, mode))
-
-    async def get_legend_round_count(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        unit_node_id: UUID,
-    ) -> int:
-        row = self._legend_review_progress.get((user_id, path_version_id, unit_node_id))
-        return 0 if row is None else int(row.legend_round_count)
-
-    async def is_subscription_active(self, *, user_id: UUID, at: datetime) -> bool:
-        return self._subscription_active
-
-    async def get_daily_reward_cap_usage(
-        self, *, user_id: UUID, date_key: date
-    ) -> FakeDailyRewardCapUsage | None:
-        return self._daily_cap_usage.get((user_id, date_key))
-
-    async def upsert_daily_reward_cap_usage(
-        self,
-        *,
-        user_id: UUID,
-        date_key: date,
-        xp_delta: int,
-        coin_delta: int,
-    ) -> FakeDailyRewardCapUsage:
-        key = (user_id, date_key)
-        row = self._daily_cap_usage.get(key)
-        if row is None:
-            row = FakeDailyRewardCapUsage(
-                xp_legend_earned=max(0, xp_delta),
-                coin_legend_earned=max(0, coin_delta),
-            )
-            self._daily_cap_usage[key] = row
-            return row
-
-        row.xp_legend_earned += max(0, xp_delta)
-        row.coin_legend_earned += max(0, coin_delta)
-        return row
+    async def get_completed_path_ids(
+        self, user_id: UUID, document_id: UUID | None, mode: RunMode
+    ) -> set[str]:
+        path_ids: set[str] = set()
+        for run in self._runs.values():
+            if run.user_id != user_id:
+                continue
+            if run.status != RunStatus.COMPLETED:
+                continue
+            if run.mode != mode:
+                continue
+            if document_id is not None and run.document_id != document_id:
+                continue
+            state = run.mode_state
+            if isinstance(state, dict):
+                path_id = state.get("path_id")
+                if isinstance(path_id, str) and path_id:
+                    path_ids.add(path_id)
+        return path_ids
 
     async def commit(self) -> None:
         return
@@ -415,9 +327,6 @@ def _build_questions(document_id: UUID) -> list[QuestionData]:
             ],
             correct_option_ids=[],
             difficulty=1,
-            explanation=f"Explanation {i + 1}",
-            source_locator=f"Section {i + 1}",
-            supporting_excerpt=f"Excerpt {i + 1}",
         )
         for i in range(3)
     ]
@@ -514,67 +423,49 @@ async def test_real_run_service_get_settlement_requires_completion() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", [RunMode.ENDLESS, RunMode.SPEED, RunMode.DRAFT])
-async def test_real_run_service_returns_feedback_for_wrong_answers(mode: RunMode) -> None:
+async def test_list_path_options_localizes_description_for_chinese_user() -> None:
     user_id = uuid4()
     document_id = uuid4()
-    questions = _build_questions(document_id)[:1]
-    questions[0].correct_option_ids = [UUID(questions[0].options[0]["id"])]
-
-    repository = InMemoryRunRepository(questions)
+    repository = InMemoryRunRepository(_build_questions(document_id))
+    repository._language_code = "zh-CN"
     service = RunService(repository=repository)
-    run, generated = await service.create_run(
-        user_id=user_id,
+
+    endless_options = await service.list_path_options(
+        mode=RunMode.ENDLESS,
         document_id=document_id,
-        mode=mode,
-        question_count=1,
+        user_id=user_id,
+    )
+    speed_options = await service.list_path_options(
+        mode=RunMode.SPEED,
+        document_id=document_id,
+        user_id=user_id,
+    )
+    draft_options = await service.list_path_options(
+        mode=RunMode.DRAFT,
+        document_id=document_id,
+        user_id=user_id,
     )
 
-    wrong_option_id = UUID(generated[0].options[1]["id"])
-    result = await service.submit_answer(
-        run_id=run.id,
-        question_id=generated[0].id,
-        selected_option_ids=[wrong_option_id],
-    )
-
-    assert result.is_correct is False
-    assert result.feedback is not None
-    assert [option.text for option in result.feedback.correct_options] == [
-        generated[0].options[0]["text"]
-    ]
-    assert result.feedback.explanation == generated[0].explanation
-    assert result.feedback.source_locator == generated[0].source_locator
-    assert result.feedback.supporting_excerpt == generated[0].supporting_excerpt
+    assert endless_options[0]["description"] == "python章节: 热身关, 先把节奏找回来"
+    assert speed_options[0]["description"] == "python章节: 短局快练, 命中率越高收益越好"
+    assert draft_options[0]["description"] == "基础章节线 · python"
 
 
 @pytest.mark.asyncio
-async def test_real_run_service_builds_fallback_explanation_for_wrong_answers() -> None:
+async def test_list_path_options_falls_back_to_english_for_unsupported_language() -> None:
     user_id = uuid4()
     document_id = uuid4()
-    questions = _build_questions(document_id)[:1]
-    questions[0].correct_option_ids = [UUID(questions[0].options[0]["id"])]
-    questions[0].explanation = None
-    questions[0].supporting_excerpt = "Python语法和动态类型，以及解释型语言的本质。"
-
-    repository = InMemoryRunRepository(questions)
+    repository = InMemoryRunRepository(_build_questions(document_id))
+    repository._language_code = "fr-FR"
     service = RunService(repository=repository)
-    run, generated = await service.create_run(
-        user_id=user_id,
-        document_id=document_id,
+
+    endless_options = await service.list_path_options(
         mode=RunMode.ENDLESS,
-        question_count=1,
+        document_id=document_id,
+        user_id=user_id,
     )
 
-    wrong_option_id = UUID(generated[0].options[1]["id"])
-    result = await service.submit_answer(
-        run_id=run.id,
-        question_id=generated[0].id,
-        selected_option_ids=[wrong_option_id],
-    )
-
-    assert result.feedback is not None
-    assert result.feedback.explanation is not None
-    assert "Python语法和动态类型" in result.feedback.explanation
+    assert endless_options[0]["description"] == "python: Warm-up floor"
 
 
 @pytest.mark.asyncio
@@ -623,243 +514,265 @@ async def test_real_run_service_accumulates_study_seconds_and_goal_progress() ->
 
 
 @pytest.mark.asyncio
-async def test_real_run_service_create_run_raises_when_document_has_no_questions() -> None:
+async def test_list_path_options_uses_document_knowledge_points_in_description() -> None:
+    document_id = uuid4()
+    repository = InMemoryRunRepository(_build_questions(document_id))
+    repository._knowledge_points = ["基础语法", "面向对象", "异步编程"]
+    service = RunService(repository=repository)
+
+    options = await service.list_path_options(mode=RunMode.DRAFT, document_id=document_id)
+
+    assert options
+    descriptions = [str(item["description"]) for item in options]
+    assert any("Foundation Route" in item for item in descriptions)
+    assert any("Deep-dive Route" in item for item in descriptions)
+    assert any("Consolidation Route" in item for item in descriptions)
+    assert any("基础语法" in item for item in descriptions)
+    assert any("面向对象" in item for item in descriptions)
+    assert any("异步编程" in item for item in descriptions)
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_falls_back_when_knowledge_points_weak() -> None:
+    document_id = uuid4()
+    repository = InMemoryRunRepository(_build_questions(document_id))
+    repository._knowledge_points = []
+    service = RunService(repository=repository)
+
+    options = await service.list_path_options(mode=RunMode.SPEED, document_id=document_id)
+
+    assert options
+    assert all(":" not in str(item["description"]) for item in options)
+
+
+@pytest.mark.asyncio
+async def test_fill_in_blank_accepts_semantic_equivalent_answer() -> None:
     user_id = uuid4()
     document_id = uuid4()
+    fill_question = QuestionData(
+        id=uuid4(),
+        document_id=document_id,
+        question_text='Python中, print("hello\\nworld")的输出结果是hello和world之间进行____.',
+        question_type="fill_in_blank",
+        options=[],
+        correct_option_ids=[],
+        difficulty=1,
+        correct_answer="换行符",
+    )
 
+    repository = InMemoryRunRepository([fill_question])
+    service = RunService(repository=repository)
+
+    run, generated = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.ENDLESS,
+        question_count=1,
+        path_id="F1",
+    )
+    run_questions = repository._run_questions[run.id]
+    run_questions[0].update(
+        {
+            "question_type": "fill_in_blank",
+            "correct_answer": "换行符",
+        }
+    )
+
+    submit_result = await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[],
+        text_answer="换行",
+    )
+
+    assert submit_result.answer.is_correct is True
+
+
+@pytest.mark.asyncio
+async def test_review_mode_uses_twenty_question_goal_progress() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    questions = _build_questions(document_id)
+    for question in questions:
+        question.correct_option_ids = [UUID(question.options[0]["id"])]
+
+    repository = InMemoryRunRepository(questions)
+    for question in questions:
+        await repository.create_mistake(
+            user_id=user_id,
+            question_id=question.id,
+            document_id=document_id,
+            run_id=uuid4(),
+        )
+    service = RunService(repository=repository)
+
+    run, generated = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.REVIEW,
+        question_count=3,
+        path_id="review-stage-1",
+    )
+
+    assert run.mode_state["goal_metric"] == "questions_answered"
+    assert run.mode_state["goal_total"] == 20
+
+    await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[generated[0].correct_option_ids[0]],
+    )
+    updated = await service.get_run(run.id)
+    assert updated.mode_state["goal_current"] == 1
+
+
+@pytest.mark.asyncio
+async def test_review_path_options_returns_empty_when_no_review_questions() -> None:
     repository = InMemoryRunRepository([])
     service = RunService(repository=repository)
 
-    with pytest.raises(QuestionNotFoundError):
-        await service.create_run(
-            user_id=user_id,
-            document_id=document_id,
-            mode=RunMode.ENDLESS,
-            question_count=3,
-        )
+    options = await service.list_path_options(
+        mode=RunMode.REVIEW,
+        document_id=None,
+        user_id=uuid4(),
+    )
+
+    assert options == []
 
 
 @pytest.mark.asyncio
-async def test_real_run_service_records_learning_path_progress_on_completion() -> None:
+async def test_review_path_options_caps_stage_count() -> None:
     user_id = uuid4()
     document_id = uuid4()
-    path_version_id = uuid4()
-    unit_node_id = uuid4()
-    level_node_id = uuid4()
-
-    questions = _build_questions(document_id)[:1]
-    questions[0].correct_option_ids = [UUID(questions[0].options[0]["id"])]
-
-    repository = InMemoryRunRepository(questions)
-    repository._path_nodes[unit_node_id] = FakeLearningPathNode(
-        id=unit_node_id,
-        node_type=LearningPathNodeType.UNIT,
-        parent_node_id=None,
-    )
-    repository._path_nodes[level_node_id] = FakeLearningPathNode(
-        id=level_node_id,
-        node_type=LearningPathNodeType.LEVEL,
-        parent_node_id=unit_node_id,
-    )
-    service = RunService(repository=repository)
-
-    run, generated = await service.create_run(
-        user_id=user_id,
-        document_id=document_id,
-        mode=RunMode.ENDLESS,
-        question_count=1,
-        path_version_id=path_version_id,
-        level_node_id=level_node_id,
-    )
-
-    await service.submit_answer(
-        run_id=run.id,
-        question_id=generated[0].id,
-        selected_option_ids=[generated[0].correct_option_ids[0]],
-    )
-
-    progress_key = (user_id, path_version_id, level_node_id)
-    progress = repository._learning_path_progress.get(progress_key)
-    assert progress is not None
-    assert progress.status == LearningPathProgressStatus.COMPLETED
-    assert progress.completed_runs_count == 1
-    assert progress.first_completed_run_id == run.id
-
-
-@pytest.mark.asyncio
-async def test_real_run_service_records_legend_review_progress() -> None:
-    user_id = uuid4()
-    document_id = uuid4()
-    path_version_id = uuid4()
-    unit_node_id = uuid4()
-    level_node_id = uuid4()
-
-    questions = _build_questions(document_id)[:1]
-    questions[0].correct_option_ids = [UUID(questions[0].options[0]["id"])]
-
-    repository = InMemoryRunRepository(questions)
-    repository._path_nodes[unit_node_id] = FakeLearningPathNode(
-        id=unit_node_id,
-        node_type=LearningPathNodeType.UNIT,
-        parent_node_id=None,
-    )
-    repository._path_nodes[level_node_id] = FakeLearningPathNode(
-        id=level_node_id,
-        node_type=LearningPathNodeType.LEVEL,
-        parent_node_id=unit_node_id,
-    )
-    service = RunService(repository=repository)
-
-    run, generated = await service.create_run(
-        user_id=user_id,
-        document_id=document_id,
-        mode=RunMode.ENDLESS,
-        question_count=1,
-        path_version_id=path_version_id,
-        level_node_id=level_node_id,
-        is_legend_review=True,
-    )
-
-    await service.submit_answer(
-        run_id=run.id,
-        question_id=generated[0].id,
-        selected_option_ids=[generated[0].correct_option_ids[0]],
-    )
-
-    legend_key = (user_id, path_version_id, unit_node_id)
-    legend_progress = repository._legend_review_progress.get(legend_key)
-    assert legend_progress is not None
-    assert legend_progress.legend_round_count == 1
-
-
-@pytest.mark.asyncio
-async def test_real_run_service_applies_legend_decay_and_old_version_discount() -> None:
-    user_id = uuid4()
-    document_id = uuid4()
-    path_version_id = uuid4()
-    unit_node_id = uuid4()
-    level_node_id = uuid4()
-
-    questions = _build_questions(document_id)[:1]
-    questions[0].correct_option_ids = [UUID(questions[0].options[0]["id"])]
-
-    repository = InMemoryRunRepository(questions)
-    repository._path_nodes[unit_node_id] = FakeLearningPathNode(
-        id=unit_node_id,
-        node_type=LearningPathNodeType.UNIT,
-        parent_node_id=None,
-    )
-    repository._path_nodes[level_node_id] = FakeLearningPathNode(
-        id=level_node_id,
-        node_type=LearningPathNodeType.LEVEL,
-        parent_node_id=unit_node_id,
-    )
-    repository._path_version_meta[path_version_id] = (document_id, "endless", 1)
-    repository._latest_ready_versions[(document_id, "endless")] = 2
-    repository._legend_review_progress[(user_id, path_version_id, unit_node_id)] = (
-        FakeLegendReviewProgress(
-            user_id=user_id,
-            path_version_id=path_version_id,
-            unit_node_id=unit_node_id,
-            legend_round_count=1,
-            last_legend_run_at=datetime.now(UTC),
-        )
-    )
-
-    service = RunService(repository=repository)
-    run, generated = await service.create_run(
-        user_id=user_id,
-        document_id=document_id,
-        mode=RunMode.ENDLESS,
-        question_count=1,
-        path_version_id=path_version_id,
-        level_node_id=level_node_id,
-        is_legend_review=True,
-    )
-
-    await service.submit_answer(
-        run_id=run.id,
-        question_id=generated[0].id,
-        selected_option_ids=[generated[0].correct_option_ids[0]],
-    )
-
-    completed = await service.get_run(run.id)
-    assert float(completed.legend_reward_rate) == 0.3
-    assert float(completed.version_reward_discount) == 0.7
-
-    settlement = await service.get_settlement(run.id)
-    assert settlement.xp_earned == 2
-    assert settlement.coins_earned == 2
-
-
-@pytest.mark.asyncio
-async def test_real_run_service_applies_free_daily_cap_but_not_for_subscription() -> None:
-    user_id = uuid4()
-    document_id = uuid4()
-
     questions: list[QuestionData] = []
-    for i in range(20):
-        option_id = uuid4()
+    for index in range(54):
+        option_a = uuid4()
+        option_b = uuid4()
         questions.append(
             QuestionData(
                 id=uuid4(),
                 document_id=document_id,
-                question_text=f"Q{i}",
+                question_text=f"Question {index + 1}",
                 question_type="single_choice",
-                options=[{"id": str(option_id), "text": "A"}],
-                correct_option_ids=[option_id],
+                options=[
+                    {"id": str(option_a), "text": "A"},
+                    {"id": str(option_b), "text": "B"},
+                ],
+                correct_option_ids=[option_a],
                 difficulty=1,
             )
         )
 
-    free_repo = InMemoryRunRepository(questions)
-    free_day = RewardPolicy.utc8_date_key(datetime.now(UTC))
-    free_repo._daily_cap_usage[(user_id, free_day)] = FakeDailyRewardCapUsage(
-        xp_legend_earned=290,
-        coin_legend_earned=55,
+    repository = InMemoryRunRepository(questions)
+    for question in questions:
+        await repository.create_mistake(
+            user_id=user_id,
+            question_id=question.id,
+            document_id=document_id,
+            run_id=uuid4(),
+        )
+    service = RunService(repository=repository)
+
+    options = await service.list_path_options(
+        mode=RunMode.REVIEW,
+        document_id=document_id,
+        user_id=user_id,
     )
 
-    free_service = RunService(repository=free_repo)
-    free_run, free_questions = await free_service.create_run(
+    assert len(options) == 3
+    assert options[-1]["path_id"] == "review-stage-3"
+
+
+@pytest.mark.asyncio
+async def test_review_mode_correct_answer_removes_mistake_record() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    questions = _build_questions(document_id)
+    target = questions[0]
+    target.correct_option_ids = [UUID(target.options[0]["id"])]
+
+    repository = InMemoryRunRepository(questions)
+    await repository.create_mistake(
+        user_id=user_id,
+        question_id=target.id,
+        document_id=document_id,
+        run_id=uuid4(),
+    )
+
+    service = RunService(repository=repository)
+    run, generated = await service.create_run(
         user_id=user_id,
         document_id=document_id,
-        mode=RunMode.ENDLESS,
-        question_count=20,
+        mode=RunMode.REVIEW,
+        question_count=1,
+    )
+    assert len(generated) == 1
+
+    await service.submit_answer(
+        run_id=run.id,
+        question_id=generated[0].id,
+        selected_option_ids=[generated[0].correct_option_ids[0]],
     )
 
-    for question in free_questions:
-        await free_service.submit_answer(
-            run_id=free_run.id,
-            question_id=question.id,
-            selected_option_ids=[question.correct_option_ids[0]],
-        )
+    remaining = await repository.count_review_questions(document_id=document_id, user_id=user_id)
+    assert remaining == 0
 
-    free_settlement = await free_service.get_settlement(free_run.id)
-    assert free_settlement.xp_earned == 10
-    assert free_settlement.coins_earned == 5
 
-    subscribed_repo = InMemoryRunRepository(questions)
-    subscribed_repo._subscription_active = True
-    subscribed_repo._daily_cap_usage[(user_id, free_day)] = FakeDailyRewardCapUsage(
-        xp_legend_earned=290,
-        coin_legend_earned=55,
+@pytest.mark.asyncio
+async def test_review_mode_multiple_choice_requires_all_correct_options() -> None:
+    user_id = uuid4()
+    document_id = uuid4()
+    qid = uuid4()
+    option_a = uuid4()
+    option_b = uuid4()
+    option_c = uuid4()
+    option_d = uuid4()
+    question = QuestionData(
+        id=qid,
+        document_id=document_id,
+        question_text="Which options are correct?",
+        question_type="multiple_choice",
+        options=[
+            {"id": str(option_a), "text": "A"},
+            {"id": str(option_b), "text": "B"},
+            {"id": str(option_c), "text": "C"},
+            {"id": str(option_d), "text": "D"},
+        ],
+        correct_option_ids=[option_b, option_d],
+        difficulty=1,
     )
 
-    subscribed_service = RunService(repository=subscribed_repo)
-    subscribed_run, subscribed_questions = await subscribed_service.create_run(
+    repository = InMemoryRunRepository([question])
+    await repository.create_mistake(
+        user_id=user_id,
+        question_id=qid,
+        document_id=document_id,
+        run_id=uuid4(),
+    )
+    service = RunService(repository=repository)
+
+    run_partial, generated_partial = await service.create_run(
         user_id=user_id,
         document_id=document_id,
-        mode=RunMode.ENDLESS,
-        question_count=20,
+        mode=RunMode.REVIEW,
+        question_count=1,
     )
+    partial = await service.submit_answer(
+        run_id=run_partial.id,
+        question_id=generated_partial[0].id,
+        selected_option_ids=[option_b],
+    )
+    assert partial.is_correct is False
 
-    for question in subscribed_questions:
-        await subscribed_service.submit_answer(
-            run_id=subscribed_run.id,
-            question_id=question.id,
-            selected_option_ids=[question.correct_option_ids[0]],
-        )
-
-    subscribed_settlement = await subscribed_service.get_settlement(subscribed_run.id)
-    assert subscribed_settlement.xp_earned > free_settlement.xp_earned
-    assert subscribed_settlement.coins_earned > free_settlement.coins_earned
+    run_full, generated_full = await service.create_run(
+        user_id=user_id,
+        document_id=document_id,
+        mode=RunMode.REVIEW,
+        question_count=1,
+    )
+    full = await service.submit_answer(
+        run_id=run_full.id,
+        question_id=generated_full[0].id,
+        selected_option_ids=[option_b, option_d],
+    )
+    assert full.is_correct is True

@@ -13,6 +13,9 @@ const createTestRouter = () =>
       { path: ROUTES.login, component: { template: "<div>Login</div>" } },
       { path: ROUTES.signUp, component: { template: "<div>Sign Up</div>" } },
       { path: ROUTES.home, component: { template: "<div>Home</div>" } },
+      { path: ROUTES.features, component: { template: "<div>Features</div>" } },
+      { path: ROUTES.pricing, component: { template: "<div>Pricing</div>" } },
+      { path: ROUTES.community, component: { template: "<div>Community</div>" } },
     ],
   });
 
@@ -60,6 +63,6 @@ describe("EasternFantasyLandingPage", () => {
     });
 
     const navLinks = wrapper.findAll(".site-nav a");
-    expect(navLinks.length).toBe(3);
+    expect(navLinks.length).toBe(4);
   });
 });

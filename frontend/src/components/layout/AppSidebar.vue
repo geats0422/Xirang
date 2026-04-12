@@ -24,8 +24,8 @@ const props = withDefaults(
     profileName?: string;
   }>(),
   {
-    profileLevel: "Level 1 Scholar",
-    profileName: "Default user",
+    profileLevel: "",
+    profileName: "",
   },
 );
 
@@ -54,10 +54,13 @@ const navLabels = computed(() => {
   const _ = locale.value;
   return navItems.map((item) => t(item.i18nKey));
 });
+
+const displayProfileName = computed(() => props.profileName?.trim() || t("sidebar.defaultProfileName"));
+const displayProfileLevel = computed(() => props.profileLevel?.trim() || t("sidebar.defaultProfileLevel"));
 </script>
 
 <template>
-  <aside class="sidebar" aria-label="Sidebar">
+  <aside class="sidebar" :aria-label="t('sidebar.aria')">
     <div class="brand-block">
       <div class="brand-icon">
         <img class="brand-icon__image" src="/taotie-logo.svg" alt="" aria-hidden="true">
@@ -65,7 +68,7 @@ const navLabels = computed(() => {
       <p class="brand-name">{{ brandName }}</p>
     </div>
 
-    <nav class="side-nav" aria-label="Primary">
+    <nav class="side-nav" :aria-label="t('sidebar.primaryNavAria')">
       <button
         v-for="(item, index) in navItems"
         :key="item.route"
@@ -106,13 +109,13 @@ const navLabels = computed(() => {
         }"
         type="button"
         :aria-current="isActiveRoute(ROUTES.profile) ? 'page' : undefined"
-        aria-label="User profile"
+        :aria-label="t('sidebar.userProfileAria')"
         @click="onNavigate(ROUTES.profile)"
       >
         <div class="profile-avatar">🧙</div>
         <div>
-          <p class="profile-name">{{ profileName }}</p>
-          <p class="profile-level">{{ profileLevel }}</p>
+          <p class="profile-name">{{ displayProfileName }}</p>
+          <p class="profile-level">{{ displayProfileLevel }}</p>
         </div>
       </button>
     </div>
@@ -127,8 +130,12 @@ const navLabels = computed(() => {
   color: var(--color-sidebar-text);
   display: flex;
   flex-direction: column;
+   flex-shrink: 0;
+   max-width: 256px;
   min-height: 0;
+   min-width: 256px;
   padding: 20px 16px;
+   width: 256px;
 }
 
 .brand-block {

@@ -25,6 +25,7 @@ class RunMode(StrEnum):
     ENDLESS = "endless"
     SPEED = "speed"
     DRAFT = "draft"
+    REVIEW = "review"
 
 
 class RunStatus(StrEnum):

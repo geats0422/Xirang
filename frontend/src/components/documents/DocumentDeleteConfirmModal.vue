@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n();
+
 const props = withDefaults(
   defineProps<{
     visible: boolean;
@@ -9,7 +14,7 @@ const props = withDefaults(
   }>(),
   {
     title: "",
-    heading: "Delete document?",
+    heading: "",
     message: "",
     processing: false,
   },
@@ -34,24 +39,31 @@ const onCancel = () => {
   emit("cancel");
 };
 
+const resolvedHeading = computed(() => {
+  if (props.heading.trim().length > 0) {
+    return props.heading;
+  }
+  return t("documents.deleteModal.heading");
+});
+
 const resolvedMessage = () => {
   if (props.message.trim().length > 0) {
     return props.message;
   }
-  return `Are you sure you want to delete "${props.title}"?`;
+  return t("documents.deleteModal.message", { title: props.title });
 };
 </script>
 
 <template>
   <div v-if="props.visible" class="delete-modal-overlay" @click.self="onCancel">
-    <section class="delete-modal" role="dialog" aria-modal="true" aria-label="Delete document confirmation">
-      <button class="delete-modal__close" type="button" aria-label="Close" :disabled="props.processing" @click="onCancel">✕</button>
-      <h3>{{ props.heading }}</h3>
+    <section class="delete-modal" role="dialog" aria-modal="true" :aria-label="t('documents.deleteModal.dialogAria')">
+      <button class="delete-modal__close" type="button" :aria-label="t('common.closeAria')" :disabled="props.processing" @click="onCancel">✕</button>
+      <h3>{{ resolvedHeading }}</h3>
       <p>{{ resolvedMessage() }}</p>
       <div class="delete-modal__actions">
-        <button class="delete-modal__btn delete-modal__btn--cancel" type="button" :disabled="props.processing" @click="onCancel">No</button>
+        <button class="delete-modal__btn delete-modal__btn--cancel" type="button" :disabled="props.processing" @click="onCancel">{{ t("common.no") }}</button>
         <button class="delete-modal__btn delete-modal__btn--confirm" type="button" :disabled="props.processing" @click="onConfirm">
-          {{ props.processing ? "Deleting..." : "Yes" }}
+          {{ props.processing ? t("common.deleting") : t("common.yes") }}
         </button>
       </div>
     </section>

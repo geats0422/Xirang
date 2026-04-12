@@ -29,6 +29,9 @@ describe("shop api", () => {
   });
 
   it("requests balance with auth headers", async () => {
+    localStorage.setItem("xirang:accessToken", "test-token");
+    localStorage.setItem("xirang:userId", "test-user-id");
+
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -83,6 +86,9 @@ describe("shop api", () => {
   });
 
   it("requests inventory list with auth headers", async () => {
+    localStorage.setItem("xirang:accessToken", "test-token");
+    localStorage.setItem("xirang:userId", "test-user-id");
+
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,

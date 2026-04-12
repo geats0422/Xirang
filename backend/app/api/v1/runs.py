@@ -4,38 +4,37 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies.auth import get_current_user_id
-from app.db.models.documents import DocumentStatus, QuestionSetStatus
+from app.db.models.documents import DocumentStatus
 from app.db.models.runs import RunMode
 from app.db.session import get_db_session
 from app.repositories.document_repository import DocumentRepository
-from app.repositories.learning_path_repository import LearningPathRepository
+from app.repositories.effect_repository import EffectRepository
 from app.repositories.run_repository import RunRepository
+from app.repositories.shop_repository import ShopRepository
 from app.repositories.wallet_repository import WalletRepository
-from app.services.learning_paths.service import (
-    LearningPathService,
-    PathGenerationFailedError,
-    PathGenerationInProgressError,
-    RegenerationLimitExceededError,
+from app.services.runs.exceptions import (
+    DuplicateAnswerError,
+    InvalidRunStateError,
+    QuestionNotFoundError,
+    RunNotFoundError,
 )
 from app.services.runs.service import RunService
-from app.services.wallet.service import WalletService
+from app.services.wallet.service import InsufficientBalanceError, WalletService
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
 
 async def get_run_service(session: AsyncSession = Depends(get_db_session)) -> RunService:
     wallet_service = WalletService(repository=WalletRepository(session))
-    return RunService(repository=RunRepository(session), wallet_service=wallet_service)
-
-
-async def get_learning_path_service(
-    session: AsyncSession = Depends(get_db_session),
-) -> LearningPathService:
-    return LearningPathService(repository=LearningPathRepository(session))
+    return RunService(
+        repository=RunRepository(session),
+        wallet_service=wallet_service,
+        effect_repo=EffectRepository(session),
+        shop_repo=ShopRepository(session),
+    )
 
 
 async def get_document_repository(
@@ -44,89 +43,70 @@ async def get_document_repository(
     return DocumentRepository(session)
 
 
-async def ensure_document_ready_for_run(
-    *,
-    document_id: UUID,
-    user_id: UUID,
-    repository: DocumentRepository,
-) -> None:
-    document = await repository.get_document_by_id(document_id)
-    if document is None or document.owner_user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document_not_found")
-
-    if document.ingest_status != DocumentStatus.READY:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="document_not_ready")
-
-    question_set = await repository.get_question_set_for_document(document_id)
-    if (
-        question_set is None
-        or question_set.status != QuestionSetStatus.READY
-        or question_set.question_count < 1
-    ):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="question_set_not_ready")
-
-
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_run(
     request: dict[str, Any],
     user_id: UUID = Depends(get_current_user_id),
     service: Any = Depends(get_run_service),
-    document_repository: DocumentRepository = Depends(get_document_repository),
+    document_repo: DocumentRepository = Depends(get_document_repository),
 ) -> dict[str, Any]:
     """Create a new run."""
-    question_count = request.get("question_count", 5)
+    question_count = request.get("questionCount", request.get("question_count", 5))
     if not isinstance(question_count, int) or question_count < 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="question_count"
         )
 
-    mode = request.get("mode", RunMode.ENDLESS.value)
-    try:
-        run_mode = RunMode(str(mode))
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="mode"
-        ) from exc
+    mode_raw = request.get("mode", RunMode.ENDLESS.value)
+    mode_aliases = {
+        "endless-abyss": RunMode.ENDLESS.value,
+        "speed-survival": RunMode.SPEED.value,
+        "knowledge-draft": RunMode.DRAFT.value,
+        "mistake-review": RunMode.REVIEW.value,
+    }
+    mode = mode_aliases.get(mode_raw, mode_raw)
+    run_mode = RunMode(mode)
 
-    document_id_raw = request.get("document_id")
-    if not isinstance(document_id_raw, str):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id")
-    try:
-        document_id = UUID(document_id_raw)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
-        ) from exc
+    raw_document_id = request.get("documentId", request.get("document_id"))
+    document_id: UUID | None = None
+    if isinstance(raw_document_id, str):
+        normalized_document_id = raw_document_id.strip()
+        if normalized_document_id:
+            try:
+                document_id = UUID(normalized_document_id)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="document_id",
+                ) from exc
 
-    path_version_id_raw = request.get("path_version_id")
-    level_node_id_raw = request.get("level_node_id")
+    if run_mode != RunMode.REVIEW or document_id is not None:
+        if document_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="document_id",
+            )
+
+        document = await document_repo.get_document_by_id(document_id)
+        if document is None or document.owner_user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document_not_found")
+        if document.ingest_status != DocumentStatus.READY:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="document_not_ready",
+            )
+
     try:
-        path_version_id = (
-            UUID(path_version_id_raw) if isinstance(path_version_id_raw, str) else None
+        result, questions = await service.create_run(
+            user_id=user_id,
+            document_id=document_id,
+            mode=run_mode,
+            question_count=question_count,
+            path_id=request.get("path_id"),
         )
-        level_node_id = UUID(level_node_id_raw) if isinstance(level_node_id_raw, str) else None
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="path_version_id/level_node_id",
-        ) from exc
-
-    await ensure_document_ready_for_run(
-        document_id=document_id,
-        user_id=user_id,
-        repository=document_repository,
-    )
-
-    result, questions = await service.create_run(
-        user_id=user_id,
-        document_id=document_id,
-        mode=run_mode,
-        question_count=question_count,
-        path_id=request.get("path_id"),
-        path_version_id=path_version_id,
-        level_node_id=level_node_id,
-        is_legend_review=bool(request.get("is_legend_review", False)),
-    )
+    except QuestionNotFoundError as exc:
+        detail = "no_review_questions" if run_mode == RunMode.REVIEW else "question_not_found"
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail) from exc
     return {
         "run_id": str(result.id),
         "mode": str(result.mode),
@@ -136,9 +116,9 @@ async def create_run(
             {
                 "id": str(q.id),
                 "text": q.question_text,
+                "question_type": q.question_type,
+                "blank_count": q.blank_count,
                 "options": [{"id": str(o["id"]), "text": o["text"]} for o in q.options],
-                "source_locator": q.source_locator,
-                "supporting_excerpt": q.supporting_excerpt,
             }
             for q in questions
         ],
@@ -148,69 +128,44 @@ async def create_run(
 @router.get("/path-options")
 async def list_path_options(
     mode: str,
-    document_id: str,
+    document_id: str | None = None,
     user_id: UUID = Depends(get_current_user_id),
-    service: LearningPathService = Depends(get_learning_path_service),
-    document_repository: DocumentRepository = Depends(get_document_repository),
-) -> Any:
-    try:
-        document_uuid = UUID(document_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
-        ) from exc
+    service: Any = Depends(get_run_service),
+    document_repo: DocumentRepository = Depends(get_document_repository),
+) -> dict[str, Any]:
+    run_mode = RunMode(mode)
+    parsed_document_id: UUID | None = None
+    if document_id:
+        normalized_document_id = document_id.strip()
+        if normalized_document_id:
+            try:
+                parsed_document_id = UUID(normalized_document_id)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="document_id",
+                ) from exc
+    if run_mode != RunMode.REVIEW or parsed_document_id is not None:
+        if parsed_document_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="document_id",
+            )
+        document = await document_repo.get_document_by_id(parsed_document_id)
+        if document is None or document.owner_user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document_not_found")
+        if document.ingest_status != DocumentStatus.READY:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="document_not_ready")
 
-    await ensure_document_ready_for_run(
-        document_id=document_uuid,
+    options = await service.list_path_options(
+        mode=run_mode,
+        document_id=parsed_document_id,
         user_id=user_id,
-        repository=document_repository,
     )
-
-    try:
-        payload = await service.get_path_options(document_id=document_uuid, mode=mode)
-    except PathGenerationFailedError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
-
-    if payload.get("generation_status") == "generating":
-        return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=payload)
-    return payload
-
-
-@router.post("/path-regenerations")
-async def trigger_path_regeneration(
-    request: dict[str, Any],
-    user_id: UUID = Depends(get_current_user_id),
-    service: LearningPathService = Depends(get_learning_path_service),
-    document_repository: DocumentRepository = Depends(get_document_repository),
-) -> JSONResponse:
-    document_id_raw = request.get("document_id")
-    mode = request.get("mode")
-    if not isinstance(document_id_raw, str) or not isinstance(mode, str):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id/mode"
-        )
-
-    try:
-        document_id = UUID(document_id_raw)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id"
-        ) from exc
-
-    await ensure_document_ready_for_run(
-        document_id=document_id,
-        user_id=user_id,
-        repository=document_repository,
-    )
-
-    try:
-        payload = await service.regenerate_path(document_id=document_id, mode=mode, user_id=user_id)
-    except RegenerationLimitExceededError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
-    except PathGenerationInProgressError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
-
-    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=payload)
+    return {
+        "mode": run_mode.value,
+        "options": options,
+    }
 
 
 @router.get("")
@@ -241,13 +196,54 @@ async def submit_answer(
     service: Any = Depends(get_run_service),
 ) -> dict[str, Any]:
     """Submit an answer."""
-    result = await service.submit_answer(
-        run_id=run_id,
-        question_id=UUID(request.get("question_id")),
-        selected_option_ids=[UUID(oid) for oid in request.get("selected_option_ids", [])],
-        answer_time_ms=request.get("answer_time_ms"),
-        owner_user_id=user_id,
+    question_id_raw = request.get("questionId", request.get("question_id"))
+    selected_option_ids_raw = request.get(
+        "selectedOptionIds", request.get("selected_option_ids", [])
     )
+    answer_time_ms = request.get("answerTimeMs", request.get("answer_time_ms"))
+    text_answer = request.get("textAnswer", request.get("text_answer"))
+
+    if not isinstance(question_id_raw, str):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="question_id")
+    if not isinstance(selected_option_ids_raw, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="selected_option_ids"
+        )
+
+    try:
+        parsed_question_id = UUID(question_id_raw)
+        parsed_option_ids = [UUID(str(oid)) for oid in selected_option_ids_raw]
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="selected_option_ids"
+        ) from exc
+
+    try:
+        result = await service.submit_answer(
+            run_id=run_id,
+            question_id=parsed_question_id,
+            selected_option_ids=parsed_option_ids,
+            answer_time_ms=answer_time_ms,
+            owner_user_id=user_id,
+            text_answer=text_answer,
+        )
+    except (RunNotFoundError, QuestionNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (DuplicateAnswerError, InvalidRunStateError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    question_info = await service.get_question_info(
+        run_id=run_id,
+        question_id=parsed_question_id,
+    )
+
+    # Build feedback data
+    feedback = {
+        "correct_answer": question_info.get("correct_answer") if question_info else None,
+        "correct_option_ids": question_info.get("correct_option_ids", []) if question_info else [],
+        "explanation": question_info.get("explanation") if question_info else None,
+    }
+
     return {
         "is_correct": result.is_correct,
         "answer": {
@@ -256,21 +252,12 @@ async def submit_answer(
             "selected_option_ids": [str(v) for v in result.answer.selected_option_ids],
             "is_correct": result.answer.is_correct,
         },
+        "feedback": feedback,  # Include correct answer and explanation for learning
         "run": {
             "id": str(result.run.id),
             "status": str(result.run.status),
             "score": result.run.score,
             "state": result.run.mode_state,
-        },
-        "feedback": None
-        if result.feedback is None
-        else {
-            "correct_options": [
-                {"id": option.id, "text": option.text} for option in result.feedback.correct_options
-            ],
-            "explanation": result.feedback.explanation,
-            "source_locator": result.feedback.source_locator,
-            "supporting_excerpt": result.feedback.supporting_excerpt,
         },
         "settlement": None
         if result.settlement is None
@@ -286,6 +273,34 @@ async def submit_answer(
             "goal_current": result.run.mode_state.get("goal_current", 0),
             "goal_total": result.run.mode_state.get("goal_total"),
         },
+    }
+
+
+@router.post("/{run_id}/revive")
+async def use_revive(
+    run_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    service: Any = Depends(get_run_service),
+) -> dict[str, Any]:
+    try:
+        refreshed_run, balance, coin_cost = await service.use_revive(
+            run_id=run_id, owner_user_id=user_id
+        )
+    except RunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InsufficientBalanceError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+    except InvalidRunStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return {
+        "run": {
+            "id": str(refreshed_run.id),
+            "status": str(refreshed_run.status),
+            "score": refreshed_run.score,
+            "state": refreshed_run.mode_state,
+        },
+        "coin_balance": balance,
+        "revive_cost": coin_cost,
     }
 
 

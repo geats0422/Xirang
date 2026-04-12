@@ -3,14 +3,37 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
-import MistakeReviewPanel from "../components/MistakeReviewPanel.vue";
-import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
+import MarkdownRichText from "../components/ui/MarkdownRichText.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type MistakeReviewItem, type RunAnswerFeedback, type RunQuestion, type RunQuestionOption } from '../api/runs';
-import { submitFeedback } from '../api/feedback';
+import { createRun, submitAnswer, type RunQuestion, type RunQuestionOption } from "../api/runs";
+import { submitFeedback } from "../api/feedback";
 import { getShopBalance } from "../api/shop";
-import { buildMistakeReviewItem } from "../utils/mistakeReview";
-import { stripQuestionFormatting } from "../utils/questionText";
+import { getDailyGoal } from "../api/user";
+
+type QuestionSegment =
+  | {
+      kind: "text";
+      key: string;
+      value: string;
+    }
+  | {
+      kind: "blank";
+      key: string;
+      blankIndex: number;
+    };
+
+type DragPayload =
+  | {
+      kind: "option";
+      optionId: string;
+    }
+  | {
+      kind: "slot";
+      slotIndex: number;
+    };
+
+const BLANK_PATTERN = /\[\[\s*blank\s*\]\]|\[\s*blank\s*\]|\{\{\s*blank\s*\}\}|<blank>|_{2,}/gi;
+const DRAG_DATA_KEY = "application/x-xirang-draft-payload";
 
 const { t, locale } = useI18n();
 
@@ -22,8 +45,6 @@ onMounted(() => {
 watch(locale, () => {
   document.title = t("knowledgeDraft.metaTitle");
 });
-
-type RunStatus = "normal" | "reduced-reward";
 
 const route = useRoute();
 const router = useRouter();
@@ -43,98 +64,166 @@ let tickerId: number | null = null;
 const progressWidth = computed(() => `${(progressCurrent.value / progressTotal.value) * 100}%`);
 const backNavigating = ref(false);
 const showSettlement = ref(false);
-const runStatus = ref<RunStatus>("normal");
 const settlementXp = ref(0);
 const settlementCoins = ref(0);
 const settlementCombo = ref(0);
 const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(10);
+const settlementTopPercent = ref<number | null>(null);
 
 const showNotice = ref(false);
-const wrongFeedback = ref<RunAnswerFeedback | null>(null);
-const showMistakeReview = ref(false);
-const mistakeReviewItems = ref<MistakeReviewItem[]>([]);
+const showFeedback = ref(false);
+const lastAnswerCorrect = ref(false);
+const feedbackCorrectAnswer = ref<string | null>(null);
+const feedbackExplanation = ref<string | null>(null);
 
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 const materialTitle = computed(() => {
   const rawTitle = route.query.title;
-  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Study Material";
+  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : t("knowledgeDraft.defaultMaterialTitle");
 });
 
 const questionText = computed(() => {
   if (currentQuestion.value?.text) {
-    return stripQuestionFormatting(currentQuestion.value.text);
+    return currentQuestion.value.text;
   }
-  return "Loading question...";
+  return t("knowledgeDraft.loadingQuestion");
 });
 
-const questionSourceLocator = computed(() => {
-  const locator = currentQuestion.value?.source_locator;
-  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
-});
+const questionSegments = computed<QuestionSegment[]>(() => {
+  const text = questionText.value;
+  const segments: QuestionSegment[] = [];
+  let cursor = 0;
+  let blankIndex = 0;
 
-const questionSupportingExcerpt = computed(() => {
-  const excerpt = currentQuestion.value?.supporting_excerpt;
-  return typeof excerpt === "string" && excerpt.trim()
-    ? stripQuestionFormatting(excerpt).trim()
-    : null;
-});
+  for (const match of text.matchAll(BLANK_PATTERN)) {
+    const start = match.index ?? 0;
+    if (start > cursor) {
+      segments.push({
+        kind: "text",
+        key: `text-${cursor}`,
+        value: text.slice(cursor, start),
+      });
+    }
 
-const wrongFeedbackAnswerText = computed(() => {
-  if (!wrongFeedback.value?.correct_options?.length) {
-    return null;
+    segments.push({
+      kind: "blank",
+      key: `blank-${blankIndex}-${start}`,
+      blankIndex,
+    });
+    blankIndex += 1;
+    cursor = start + match[0].length;
   }
-  return wrongFeedback.value.correct_options
-    .map((option) => stripQuestionFormatting(option.text).trim())
-    .filter(Boolean)
-    .join(" / ");
-});
 
-const wrongFeedbackExplanation = computed(() => {
-  const explanation = wrongFeedback.value?.explanation;
-  return typeof explanation === "string" && explanation.trim()
-    ? stripQuestionFormatting(explanation).trim()
-    : null;
-});
-
-const wrongFeedbackSourceLocator = computed(() => {
-  const locator = wrongFeedback.value?.source_locator;
-  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
-});
-
-const wrongFeedbackExcerpt = computed(() => {
-  const excerpt = wrongFeedback.value?.supporting_excerpt;
-  return typeof excerpt === "string" && excerpt.trim()
-    ? stripQuestionFormatting(excerpt).trim()
-    : null;
-});
-
-const reviewLabel = computed(() => (mistakeReviewItems.value.length > 0 ? "Review Mistakes" : "No mistakes this run"));
-
-const appendMistakeReviewItem = (
-  question: RunQuestion,
-  feedback: RunAnswerFeedback | null,
-  selectedAnswerText?: string | null,
-) => {
-  const item = buildMistakeReviewItem(question, feedback, selectedAnswerText);
-  if (!item) {
-    return;
+  if (blankIndex === 0) {
+    return [
+      {
+        kind: "text",
+        key: "text-full",
+        value: text,
+      },
+    ];
   }
-  if (mistakeReviewItems.value.some((entry) => entry.question_id === item.question_id)) {
-    return;
+
+  if (cursor < text.length) {
+    segments.push({
+      kind: "text",
+      key: `text-${cursor}`,
+      value: text.slice(cursor),
+    });
   }
-  mistakeReviewItems.value = [...mistakeReviewItems.value, item];
+
+  return segments;
+});
+
+const hasInlineBlanks = computed(() => questionSegments.value.some((segment) => segment.kind === "blank"));
+const inlineBlankCount = computed(
+  () => questionSegments.value.filter((segment) => segment.kind === "blank").length,
+);
+
+const inferAnswerCountFromFeedbackText = (value: string | null): number => {
+  if (!value) {
+    return 0;
+  }
+  const parts = value
+    .split(/[\n,，;；/]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return parts.length;
 };
+
+const awaitingCorrection = ref(false);
+const expectedCorrectOptionIds = ref<string[]>([]);
+
+const correctionBlankCount = computed(() => {
+  if (!awaitingCorrection.value) {
+    return 0;
+  }
+  if (expectedCorrectOptionIds.value.length > 0) {
+    return expectedCorrectOptionIds.value.length;
+  }
+  return inferAnswerCountFromFeedbackText(feedbackCorrectAnswer.value);
+});
+
+const questionTypeBlankCount = computed(() => {
+  const rawBlankCount = currentQuestion.value?.blank_count;
+  if (typeof rawBlankCount === "number" && Number.isFinite(rawBlankCount) && rawBlankCount > 0) {
+    return Math.max(1, Math.floor(rawBlankCount));
+  }
+  if (currentQuestion.value?.question_type === "multiple_choice") {
+    return 2;
+  }
+  return 0;
+});
+
+const blankCount = computed(() =>
+  Math.max(1, inlineBlankCount.value, questionTypeBlankCount.value, correctionBlankCount.value),
+);
+const blankSelections = ref<(string | null)[]>([]);
+const activeBlankIndex = ref(0);
+const dragHoverBlankIndex = ref<number | null>(null);
+const draggingOptionId = ref<string | null>(null);
+const draggingSlotIndex = ref<number | null>(null);
+const isSubmittingAnswer = ref(false);
 
 const chipTones = ["water", "tao", "heart", "mountain", "heaven"] as const;
 
 const optionChips = computed(() =>
   (currentQuestion.value?.options ?? []).map((option, index) => ({
     ...option,
-    text: stripQuestionFormatting(option.text),
     tone: chipTones[index % chipTones.length],
   })),
 );
+
+const optionTextMap = computed(() => {
+  return new Map(optionChips.value.map((option) => [option.id, option.text]));
+});
+
+const selectedOptionIds = computed(() => {
+  return new Set(blankSelections.value.filter((selection): selection is string => selection !== null));
+});
+
+const hasFilledAllBlanks = computed(() => {
+  return blankSelections.value.length > 0 && blankSelections.value.every((selection) => selection !== null);
+});
+
+const supplementalBlankIndexes = computed(() => {
+  if (!hasInlineBlanks.value) {
+    return [] as number[];
+  }
+  const start = inlineBlankCount.value;
+  if (blankSelections.value.length <= start) {
+    return [] as number[];
+  }
+  return Array.from({ length: blankSelections.value.length - start }, (_, index) => start + index);
+});
+
+const renderedFallbackBlankIndexes = computed(() => {
+  if (hasInlineBlanks.value) {
+    return supplementalBlankIndexes.value;
+  }
+  return Array.from({ length: blankSelections.value.length }, (_, index) => index);
+});
 
 const timerLabel = computed(() => {
   if (timeLeftSec.value === null) {
@@ -142,6 +231,14 @@ const timerLabel = computed(() => {
   }
   return `${Math.max(0, timeLeftSec.value)}s`;
 });
+
+const resolveLeagueTopPercent = (accuracy: number | null | undefined): number | null => {
+  if (typeof accuracy !== "number" || !Number.isFinite(accuracy)) {
+    return null;
+  }
+  const normalized = Math.min(1, Math.max(0, accuracy));
+  return Math.max(1, 100 - Math.round(normalized * 100));
+};
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
@@ -187,6 +284,40 @@ const syncProgress = () => {
   progressCurrent.value = Math.min(progressTotal.value, questionIndex.value + 1);
 };
 
+const clearDragState = () => {
+  dragHoverBlankIndex.value = null;
+  draggingOptionId.value = null;
+  draggingSlotIndex.value = null;
+};
+
+const resetBlankState = () => {
+  blankSelections.value = Array.from({ length: blankCount.value }, () => null);
+  activeBlankIndex.value = 0;
+  clearDragState();
+  isSubmittingAnswer.value = false;
+};
+
+const resizeBlankSelections = (nextCount: number) => {
+  if (nextCount <= 0) {
+    blankSelections.value = [];
+    activeBlankIndex.value = 0;
+    return;
+  }
+
+  const current = blankSelections.value;
+  if (current.length === nextCount) {
+    return;
+  }
+
+  if (current.length < nextCount) {
+    blankSelections.value = [...current, ...Array.from({ length: nextCount - current.length }, () => null)];
+  } else {
+    blankSelections.value = current.slice(0, nextCount);
+  }
+
+  activeBlankIndex.value = Math.max(0, Math.min(activeBlankIndex.value, blankSelections.value.length - 1));
+};
+
 const bootstrapRun = async () => {
   await refreshBalance();
 
@@ -194,21 +325,13 @@ const bootstrapRun = async () => {
   const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
-  const rawPathVersionId = route.query.pathVersionId;
-  const pathVersionId = typeof rawPathVersionId === "string" ? rawPathVersionId : undefined;
-  const rawLevelNodeId = route.query.levelNodeId;
-  const levelNodeId = typeof rawLevelNodeId === "string" ? rawLevelNodeId : undefined;
-
+  const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
   if (!documentId) {
     return;
   }
 
   try {
-    const created = await createRun(documentId, "draft", 8, {
-      pathId,
-      pathVersionId,
-      levelNodeId,
-    });
+    const created = await createRun(documentId, "draft", 8, pathId, isMistakeReview);
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
@@ -217,13 +340,14 @@ const bootstrapRun = async () => {
     questionStartAt.value = Date.now();
     startTicker();
   } catch {
-    runStatus.value = "reduced-reward";
+    showNotice.value = true;
   }
 };
 
 const goBack = async () => {
+  const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
   await router.push({
-    path: route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
+    path: isMistakeReview ? ROUTES.gameModes : route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
     query: route.query,
   });
 };
@@ -250,34 +374,294 @@ const goPreviousPage = async () => {
   }, 220);
 };
 
-const chooseOption = async (option: RunQuestionOption) => {
-  if (showSettlement.value || !runId.value || !currentQuestion.value) {
+const resolveSelectedOptionText = (optionId: string | null) => {
+  if (!optionId) {
+    return "";
+  }
+  return optionTextMap.value.get(optionId) ?? "";
+};
+
+const setActiveBlank = (blankIndex: number) => {
+  if (blankIndex < 0 || blankIndex >= blankSelections.value.length) {
+    return;
+  }
+  activeBlankIndex.value = blankIndex;
+};
+
+const findPreferredBlankIndex = () => {
+  const firstEmpty = blankSelections.value.findIndex((selection) => selection === null);
+  if (firstEmpty !== -1) {
+    return firstEmpty;
+  }
+  return Math.min(activeBlankIndex.value, blankSelections.value.length - 1);
+};
+
+const setBlankSelection = (optionId: string, targetIndex: number) => {
+  if (targetIndex < 0 || targetIndex >= blankSelections.value.length) {
+    return false;
+  }
+
+  const nextSelections = [...blankSelections.value];
+  const sourceIndex = nextSelections.findIndex((selection) => selection === optionId);
+  const targetValue = nextSelections[targetIndex];
+
+  if (sourceIndex === targetIndex) {
+    setActiveBlank(targetIndex);
+    return false;
+  }
+
+  nextSelections[targetIndex] = optionId;
+
+  if (sourceIndex !== -1) {
+    nextSelections[sourceIndex] = targetValue && targetValue !== optionId ? targetValue : null;
+  }
+
+  blankSelections.value = nextSelections;
+  const nextEmpty = nextSelections.findIndex((selection) => selection === null);
+  activeBlankIndex.value = nextEmpty === -1 ? targetIndex : nextEmpty;
+  return true;
+};
+
+const moveBlankSelection = (fromIndex: number, toIndex: number) => {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= blankSelections.value.length ||
+    toIndex >= blankSelections.value.length ||
+    fromIndex === toIndex
+  ) {
+    return false;
+  }
+
+  const nextSelections = [...blankSelections.value];
+  const sourceValue = nextSelections[fromIndex];
+
+  if (!sourceValue) {
+    return false;
+  }
+
+  const targetValue = nextSelections[toIndex];
+  nextSelections[toIndex] = sourceValue;
+  nextSelections[fromIndex] = targetValue;
+
+  blankSelections.value = nextSelections;
+  const nextEmpty = nextSelections.findIndex((selection) => selection === null);
+  activeBlankIndex.value = nextEmpty === -1 ? toIndex : nextEmpty;
+  return true;
+};
+
+const readDragPayload = (event: DragEvent): DragPayload | null => {
+  const transfer = event.dataTransfer;
+  if (!transfer) {
+    return null;
+  }
+
+  const rawPayload = transfer.getData(DRAG_DATA_KEY) || transfer.getData("text/plain");
+  if (!rawPayload) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(rawPayload) as Partial<DragPayload>;
+    if (payload.kind === "option" && typeof payload.optionId === "string") {
+      return {
+        kind: "option",
+        optionId: payload.optionId,
+      };
+    }
+
+    if (payload.kind === "slot" && typeof payload.slotIndex === "number") {
+      return {
+        kind: "slot",
+        slotIndex: payload.slotIndex,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
+const writeDragPayload = (event: DragEvent, payload: DragPayload) => {
+  const transfer = event.dataTransfer;
+  if (!transfer) {
     return;
   }
 
+  const serialized = JSON.stringify(payload);
+  transfer.effectAllowed = "move";
+  transfer.setData(DRAG_DATA_KEY, serialized);
+  transfer.setData("text/plain", serialized);
+};
+
+const maybeSubmitFilledAnswer = () => {
+  if (!hasFilledAllBlanks.value) {
+    return;
+  }
+  void submitFilledAnswer();
+};
+
+const areSameOptionSet = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const setA = new Set(a);
+  return b.every((item) => setA.has(item));
+};
+
+const normalizeComparableText = (value: string): string => {
+  return value.trim().toLowerCase().replace(/\u3000/g, " ").replace(/\s+/g, "");
+};
+
+const normalizeTokens = (value: string): string[] => {
+  return value
+    .toLowerCase()
+    .split(/[\s,，。！？!?;；:：/]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+};
+
+const resolveExpectedCorrectOptionIds = (payload: {
+  correctOptionIds: string[];
+  correctAnswerText: string | null;
+  options: { id: string; text: string }[];
+}): string[] => {
+  if (payload.correctOptionIds.length > 0) {
+    return payload.correctOptionIds;
+  }
+  if (!payload.correctAnswerText) {
+    return [];
+  }
+  const answerTokens = normalizeTokens(payload.correctAnswerText);
+  if (answerTokens.length === 0) {
+    return [];
+  }
+  return payload.options
+    .filter((option) => {
+      const optionTokens = normalizeTokens(option.text);
+      return optionTokens.some((token) => answerTokens.includes(token));
+    })
+    .map((option) => option.id);
+};
+
+const resolveDisplayCorrectAnswer = (payload: {
+  correctAnswerText: string | null;
+  correctOptionIds: string[];
+  options: { id: string; text: string }[];
+}): string | null => {
+  if (payload.correctAnswerText && payload.correctAnswerText.trim()) {
+    return payload.correctAnswerText;
+  }
+  if (!payload.correctOptionIds.length) {
+    return null;
+  }
+  const optionMap = new Map(payload.options.map((option) => [option.id, option.text]));
+  const values = payload.correctOptionIds
+    .map((id) => optionMap.get(id)?.trim())
+    .filter((item): item is string => Boolean(item));
+  return values.length > 0 ? values.join(", ") : null;
+};
+
+const submitFilledAnswer = async () => {
+  if (
+    showSettlement.value ||
+    !runId.value ||
+    !currentQuestion.value ||
+    isSubmittingAnswer.value ||
+    !hasFilledAllBlanks.value
+  ) {
+    return;
+  }
+
+  isSubmittingAnswer.value = true;
+
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
+  const selectedOptionIds = blankSelections.value.filter(
+    (selection): selection is string => selection !== null,
+  );
+
+  if (awaitingCorrection.value) {
+    const matchedByOption =
+      expectedCorrectOptionIds.value.length > 0 &&
+      areSameOptionSet(selectedOptionIds, expectedCorrectOptionIds.value);
+    const normalizedSelectedAnswer = normalizeComparableText(
+      selectedOptionIds.map((id) => optionTextMap.value.get(id) ?? "").join(", "),
+    );
+    const normalizedCorrectAnswer = normalizeComparableText(feedbackCorrectAnswer.value ?? "");
+    const matchedByAnswer =
+      normalizedSelectedAnswer.length > 0 &&
+      normalizedCorrectAnswer.length > 0 &&
+      normalizedSelectedAnswer === normalizedCorrectAnswer;
+
+    if (!matchedByOption && !matchedByAnswer) {
+      showNotice.value = true;
+      showFeedback.value = true;
+      isSubmittingAnswer.value = false;
+      return;
+    }
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+    showNotice.value = false;
+    showFeedback.value = false;
+    questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
+    syncProgress();
+    questionStartAt.value = Date.now();
+    isSubmittingAnswer.value = false;
+    return;
+  }
 
   try {
     const result = await submitAnswer(
       runId.value,
       currentQuestion.value.id,
-      [option.id],
+      selectedOptionIds,
       elapsedMs,
     );
 
     applyRunState(result.run.state);
-    wrongFeedback.value = result.is_correct ? null : result.feedback;
-    showNotice.value = !result.is_correct;
+    lastAnswerCorrect.value = result.is_correct;
+    feedbackCorrectAnswer.value = resolveDisplayCorrectAnswer({
+      correctAnswerText: result.feedback?.correct_answer ?? null,
+      correctOptionIds: result.feedback?.correct_option_ids ?? [],
+      options: currentQuestion.value.options,
+    });
+    feedbackExplanation.value = result.feedback?.explanation ?? null;
+
     if (!result.is_correct) {
-      appendMistakeReviewItem(currentQuestion.value, result.feedback, option.text);
+      showNotice.value = true;
+      showFeedback.value = true;
+      awaitingCorrection.value = true;
+      expectedCorrectOptionIds.value = resolveExpectedCorrectOptionIds({
+        correctOptionIds: result.feedback?.correct_option_ids ?? [],
+        correctAnswerText: result.feedback?.correct_answer ?? null,
+        options: currentQuestion.value.options,
+      });
+      isSubmittingAnswer.value = false;
+      return;
     }
+
+    showNotice.value = false;
+    showFeedback.value = false;
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
       settlementCoins.value = result.settlement.coins_earned;
       settlementCombo.value = result.settlement.combo_max;
-      settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
-      settlementGoalTotal.value = result.settlement.goal_total ?? 10;
+      settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
+
+      // Fetch real daily goal data from API
+      try {
+        const dailyGoal = await getDailyGoal();
+        settlementGoalCurrent.value = dailyGoal.goal_current;
+        settlementGoalTotal.value = dailyGoal.goal_total;
+      } catch {
+        settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+        settlementGoalTotal.value = result.settlement.goal_total ?? 10;
+      }
+
       showSettlement.value = true;
       stopTicker();
       await refreshBalance();
@@ -288,24 +672,125 @@ const chooseOption = async (option: RunQuestionOption) => {
     syncProgress();
     questionStartAt.value = Date.now();
   } catch {
-    runStatus.value = "reduced-reward";
+    showNotice.value = true;
+  } finally {
+    isSubmittingAnswer.value = false;
   }
+};
+
+const chooseOption = (option: RunQuestionOption) => {
+  if (showSettlement.value || isSubmittingAnswer.value || blankSelections.value.length === 0) {
+    return;
+  }
+
+  const preferredIndex = findPreferredBlankIndex();
+  const changed = setBlankSelection(option.id, preferredIndex);
+  if (!changed) {
+    return;
+  }
+
+  maybeSubmitFilledAnswer();
+};
+
+const onOptionDragStart = (optionId: string, event: DragEvent) => {
+  if (isSubmittingAnswer.value) {
+    event.preventDefault();
+    return;
+  }
+
+  draggingOptionId.value = optionId;
+  draggingSlotIndex.value = null;
+  writeDragPayload(event, {
+    kind: "option",
+    optionId,
+  });
+};
+
+const onBlankDragStart = (blankIndex: number, event: DragEvent) => {
+  const selectedOptionId = blankSelections.value[blankIndex];
+  if (isSubmittingAnswer.value || !selectedOptionId) {
+    event.preventDefault();
+    return;
+  }
+
+  draggingSlotIndex.value = blankIndex;
+  draggingOptionId.value = selectedOptionId;
+  writeDragPayload(event, {
+    kind: "slot",
+    slotIndex: blankIndex,
+  });
+};
+
+const onBlankDragOver = (blankIndex: number, event: DragEvent) => {
+  if (isSubmittingAnswer.value || showSettlement.value) {
+    return;
+  }
+
+  event.preventDefault();
+  dragHoverBlankIndex.value = blankIndex;
+
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+};
+
+const onBlankDragLeave = (blankIndex: number) => {
+  if (dragHoverBlankIndex.value === blankIndex) {
+    dragHoverBlankIndex.value = null;
+  }
+};
+
+const onBlankDrop = (blankIndex: number, event: DragEvent) => {
+  if (isSubmittingAnswer.value || showSettlement.value) {
+    return;
+  }
+
+  event.preventDefault();
+  dragHoverBlankIndex.value = null;
+
+  const payload = readDragPayload(event);
+  if (!payload) {
+    clearDragState();
+    return;
+  }
+
+  const changed =
+    payload.kind === "option"
+      ? setBlankSelection(payload.optionId, blankIndex)
+      : moveBlankSelection(payload.slotIndex, blankIndex);
+
+  clearDragState();
+  if (changed) {
+    maybeSubmitFilledAnswer();
+  }
+};
+
+const onDragEnd = () => {
+  clearDragState();
 };
 
 const closeSettlement = () => {
-  showSettlement.value = false;
-}
-
-const openMistakeReview = () => {
-  if (mistakeReviewItems.value.length === 0) {
-    return;
-  }
-  showSettlement.value = false;
-  showMistakeReview.value = true;
+  void router.push(ROUTES.library);
 };
 
-const closeMistakeReview = () => {
-  showMistakeReview.value = false;
+const goToPath = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "knowledge-draft",
+    },
+  });
+};
+
+const goToReview = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "review",
+    },
+  });
 };
 
 const handleFeedback = async () => {
@@ -328,8 +813,6 @@ const handleFeedback = async () => {
     console.error("Failed to submit feedback:", error);
   }
 };
-;
-
 const setShowNotice = () => {
   showNotice.value = true;
 };
@@ -340,6 +823,21 @@ defineExpose({
 
 onMounted(async () => {
   await bootstrapRun();
+});
+
+watch(currentQuestion, () => {
+  showNotice.value = false;
+  showFeedback.value = false;
+  lastAnswerCorrect.value = false;
+  feedbackCorrectAnswer.value = null;
+  feedbackExplanation.value = null;
+  awaitingCorrection.value = false;
+  expectedCorrectOptionIds.value = [];
+  resetBlankState();
+}, { immediate: true });
+
+watch(blankCount, (nextCount) => {
+  resizeBlankSelections(nextCount);
 });
 
 watch(showSettlement, (visible) => {
@@ -355,24 +853,24 @@ onUnmounted(() => {
 
 <template>
   <main class="draft-page">
-    <section class="draft-shell" aria-label="Knowledge Draft gameplay">
+    <section class="draft-shell" :aria-label="t('knowledgeDraft.shellAria')">
       <header class="draft-topbar">
         <div class="draft-title">
           <button
             class="draft-title__back"
             :class="{ 'draft-title__back--navigating': backNavigating }"
             type="button"
-            aria-label="Go back"
+            :aria-label="t('knowledgeDraft.goBackAria')"
             @click="goPreviousPage"
           >
             ←
           </button>
-          <h1>Knowledge Draft</h1>
+          <h1>{{ t("knowledgeDraft.title") }}</h1>
         </div>
 
         <div class="draft-progress">
           <div class="draft-progress__meta">
-            <span>PROGRESS</span>
+            <span>{{ t("knowledgeDraft.progress") }}</span>
             <span>{{ progressCurrent }}/{{ progressTotal }}</span>
           </div>
           <div class="draft-progress__track" role="presentation">
@@ -383,7 +881,7 @@ onUnmounted(() => {
         <div class="draft-actions">
           <span class="draft-reward">🪙 {{ coins ?? "--" }}</span>
           <span class="draft-timer">🕒 {{ timerLabel }}</span>
-          <button class="draft-settings" type="button" aria-label="Settings">⚙</button>
+          <button class="draft-settings" type="button" :aria-label="t('knowledgeDraft.settingsAria')">⚙</button>
         </div>
       </header>
 
@@ -391,24 +889,76 @@ onUnmounted(() => {
         <div class="draft-stage__mountains" aria-hidden="true" />
         <div class="draft-stage__branches" aria-hidden="true" />
 
-        <article class="scroll-card" aria-label="Fill in the scroll">
+        <article class="scroll-card" :aria-label="t('knowledgeDraft.scrollAria')">
           <div class="scroll-rod scroll-rod--top">
             <span class="scroll-cap scroll-cap--left" />
             <span class="scroll-cap scroll-cap--right" />
           </div>
 
           <div class="scroll-paper">
-            <p class="scroll-paper__tag">QUESTION CARD</p>
+            <p class="scroll-paper__tag">{{ t("knowledgeDraft.questionCardTag") }}</p>
             <h2>{{ materialTitle }}</h2>
             <div class="scroll-paper__accent" />
 
             <p class="scroll-paper__body">
-              {{ questionText }}
+              <template v-for="segment in questionSegments" :key="segment.key">
+                <MarkdownRichText
+                  v-if="segment.kind === 'text'"
+                  :content="segment.value"
+                  inline
+                  class-name="scroll-paper__segment"
+                />
+                <button
+                  v-else
+                  class="drop-slot"
+                  :class="{
+                    'drop-slot--active': activeBlankIndex === segment.blankIndex,
+                    'drop-slot--filled': Boolean(blankSelections[segment.blankIndex]),
+                    'drop-slot--dragover': dragHoverBlankIndex === segment.blankIndex,
+                  }"
+                  type="button"
+                  :aria-label="t('knowledgeDraft.blankAria', { index: segment.blankIndex + 1 })"
+                  :draggable="Boolean(blankSelections[segment.blankIndex])"
+                  @click="setActiveBlank(segment.blankIndex)"
+                  @dragstart="onBlankDragStart(segment.blankIndex, $event)"
+                  @dragend="onDragEnd"
+                  @dragover="onBlankDragOver(segment.blankIndex, $event)"
+                  @dragleave="onBlankDragLeave(segment.blankIndex)"
+                  @drop="onBlankDrop(segment.blankIndex, $event)"
+                >
+                  <span v-if="blankSelections[segment.blankIndex]" class="drop-slot__text">
+                    {{ resolveSelectedOptionText(blankSelections[segment.blankIndex]) }}
+                  </span>
+                  <span v-else class="drop-slot__placeholder">____</span>
+                </button>
+              </template>
             </p>
 
-            <div v-if="questionSourceLocator || questionSupportingExcerpt" class="question-provenance">
-              <p v-if="questionSourceLocator" class="question-provenance__line">来源：{{ questionSourceLocator }}</p>
-              <p v-if="questionSupportingExcerpt" class="question-provenance__line">摘录：{{ questionSupportingExcerpt }}</p>
+            <div v-if="renderedFallbackBlankIndexes.length > 0" class="scroll-paper__slot-row">
+              <button
+                v-for="blankIndex in renderedFallbackBlankIndexes"
+                :key="`fallback-slot-${blankIndex}`"
+                class="drop-slot"
+                :class="{
+                  'drop-slot--active': activeBlankIndex === blankIndex,
+                  'drop-slot--filled': Boolean(blankSelections[blankIndex]),
+                  'drop-slot--dragover': dragHoverBlankIndex === blankIndex,
+                }"
+                type="button"
+                :aria-label="t('knowledgeDraft.blankAria', { index: blankIndex + 1 })"
+                :draggable="Boolean(blankSelections[blankIndex])"
+                @click="setActiveBlank(blankIndex)"
+                @dragstart="onBlankDragStart(blankIndex, $event)"
+                @dragend="onDragEnd"
+                @dragover="onBlankDragOver(blankIndex, $event)"
+                @dragleave="onBlankDragLeave(blankIndex)"
+                @drop="onBlankDrop(blankIndex, $event)"
+              >
+                <span v-if="blankSelections[blankIndex]" class="drop-slot__text">
+                  {{ resolveSelectedOptionText(blankSelections[blankIndex]) }}
+                </span>
+                <span v-else class="drop-slot__placeholder">____</span>
+              </button>
             </div>
 
             <div class="scroll-watermark" aria-hidden="true">✎</div>
@@ -420,60 +970,71 @@ onUnmounted(() => {
           </div>
         </article>
 
-        <div class="draft-chip-help">↕ DRAG WORDS TO COMPLETE THE SCROLL</div>
+        <div class="draft-chip-help">{{ t("knowledgeDraft.dragHint") }}</div>
 
         <div class="draft-chip-row">
           <button
             v-for="chip in optionChips"
             :key="chip.id"
             class="draft-chip"
-            :class="`draft-chip--${chip.tone}`"
+            :class="[
+              `draft-chip--${chip.tone}`,
+              {
+                'draft-chip--selected': selectedOptionIds.has(chip.id),
+                'draft-chip--dragging': draggingOptionId === chip.id,
+              },
+            ]"
             type="button"
+            :aria-pressed="selectedOptionIds.has(chip.id)"
+            :disabled="isSubmittingAnswer"
+            :draggable="!isSubmittingAnswer"
+            @dragstart="onOptionDragStart(chip.id, $event)"
+            @dragend="onDragEnd"
             @click="chooseOption(chip)"
           >
-            {{ chip.text }}
+            <MarkdownRichText :content="chip.text" inline class-name="draft-chip__label" />
           </button>
         </div>
 
         <button class="feedback-action" type="button" @click="handleFeedback">
-          这题有误
+          {{ t("common.reportQuestionIssue") }}
         </button>
 
-        <div v-if="showNotice" class="run-status-notice run-status-notice--danger wrong-feedback">
-          <WrongAnswerFeedbackCard
-            title="回答错误，已显示正确答案。"
-            :correct-answer-text="wrongFeedbackAnswerText"
-            :explanation="wrongFeedbackExplanation"
-            :source-locator="wrongFeedbackSourceLocator"
-            :supporting-excerpt="wrongFeedbackExcerpt"
-          />
+        <div v-if="showFeedback && !lastAnswerCorrect" class="answer-feedback answer-feedback--wrong">
+          <div class="answer-feedback__header">
+            <span class="answer-feedback__icon">✗</span>
+            <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
+          </div>
+          <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong>
+            <MarkdownRichText :content="feedbackCorrectAnswer" inline class-name="answer-feedback__markdown" />
+          </div>
+          <div v-if="feedbackExplanation" class="answer-feedback__explanation">
+            <strong>{{ t("speedSurvival.explanation") }}</strong>
+            <MarkdownRichText :content="feedbackExplanation" class-name="answer-feedback__markdown" />
+          </div>
         </div>
-        <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
-          ⚠ Reduced rewards: -50% XP/coins
+
+        <div v-if="showNotice" class="run-status-notice">
+          {{ t("knowledgeDraft.notice") }}
         </div>
       </section>
     </section>
 
     <GameSettlementModal
       :visible="showSettlement"
-      mode-name="Knowledge Draft"
+      :mode-name="t('knowledgeDraft.settlementModeName')"
       :xp-gained="settlementXp"
       :coin-reward="settlementCoins"
       :combo-count="settlementCombo"
       :goal-current="settlementGoalCurrent"
       :goal-total="settlementGoalTotal"
-      :review-enabled="mistakeReviewItems.length > 0"
-      :review-label="reviewLabel"
-      goal-text="Keep filling the scroll to reach enlightenment through study."
+      :league-top-percent="settlementTopPercent"
+      :goal-text="t('knowledgeDraft.settlementGoal')"
       @close="closeSettlement"
       @confirm="goLibrary"
-      @review="openMistakeReview"
-    />
-
-    <MistakeReviewPanel
-      :visible="showMistakeReview"
-      :items="mistakeReviewItems"
-      @close="closeMistakeReview"
+      @continue-to-path="goToPath"
+      @review-mistakes="goToReview"
     />
   </main>
 </template>
@@ -764,32 +1325,54 @@ onUnmounted(() => {
   text-align: left;
 }
 
-.question-provenance {
+.scroll-paper__slot-row {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 14px;
-}
-
-.question-provenance__line {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 1.4;
-  margin: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .drop-slot {
+  align-items: center;
+  background: var(--color-surface);
   border: 1px dashed color-mix(in srgb, var(--color-border) 60%, var(--color-badge-blue-bg) 40%);
   border-radius: 999px;
-  color: var(--color-text-light-slate);
+  color: var(--color-text-secondary);
+  cursor: pointer;
   display: inline-flex;
+  font-weight: 700;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   justify-content: center;
-  margin: 0 6px;
-  min-width: 80px;
+  margin: 0 4px;
+  min-width: 92px;
   padding: 6px 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
   transform: translateY(-2px);
+}
+
+.drop-slot--active {
+  border-color: color-mix(in srgb, var(--color-primary-500) 45%, var(--color-border) 55%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-100) 70%, transparent);
+}
+
+.drop-slot--filled {
+  background: color-mix(in srgb, var(--color-primary-50) 70%, var(--color-surface) 30%);
+  border-style: solid;
+  color: var(--color-primary-700);
+}
+
+.drop-slot--dragover {
+  transform: translateY(-3px) scale(1.03);
+}
+
+.drop-slot__text {
+  animation: slot-fill-pop 0.18s ease;
+}
+
+.drop-slot__placeholder {
+  color: var(--color-text-muted);
+  font-weight: 600;
 }
 
 .scroll-watermark {
@@ -827,6 +1410,16 @@ onUnmounted(() => {
   font-weight: 700;
   min-width: 98px;
   padding: 12px 20px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.draft-chip:hover {
+  transform: translateY(-1px);
+}
+
+.draft-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .draft-chip--water {
@@ -847,6 +1440,16 @@ onUnmounted(() => {
 
 .draft-chip--heaven {
   background: var(--color-chip-amber-bg);
+}
+
+.draft-chip--selected {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-500) 44%, transparent), var(--shadow-card);
+  color: var(--color-primary-700);
+}
+
+.draft-chip--dragging {
+  filter: saturate(1.1);
+  opacity: 0.8;
 }
 
 .feedback-action {
@@ -877,12 +1480,68 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.run-status-notice--danger {
+.answer-feedback {
   background: var(--color-danger-surface);
-  border-color: var(--color-danger-border);
-  color: var(--color-danger-title);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  text-align: left;
 }
 
+.answer-feedback--wrong {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+}
+
+.answer-feedback__header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.answer-feedback__icon {
+  align-items: center;
+  background: var(--color-danger-title);
+  border-radius: 50%;
+  color: var(--color-surface);
+  display: inline-flex;
+  font-size: 14px;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.answer-feedback__title {
+  color: var(--color-danger-title);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.answer-feedback__correct {
+  color: var(--color-danger-title);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.answer-feedback__explanation {
+  color: var(--color-danger-title);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@keyframes slot-fill-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 
 @media (max-width: 900px) {
   .draft-page {

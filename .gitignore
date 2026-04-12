@@ -25,6 +25,11 @@ Thumbs.db
 .mypy_cache/
 .pytest_cache/
 
+# Tools
+.playwright-mcp/
+playwright-report/
+test-results/
+
 # Environment
 .env
 .env.local
@@ -35,6 +40,11 @@ nul
 package-lock.json
 auth-test-home-after-login.png
 tmp_uploads/
-
-# Local design drafts
-Design Document/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.ico
+!public/**/*.{png,jpg,jpeg,gif,webp,ico,svg}

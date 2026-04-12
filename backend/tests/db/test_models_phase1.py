@@ -482,3 +482,55 @@ def test_economy_models_use_ledger_inventory_and_purchase_records() -> None:
 
     assert ("idempotency_key",) in get_unique_index_columns("wallet_ledger")
     assert ("idempotency_key",) in get_unique_index_columns("purchase_records")
+
+
+def test_active_effects_table_exists():
+    """验证 active_effects 表存在且包含必要的列"""
+    expected_tables = {
+        "active_effects",
+        "use_records",
+    }
+    assert expected_tables <= set(Base.metadata.tables)
+
+    table = get_table("active_effects")
+    assert table is not None
+    assert_columns_present(
+        "active_effects",
+        {
+            "id",
+            "user_id",
+            "effect_type",
+            "multiplier",
+            "expires_at",
+            "source_item_code",
+            "source_use_id",
+            "context",
+            "created_at",
+        },
+    )
+
+    # 验证外键
+    fk_targets = get_foreign_key_targets("active_effects")
+    assert ("user_id", "users", "id") in fk_targets
+
+
+def test_use_records_table_exists():
+    """验证 use_records 表存在且包含必要的列"""
+    table = get_table("use_records")
+    assert table is not None
+    assert_columns_present(
+        "use_records",
+        {
+            "id",
+            "user_id",
+            "item_code",
+            "inventory_id",
+            "effect_snapshot",
+            "context",
+            "used_at",
+        },
+    )
+
+    # 验证外键
+    fk_targets = get_foreign_key_targets("use_records")
+    assert ("user_id", "users", "id") in fk_targets

@@ -6,16 +6,22 @@ const DungeonScholarLoginPage = () => import("../pages/DungeonScholarLoginPage.v
 const DungeonScholarHomePage = () => import("../pages/DungeonScholarHomePage.vue");
 const DungeonScholarLibraryPage = () => import("../pages/DungeonScholarLibraryPage.vue");
 const DungeonScholarLevelPathPage = () => import("../pages/DungeonScholarLevelPathPage.vue");
+const DungeonScholarModeGuidePage = () => import("../pages/DungeonScholarModeGuidePage.vue");
 const DungeonScholarModeSelectionPage = () => import("../pages/DungeonScholarModeSelectionPage.vue");
 const DungeonScholarEndlessAbyssPage = () => import("../pages/DungeonScholarEndlessAbyssPage.vue");
 const DungeonScholarSpeedSurvivalPage = () => import("../pages/DungeonScholarSpeedSurvivalPage.vue");
 const DungeonScholarKnowledgeDraftPage = () => import("../pages/DungeonScholarKnowledgeDraftPage.vue");
+const DungeonScholarReviewPage = () => import("../pages/DungeonScholarReviewPage.vue");
 const DungeonScholarQuestsPage = () => import("../pages/DungeonScholarQuestsPage.vue");
 const DungeonScholarShopPage = () => import("../pages/DungeonScholarShopPage.vue");
 const DungeonScholarLeaderboardPage = () => import("../pages/DungeonScholarLeaderboardPage.vue");
 const DungeonScholarSettingsPage = () => import("../pages/DungeonScholarSettingsPage.vue");
-const DungeonScholarSettingsDocPage = () => import("../pages/DungeonScholarSettingsDocPage.vue");
 const DungeonScholarProfilePage = () => import("../pages/DungeonScholarProfilePage.vue");
+const DungeonScholarPrivacyPolicyPage = () => import("../pages/DungeonScholarPrivacyPolicyPage.vue");
+const DungeonScholarHelpCenterPage = () => import("../pages/DungeonScholarHelpCenterPage.vue");
+const DungeonScholarTermsPage = () => import("../pages/DungeonScholarTermsPage.vue");
+const DungeonScholarFeaturesPage = () => import("../pages/DungeonScholarFeaturesPage.vue");
+const DungeonScholarPricingPage = () => import("../pages/DungeonScholarPricingPage.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -51,6 +57,11 @@ const router = createRouter({
       component: DungeonScholarLevelPathPage,
     },
     {
+      path: ROUTES.modeGuide,
+      name: "mode-guide",
+      component: DungeonScholarModeGuidePage,
+    },
+    {
       path: ROUTES.gameModes,
       name: "game-modes",
       component: DungeonScholarModeSelectionPage,
@@ -69,6 +80,11 @@ const router = createRouter({
       path: ROUTES.knowledgeDraft,
       name: "knowledge-draft",
       component: DungeonScholarKnowledgeDraftPage,
+    },
+    {
+      path: ROUTES.review,
+      name: "review",
+      component: DungeonScholarReviewPage,
     },
     {
       path: ROUTES.quests,
@@ -93,22 +109,47 @@ const router = createRouter({
     {
       path: "/settings/privacy-policy",
       name: "settings-privacy-policy",
-      component: DungeonScholarSettingsDocPage,
+      component: DungeonScholarPrivacyPolicyPage,
+    },
+    {
+      path: ROUTES.privacyPolicy,
+      name: "privacy-policy",
+      component: DungeonScholarPrivacyPolicyPage,
     },
     {
       path: "/settings/user-agreement",
       name: "settings-user-agreement",
-      component: DungeonScholarSettingsDocPage,
+      component: DungeonScholarTermsPage,
     },
     {
       path: "/settings/help-center",
       name: "settings-help-center",
-      component: DungeonScholarSettingsDocPage,
+      component: DungeonScholarHelpCenterPage,
+    },
+    {
+      path: ROUTES.helpCenter,
+      name: "help-center",
+      component: DungeonScholarHelpCenterPage,
+    },
+    {
+      path: ROUTES.termsOfService,
+      name: "terms-of-service",
+      component: DungeonScholarTermsPage,
     },
     {
       path: ROUTES.profile,
       name: "profile",
       component: DungeonScholarProfilePage,
+    },
+    {
+      path: ROUTES.features,
+      name: "features",
+      component: DungeonScholarFeaturesPage,
+    },
+    {
+      path: ROUTES.pricing,
+      name: "pricing",
+      component: DungeonScholarPricingPage,
     },
     {
       path: "/:pathMatch(.*)*",

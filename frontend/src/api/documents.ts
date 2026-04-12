@@ -4,6 +4,8 @@ import { apiRequest } from "./http";
 export type DocumentListItem = {
   id: string;
   title: string;
+  file_name?: string;
+  format?: string;
   status?: string;
   created_at?: string | null;
 };
@@ -58,6 +60,22 @@ export const deleteDocument = async (documentId: string): Promise<DeleteDocument
   });
 };
 
+export type DocumentProgressResponse = {
+  document_id: string;
+  status: string;
+  progress: number;
+  stage: string;
+};
+
+export const getDocumentProgress = async (
+  documentId: string,
+): Promise<DocumentProgressResponse> => {
+  return apiRequest<DocumentProgressResponse>(
+    `/api/v1/documents/${documentId}/progress`,
+    { headers: getAuthHeaders() },
+  );
+};
+
 type BatchDeleteDocumentsResponse = {
   deleted_ids: string[];
   deleted_count: number;
@@ -73,9 +91,13 @@ export const batchDeleteDocuments = async (
   });
 };
 
+type RetryDocumentResponse = {
+  id: string;
+  status: string;
+};
 
-export const retryDocument = async (documentId: string): Promise<{ id: string; status: string }> => {
-  return apiRequest<{ id: string; status: string }>(`/api/v1/documents/${documentId}/retry`, {
+export const retryDocument = async (documentId: string): Promise<RetryDocumentResponse> => {
+  return apiRequest<RetryDocumentResponse>(`/api/v1/documents/${documentId}/retry`, {
     method: "POST",
     headers: getAuthHeaders(),
   });

@@ -214,3 +214,272 @@ class TestWalletServiceUnit:
         service = WalletService(repository=wallet_repo)
         result = await service.get_balance(uuid4())
         assert result.balance == 750
+
+
+class TestUseItemSchemas:
+    def test_use_item_request_schema_valid(self):
+        from app.schemas.shop import UseItemRequest
+
+        req = UseItemRequest(item_code="xp_boost_2x", context={"run_id": "some-uuid"})
+        assert req.item_code == "xp_boost_2x"
+        assert req.context == {"run_id": "some-uuid"}
+
+    def test_use_item_request_schema_defaults(self):
+        from app.schemas.shop import UseItemRequest
+
+        req = UseItemRequest(item_code="streak_freeze")
+        assert req.context is None
+
+    def test_use_item_response_schema(self):
+        from app.schemas.shop import UseItemResponse
+
+        resp = UseItemResponse(
+            success=True,
+            item_code="xp_boost_2x",
+            quantity_remaining=2,
+            effect_applied={"type": "xp_boost", "multiplier": 2.0},
+        )
+        assert resp.success is True
+        assert resp.quantity_remaining == 2
+
+    def test_active_effect_schema(self):
+        from datetime import UTC, datetime
+
+        from app.schemas.shop import ActiveEffect
+
+        now = datetime.now(tz=UTC)
+        eff = ActiveEffect(
+            id=uuid4(),
+            effect_type="xp_boost",
+            multiplier=2.0,
+            expires_at=now,
+            source_item_code="xp_boost_2x",
+            context=None,
+            created_at=now,
+        )
+        assert eff.multiplier == 2.0
+        assert eff.effect_type == "xp_boost"
+
+    def test_active_effects_response_schema(self):
+        from datetime import UTC, datetime
+
+        from app.schemas.shop import ActiveEffect, ActiveEffectsResponse
+
+        now = datetime.now(tz=UTC)
+        eff = ActiveEffect(
+            id=uuid4(),
+            effect_type="xp_boost",
+            multiplier=2.0,
+            expires_at=now,
+            source_item_code="xp_boost_2x",
+            context=None,
+            created_at=now,
+        )
+        resp = ActiveEffectsResponse(effects=[eff])
+        assert len(resp.effects) == 1
+        assert resp.effects[0].multiplier == 2.0
+
+
+def get_current_user_id_for_test():
+    from uuid import uuid4
+
+    return uuid4()
+
+
+class FakeEffectRepository:
+    def __init__(self) -> None:
+        self.effects: list = []
+        self.use_records: list = []
+
+    async def upsert_active_effect(self, **kw):
+        from uuid import uuid4
+
+        return uuid4()
+
+    async def list_active_effects(self, user_id):
+        return self.effects
+
+    async def delete_expired_effects(self, user_id) -> None:
+        pass
+
+    async def update_expires(self, effect_id, expires_at) -> None:
+        pass
+
+    async def record_use(self, **kw):
+        from uuid import uuid4
+
+        return uuid4()
+
+
+class FakeShopRepoForUseItem:
+    def __init__(self) -> None:
+        self.inventories: dict = {}
+
+    async def get_inventory(self, user_id):
+        return list(self.inventories.values())
+
+    async def upsert_inventory(self, user_id, item_code, quantity, **kw):
+        key = (user_id, item_code)
+        if key in self.inventories:
+            self.inventories[key].quantity += quantity
+        else:
+            inv = type(
+                "Inv",
+                (),
+                {"user_id": user_id, "item_code": item_code, "quantity": quantity, "id": None},
+            )()
+            self.inventories[key] = inv
+        return self.inventories[key]
+
+    async def create_purchase_record(self, **kw):
+        pass
+
+    async def get_purchase_by_idempotency_key(self, key):
+        return None
+
+    async def count_purchases_by_offer(self, user_id, offer_id):
+        return 0
+
+    async def commit(self) -> None:
+        pass
+
+    async def rollback(self) -> None:
+        pass
+
+    async def list_active_offers(self):
+        return []
+
+    async def get_offer(self, offer_id):
+        return None
+
+
+class TestUseItemEndpoints:
+    def test_use_item_endpoint_returns_200_with_fake_deps(self):
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from fastapi.testclient import TestClient
+
+        from app.main import create_app
+
+        user_id = uuid4()
+
+        fake_effect_repo = FakeEffectRepository()
+        fake_effect_repo.effects = []
+
+        inv_item = type(
+            "Inv",
+            (),
+            {
+                "user_id": user_id,
+                "item_code": "xp_boost_2x",
+                "quantity": 2,
+                "id": uuid4(),
+            },
+        )()
+        fake_shop_repo = FakeShopRepoForUseItem()
+        fake_shop_repo.inventories[(user_id, "xp_boost_2x")] = inv_item
+
+        class FakeShopServiceForUseItem:
+            def __init__(self, repo, effect_repo) -> None:
+                self._repo = repo
+                self._effect_repo = effect_repo
+
+            async def use_item(self, user_id, payload, effect_repo):
+                from app.schemas.shop import UseItemResponse
+
+                inventory = await self._repo.get_inventory(user_id)
+                inv_item = next((i for i in inventory if i.item_code == payload.item_code), None)
+                if not inv_item or inv_item.quantity < 1:
+                    raise ValueError(
+                        "INSUFFICIENT_INVENTORY: item not in inventory or quantity is 0"
+                    )
+                await self._repo.upsert_inventory(user_id, payload.item_code, -1)
+                await effect_repo.record_use(user_id=user_id, item_code=payload.item_code)
+                now = datetime.now(tz=UTC)
+                new_expires = now.replace(second=0, microsecond=0)
+                return UseItemResponse(
+                    success=True,
+                    item_code=payload.item_code,
+                    quantity_remaining=1,
+                    effect_applied={
+                        "type": "xp_boost",
+                        "multiplier": 2.0,
+                        "expires_at": new_expires.isoformat(),
+                    },
+                )
+
+            async def get_inventory(self, user_id):
+                from app.schemas.shop import InventoryItemResponse, InventoryResponse
+
+                items = await self._repo.get_inventory(user_id)
+                return InventoryResponse(
+                    items=[InventoryItemResponse.model_validate(i) for i in items]
+                )
+
+        app = create_app()
+        from app.api.dependencies.auth import get_current_user_id
+        from app.api.v1.shop import get_effect_repository, get_shop_service
+
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        app.dependency_overrides[get_shop_service] = lambda: FakeShopServiceForUseItem(
+            fake_shop_repo, fake_effect_repo
+        )
+        app.dependency_overrides[get_effect_repository] = lambda: fake_effect_repo
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/shop/use-item",
+            json={"item_code": "xp_boost_2x", "context": None},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert body["item_code"] == "xp_boost_2x"
+        assert body["quantity_remaining"] == 1
+        assert body["effect_applied"]["type"] == "xp_boost"
+        assert body["effect_applied"]["multiplier"] == 2.0
+
+    def test_active_effects_endpoint_returns_200_with_fake_deps(self):
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from fastapi.testclient import TestClient
+
+        from app.main import create_app
+
+        user_id = uuid4()
+
+        fake_effect_repo = FakeEffectRepository()
+        now = datetime.now(tz=UTC)
+        fake_effect_repo.effects = [
+            type(
+                "Eff",
+                (),
+                {
+                    "id": uuid4(),
+                    "effect_type": "xp_boost",
+                    "multiplier": 2.0,
+                    "expires_at": now,
+                    "source_item_code": "xp_boost_2x",
+                    "context": None,
+                    "created_at": now,
+                },
+            )(),
+        ]
+
+        app = create_app()
+        from app.api.dependencies.auth import get_current_user_id
+        from app.api.v1.shop import get_effect_repository
+
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+        app.dependency_overrides[get_effect_repository] = lambda: fake_effect_repo
+
+        client = TestClient(app)
+        response = client.get("/api/v1/shop/active-effects")
+        assert response.status_code == 200
+        body = response.json()
+        assert "effects" in body
+        assert len(body["effects"]) == 1
+        assert body["effects"][0]["effect_type"] == "xp_boost"
+        assert body["effects"][0]["multiplier"] == 2.0

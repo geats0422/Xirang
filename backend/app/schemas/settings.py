@@ -16,6 +16,7 @@ class SettingsResponse(BaseModel):
     haptic_enabled: bool
     daily_reminder_enabled: bool
     leaderboard_scope_default: LeaderboardScope
+    selected_model: str | None = None  # User's selected LLM model
     updated_at: datetime
 
 
@@ -26,11 +27,4 @@ class SettingsUpdateRequest(BaseModel):
     haptic_enabled: bool | None = None
     daily_reminder_enabled: bool | None = None
     leaderboard_scope_default: LeaderboardScope | None = None
-
-
-class AiConfigResponse(BaseModel):
-    provider: str
-    base_url: str | None
-    model: str
-    configured: bool
-    available_models: list[str] = []
+    selected_model: str | None = None  # User's selected LLM model

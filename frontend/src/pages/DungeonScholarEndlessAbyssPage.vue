@@ -3,14 +3,11 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import GameSettlementModal from "../components/GameSettlementModal.vue";
-import MistakeReviewPanel from "../components/MistakeReviewPanel.vue";
-import WrongAnswerFeedbackCard from "../components/WrongAnswerFeedbackCard.vue";
+import MarkdownRichText from "../components/ui/MarkdownRichText.vue";
 import { ROUTES } from "../constants/routes";
-import { createRun, submitAnswer, type MistakeReviewItem, type RunAnswerFeedback, type RunQuestion } from '../api/runs';
-import { submitFeedback } from '../api/feedback';
+import { createRun, submitAnswer, useRunRevive, type RunQuestion } from "../api/runs";
+import { submitFeedback } from "../api/feedback";
 import { getShopBalance } from "../api/shop";
-import { buildMistakeReviewItem } from "../utils/mistakeReview";
-import { stripQuestionFormatting } from "../utils/questionText";
 
 const { t, locale } = useI18n();
 
@@ -39,10 +36,12 @@ const coins = ref<number | null>(null);
 const runId = ref<string | null>(null);
 const questions = ref<RunQuestion[]>([]);
 const questionIndex = ref(0);
+const runBootstrapFailed = ref(false);
 const questionStartAt = ref<number>(Date.now());
 let tickerId: number | null = null;
 
 const answer = ref("");
+const isSubmittingAnswer = ref(false);
 const showSettlement = ref(false);
 const runStatus = ref<RunStatus>("normal");
 const settlementXp = ref(0);
@@ -50,18 +49,29 @@ const settlementCoins = ref(0);
 const settlementCombo = ref(0);
 const settlementGoalCurrent = ref(0);
 const settlementGoalTotal = ref(10);
+const settlementTopPercent = ref<number | null>(null);
 
 const showNotice = ref(false);
-const wrongFeedback = ref<RunAnswerFeedback | null>(null);
-const showMistakeReview = ref(false);
-const mistakeReviewItems = ref<MistakeReviewItem[]>([]);
+const showFeedback = ref(false);
+const lastAnswerCorrect = ref(false);
+const feedbackCorrectAnswer = ref<string | null>(null);
+const feedbackExplanation = ref<string | null>(null);
+const awaitingCorrection = ref(false);
+const expectedCorrectOptionIds = ref<string[]>([]);
+const correctionRetryNotice = ref(false);
+const showReviveModal = ref(false);
+const reviveError = ref("");
+const reviveShieldCount = ref(0);
+const reviveShieldExpiresAt = ref<string | null>(null);
 
 const materialTitle = computed(() => {
   const rawTitle = route.query.title;
-  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : "Ancient Wisdom";
+  return typeof rawTitle === "string" && rawTitle.trim() ? rawTitle : t("endlessAbyss.ancientWisdom");
 });
 
-const chapterTitle = computed(() => `Chapter ${floor.value ?? "--"}: ${materialTitle.value}`);
+const chapterTitle = computed(() =>
+  t("endlessAbyss.chapterLabel", { n: floor.value ?? "--", title: materialTitle.value }),
+);
 
 const time = computed(() => {
   if (timeLeftSec.value === null) {
@@ -79,79 +89,54 @@ const time = computed(() => {
 const currentQuestion = computed(() => questions.value[questionIndex.value] ?? null);
 
 const questionTitle = computed(() => {
-  if (currentQuestion.value?.text) {
-    return stripQuestionFormatting(currentQuestion.value.text);
+  if (runBootstrapFailed.value) {
+    return t("endlessAbyss.loadingQuestionFailed");
   }
-  return "Loading question...";
+  if (currentQuestion.value?.text) {
+    return currentQuestion.value.text;
+  }
+  return t("endlessAbyss.loadingQuestion");
 });
+
+const hasTypedAnswer = computed(() => answer.value.trim().length > 0);
+
+const defaultWrongAnswerNotice = computed(() => {
+  if (locale.value === "zh-CN") {
+    return "⚠ 回答错误，生命值下降。";
+  }
+  if (locale.value === "zh-TW") {
+    return "⚠ 回答錯誤，生命值下降。";
+  }
+  return "⚠ Wrong answer. HP decreased.";
+});
+
+const correctionRetryNoticeText = computed(() => {
+  if (locale.value === "zh-CN") {
+    return "⚠ 仍未答对，请继续修正。";
+  }
+  if (locale.value === "zh-TW") {
+    return "⚠ 仍未答對，請繼續修正。";
+  }
+  return "⚠ Still not correct, please keep revising.";
+});
+
+const noticeMessage = computed(() => {
+  return correctionRetryNotice.value
+    ? correctionRetryNoticeText.value
+    : defaultWrongAnswerNotice.value;
+});
+
 
 const questionHint = computed(() => {
   const firstOption = currentQuestion.value?.options[0];
   if (!firstOption?.text) {
-    return "HINT: --";
+    return t("endlessAbyss.hintNoOption");
   }
-  const firstChar = stripQuestionFormatting(firstOption.text).trim().charAt(0).toUpperCase();
-  return firstChar ? `HINT: STARTS WITH ${firstChar}` : "HINT: --";
+  const firstChar = firstOption.text.trim().charAt(0).toUpperCase();
+  return firstChar ? `${t("endlessAbyss.hintStartsWith", { char: firstChar })}` : t("endlessAbyss.hintNoOption");
 });
 
-const questionSourceLocator = computed(() => {
-  const locator = currentQuestion.value?.source_locator;
-  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
-});
-
-const questionSupportingExcerpt = computed(() => {
-  const excerpt = currentQuestion.value?.supporting_excerpt;
-  if (typeof excerpt !== "string" || !excerpt.trim()) {
-    return null;
-  }
-  return stripQuestionFormatting(excerpt).trim();
-});
-
-const wrongFeedbackAnswerText = computed(() => {
-  if (!wrongFeedback.value?.correct_options?.length) {
-    return null;
-  }
-  return wrongFeedback.value.correct_options
-    .map((option) => stripQuestionFormatting(option.text).trim())
-    .filter(Boolean)
-    .join(" / ");
-});
-
-const wrongFeedbackExplanation = computed(() => {
-  const explanation = wrongFeedback.value?.explanation;
-  return typeof explanation === "string" && explanation.trim()
-    ? stripQuestionFormatting(explanation).trim()
-    : null;
-});
-
-const wrongFeedbackSourceLocator = computed(() => {
-  const locator = wrongFeedback.value?.source_locator;
-  return typeof locator === "string" && locator.trim() ? locator.trim() : null;
-});
-
-const wrongFeedbackExcerpt = computed(() => {
-  const excerpt = wrongFeedback.value?.supporting_excerpt;
-  return typeof excerpt === "string" && excerpt.trim()
-    ? stripQuestionFormatting(excerpt).trim()
-    : null;
-});
-
-const reviewLabel = computed(() => (mistakeReviewItems.value.length > 0 ? "Review Mistakes" : "No mistakes this run"));
-
-const appendMistakeReviewItem = (
-  question: RunQuestion,
-  feedback: RunAnswerFeedback | null,
-  selectedAnswerText?: string | null,
-) => {
-  const item = buildMistakeReviewItem(question, feedback, selectedAnswerText);
-  if (!item) {
-    return;
-  }
-  if (mistakeReviewItems.value.some((entry) => entry.question_id === item.question_id)) {
-    return;
-  }
-  mistakeReviewItems.value = [...mistakeReviewItems.value, item];
-};
+const reviveShieldActive = computed(() => reviveShieldCount.value > 0);
 
 const floorProgress = computed(() => {
   if (floor.value === null || floorTotal.value === null) {
@@ -159,6 +144,79 @@ const floorProgress = computed(() => {
   }
   return (floor.value / Math.max(1, floorTotal.value)) * 100;
 });
+
+const resolveLeagueTopPercent = (accuracy: number | null | undefined): number | null => {
+  if (typeof accuracy !== "number" || !Number.isFinite(accuracy)) {
+    return null;
+  }
+  const normalized = Math.min(1, Math.max(0, accuracy));
+  return Math.max(1, 100 - Math.round(normalized * 100));
+};
+
+const areSameOptionSet = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const setA = new Set(a);
+  return b.every((item) => setA.has(item));
+};
+
+const normalizeComparableText = (value: string): string => {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\u3000/g, " ")
+    .replace(/\s+/g, "");
+};
+
+const normalizeTokens = (value: string): string[] => {
+  return value
+    .toLowerCase()
+    .split(/[\s,，。！？!?;；:：/]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+};
+
+const resolveExpectedCorrectOptionIds = (payload: {
+  correctOptionIds: string[];
+  correctAnswerText: string | null;
+  options: { id: string; text: string }[];
+}): string[] => {
+  if (payload.correctOptionIds.length > 0) {
+    return payload.correctOptionIds;
+  }
+  if (!payload.correctAnswerText) {
+    return [];
+  }
+  const answerTokens = normalizeTokens(payload.correctAnswerText);
+  if (answerTokens.length === 0) {
+    return [];
+  }
+  return payload.options
+    .filter((option) => {
+      const optionTokens = normalizeTokens(option.text);
+      return optionTokens.some((token) => answerTokens.includes(token));
+    })
+    .map((option) => option.id);
+};
+
+const resolveDisplayCorrectAnswer = (payload: {
+  correctAnswerText: string | null;
+  correctOptionIds: string[];
+  options: { id: string; text: string }[];
+}): string | null => {
+  if (payload.correctAnswerText && payload.correctAnswerText.trim()) {
+    return payload.correctAnswerText;
+  }
+  if (!payload.correctOptionIds.length) {
+    return null;
+  }
+  const optionMap = new Map(payload.options.map((option) => [option.id, option.text]));
+  const values = payload.correctOptionIds
+    .map((id) => optionMap.get(id)?.trim())
+    .filter((item): item is string => Boolean(item));
+  return values.length > 0 ? values.join(", ") : null;
+};
 
 const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   if (!state) {
@@ -169,11 +227,17 @@ const applyRunState = (state: Record<string, unknown> | null | undefined) => {
   const floorValue = Number(state.floor);
   const floorTotalValue = Number(state.floor_total);
   const timeValue = Number(state.time_left_sec);
+  const shieldCount = Number(state.revive_shield_count);
+  const shieldExpires = typeof state.revive_shield_expires_at === "string"
+    ? state.revive_shield_expires_at
+    : null;
   hpLevel.value = Number.isFinite(hp) ? hp : hpLevel.value;
   maxHp.value = Number.isFinite(maxHpValue) ? maxHpValue : maxHp.value;
   floor.value = Number.isFinite(floorValue) ? floorValue : floor.value;
   floorTotal.value = Number.isFinite(floorTotalValue) ? floorTotalValue : floorTotal.value;
   timeLeftSec.value = Number.isFinite(timeValue) ? timeValue : timeLeftSec.value;
+  reviveShieldCount.value = Number.isFinite(shieldCount) ? shieldCount : 0;
+  reviveShieldExpiresAt.value = shieldExpires;
 };
 
 const startTicker = () => {
@@ -211,21 +275,14 @@ const bootstrapRun = async () => {
   const documentId = typeof rawDocumentId === "string" ? rawDocumentId : "";
   const rawPathId = route.query.pathId;
   const pathId = typeof rawPathId === "string" ? rawPathId : undefined;
-  const rawPathVersionId = route.query.pathVersionId;
-  const pathVersionId = typeof rawPathVersionId === "string" ? rawPathVersionId : undefined;
-  const rawLevelNodeId = route.query.levelNodeId;
-  const levelNodeId = typeof rawLevelNodeId === "string" ? rawLevelNodeId : undefined;
-
+  const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
   if (!documentId) {
     return;
   }
 
   try {
-    const created = await createRun(documentId, "endless", 10, {
-      pathId,
-      pathVersionId,
-      levelNodeId,
-    });
+    const created = await createRun(documentId, "endless", 10, pathId, isMistakeReview);
+    runBootstrapFailed.value = false;
     runId.value = created.run_id;
     questions.value = created.questions;
     questionIndex.value = 0;
@@ -233,13 +290,15 @@ const bootstrapRun = async () => {
     questionStartAt.value = Date.now();
     startTicker();
   } catch {
+    runBootstrapFailed.value = true;
     runStatus.value = "reduced-reward";
   }
 };
 
 const goBack = async () => {
+  const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
   await router.push({
-    path: route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
+    path: isMistakeReview ? ROUTES.gameModes : route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
     query: route.query,
   });
 };
@@ -249,30 +308,106 @@ const goLibrary = async () => {
 };
 
 const castSpell = async () => {
-  if (!answer.value.trim() || !runId.value || !currentQuestion.value) {
+  if (
+    showSettlement.value ||
+    isSubmittingAnswer.value ||
+    !answer.value.trim() ||
+    !runId.value ||
+    !currentQuestion.value
+  ) {
     return;
   }
 
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
-  const normalizedAnswer = stripQuestionFormatting(answer.value).trim().toLowerCase();
-  const submittedAnswerText = stripQuestionFormatting(answer.value).trim();
+  const normalizedInput = answer.value.trim();
+  const normalizedAnswer = normalizedInput.toLowerCase();
+  const isFillInBlankQuestion = currentQuestion.value.question_type === "fill_in_blank";
   const matchedOption = currentQuestion.value.options.find(
-    (option) => stripQuestionFormatting(option.text).trim().toLowerCase() === normalizedAnswer,
+    (option) => option.text.trim().toLowerCase() === normalizedAnswer,
   );
+  const selectedOptionIds = matchedOption ? [matchedOption.id] : [];
+
+  if (awaitingCorrection.value) {
+    const matchedByOption = expectedCorrectOptionIds.value.length > 0 && areSameOptionSet(selectedOptionIds, expectedCorrectOptionIds.value);
+    const normalizedCurrentAnswer = normalizeComparableText(normalizedInput);
+    const normalizedCorrectAnswer = normalizeComparableText(feedbackCorrectAnswer.value ?? "");
+    const matchedByAnswer =
+      normalizedCurrentAnswer.length > 0 &&
+      normalizedCorrectAnswer.length > 0 &&
+      normalizedCurrentAnswer === normalizedCorrectAnswer;
+
+    if (!matchedByOption && !matchedByAnswer) {
+      showNotice.value = true;
+      showFeedback.value = true;
+      correctionRetryNotice.value = true;
+      return;
+    }
+
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+    showFeedback.value = false;
+    showNotice.value = false;
+    correctionRetryNotice.value = false;
+    questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
+    questionStartAt.value = Date.now();
+    answer.value = "";
+    return;
+  }
+
+  isSubmittingAnswer.value = true;
 
   try {
     const result = await submitAnswer(
       runId.value,
       currentQuestion.value.id,
-      matchedOption ? [matchedOption.id] : [],
+      selectedOptionIds,
       elapsedMs,
+      isFillInBlankQuestion ? normalizedInput : undefined,
     );
     applyRunState(result.run.state);
-    wrongFeedback.value = result.is_correct ? null : result.feedback;
-    showNotice.value = !result.is_correct;
+
+    lastAnswerCorrect.value = result.is_correct;
+    feedbackCorrectAnswer.value = resolveDisplayCorrectAnswer({
+      correctAnswerText: result.feedback?.correct_answer ?? null,
+      correctOptionIds: result.feedback?.correct_option_ids ?? [],
+      options: currentQuestion.value.options,
+    });
+    feedbackExplanation.value = result.feedback?.explanation ?? null;
+
     if (!result.is_correct) {
-      appendMistakeReviewItem(currentQuestion.value, result.feedback, submittedAnswerText);
+      showNotice.value = true;
+      showFeedback.value = true;
+      correctionRetryNotice.value = false;
+      awaitingCorrection.value = true;
+      expectedCorrectOptionIds.value = resolveExpectedCorrectOptionIds({
+        correctOptionIds: result.feedback?.correct_option_ids ?? [],
+        correctAnswerText: result.feedback?.correct_answer ?? null,
+        options: currentQuestion.value.options,
+      });
+      if (result.settlement) {
+        settlementXp.value = result.settlement.xp_earned;
+        settlementCoins.value = result.settlement.coins_earned;
+        settlementCombo.value = result.settlement.combo_max;
+        settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
+        settlementGoalTotal.value = result.settlement.goal_total ?? 10;
+        settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
+        showSettlement.value = true;
+        await refreshBalance();
+        return;
+      }
+      if (result.run.status === "aborted") {
+        reviveError.value = "";
+        showReviveModal.value = true;
+        stopTicker();
+      }
+      return;
     }
+
+    showNotice.value = false;
+    showFeedback.value = false;
+    awaitingCorrection.value = false;
+    correctionRetryNotice.value = false;
+    expectedCorrectOptionIds.value = [];
 
     if (result.settlement) {
       settlementXp.value = result.settlement.xp_earned;
@@ -280,33 +415,72 @@ const castSpell = async () => {
       settlementCombo.value = result.settlement.combo_max;
       settlementGoalCurrent.value = result.settlement.goal_current ?? 0;
       settlementGoalTotal.value = result.settlement.goal_total ?? 10;
+      settlementTopPercent.value = resolveLeagueTopPercent(result.settlement.accuracy);
       showSettlement.value = true;
       await refreshBalance();
     } else {
       questionIndex.value = Math.min(questionIndex.value + 1, questions.value.length - 1);
       questionStartAt.value = Date.now();
+      if (result.run.status === "aborted") {
+        reviveError.value = "";
+        showReviveModal.value = true;
+        stopTicker();
+      }
     }
   } catch {
     runStatus.value = "reduced-reward";
   } finally {
     answer.value = "";
+    isSubmittingAnswer.value = false;
   }
 };
 
 const closeSettlement = () => {
-  showSettlement.value = false;
-}
-
-const openMistakeReview = () => {
-  if (mistakeReviewItems.value.length === 0) {
-    return;
-  }
-  showSettlement.value = false;
-  showMistakeReview.value = true;
+  void router.push(ROUTES.library);
 };
 
-const closeMistakeReview = () => {
-  showMistakeReview.value = false;
+const goToPath = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "endless-abyss",
+    },
+  });
+};
+
+const goToReview = () => {
+  void router.push({
+    path: ROUTES.levelPath,
+    query: {
+      ...route.query,
+      mode: "review",
+    },
+  });
+};
+
+
+const purchaseRevive = async () => {
+  if (!runId.value) {
+    return;
+  }
+  reviveError.value = "";
+  try {
+    const result = await useRunRevive(runId.value);
+    applyRunState(result.run.state);
+    coins.value = result.coin_balance;
+    showReviveModal.value = false;
+    questionStartAt.value = Date.now();
+    startTicker();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : t("endlessAbyss.reviveFallbackError");
+    reviveError.value = message;
+  }
+};
+
+const leaveAbyss = async () => {
+  showReviveModal.value = false;
+  await goLibrary();
 };
 
 const handleFeedback = async () => {
@@ -352,6 +526,31 @@ onMounted(async () => {
   await bootstrapRun();
 });
 
+watch(showReviveModal, (visible) => {
+  if (visible) {
+    stopTicker();
+  } else if (!showSettlement.value) {
+    startTicker();
+  }
+});
+
+watch(
+  currentQuestion,
+  () => {
+    showNotice.value = false;
+    showFeedback.value = false;
+    lastAnswerCorrect.value = false;
+    feedbackCorrectAnswer.value = null;
+    feedbackExplanation.value = null;
+    awaitingCorrection.value = false;
+    expectedCorrectOptionIds.value = [];
+    correctionRetryNotice.value = false;
+    answer.value = "";
+    isSubmittingAnswer.value = false;
+  },
+  { immediate: true },
+);
+
 onUnmounted(() => {
   stopTicker();
 });
@@ -359,24 +558,24 @@ onUnmounted(() => {
 
 <template>
   <main class="abyss-page">
-    <section class="abyss-shell" aria-label="Endless Abyss gameplay">
+    <section class="abyss-shell" :aria-label="t('endlessAbyss.shellAria')">
       <header class="abyss-status">
-        <div class="hp-block" aria-label="Health points">
+        <div class="hp-block" :aria-label="t('endlessAbyss.hpAria')">
           <span v-for="index in maxHp" :key="index" class="hp-heart" :class="{ 'hp-heart--empty': index > (hpLevel ?? 0) }">
             ♥
           </span>
-          <span class="hp-label">HP LEVEL {{ hpLevel ?? "--" }}</span>
+          <span class="hp-label">{{ t("endlessAbyss.hpLevel", { level: hpLevel ?? "--" }) }}</span>
         </div>
 
-        <div class="floor-block" aria-label="Floor progress">
-          <p>FLOOR {{ floor ?? "--" }}</p>
+        <div class="floor-block" :aria-label="t('endlessAbyss.floorAria')">
+          <p>{{ t("endlessAbyss.floor", { floor: floor ?? "--" }) }}</p>
           <div class="floor-track" role="presentation">
             <span class="floor-fill" :style="{ width: `${floorProgress}%` }" />
           </div>
           <span>{{ floorTotal ?? "--" }}</span>
         </div>
 
-        <div class="meta-block" aria-label="Session info">
+        <div class="meta-block" :aria-label="t('endlessAbyss.metaAria')">
           <span>🕒 {{ time }}</span>
           <button class="meta-coin" type="button" @click="goShop">🪙 {{ coins ?? "--" }}</button>
         </div>
@@ -388,74 +587,91 @@ onUnmounted(() => {
           <div class="dragon-fog" />
         </div>
 
-        <article class="question-card" aria-label="Question card">
-          <p class="question-card__tag">QUESTION CARD</p>
-          <h1>{{ questionTitle }}</h1>
+        <article class="question-card" :aria-label="t('endlessAbyss.questionCardAria')">
+          <p class="question-card__tag">{{ t("endlessAbyss.questionTag") }}</p>
+          <MarkdownRichText :content="questionTitle" class-name="question-card__title" />
 
           <footer class="question-card__footer">
-            <div class="question-card__meta">
-              <span>{{ chapterTitle }}</span>
-              <span v-if="questionSourceLocator" class="question-card__source">
-                来源：{{ questionSourceLocator }}
-              </span>
-              <span v-if="questionSupportingExcerpt" class="question-card__excerpt">
-                摘录：{{ questionSupportingExcerpt }}
-              </span>
-            </div>
+            <span>{{ chapterTitle }}</span>
             <span class="question-card__hint">{{ questionHint }}</span>
           </footer>
         </article>
       </section>
 
       <footer class="answer-zone">
-        <label class="answer-input">
+        <label class="answer-input" :class="{ 'answer-input--ready': hasTypedAnswer, 'answer-input--submitting': isSubmittingAnswer }">
           <span aria-hidden="true">✎</span>
-          <input v-model="answer" type="text" placeholder="Type the answer keyword" @keydown.enter="castSpell" />
+          <input v-model="answer" type="text" :placeholder="t('endlessAbyss.answerPlaceholder')" :disabled="isSubmittingAnswer" @keydown.enter="castSpell" />
         </label>
 
-        <button class="cast-btn" type="button" @click="castSpell">Cast Spell ✦</button>
-        <button class="return-btn" type="button" @click="goBack">Return to Mode Select</button>
+        <button
+          class="cast-btn"
+          :class="{ 'cast-btn--ready': hasTypedAnswer, 'cast-btn--submitting': isSubmittingAnswer }"
+          type="button"
+          :disabled="isSubmittingAnswer || !hasTypedAnswer"
+          @click="castSpell"
+        >
+          {{ isSubmittingAnswer ? t("endlessAbyss.casting") : t("endlessAbyss.castSpell") }}
+        </button>
+        <button class="return-btn" type="button" @click="goBack">{{ t("endlessAbyss.returnToModeSelect") }}</button>
 
         <button class="feedback-action" type="button" @click="handleFeedback">
-          这题有误
+          {{ t("common.reportQuestionIssue") }}
         </button>
 
-        <div v-if="showNotice" class="run-status-notice run-status-notice--danger wrong-feedback">
-          <WrongAnswerFeedbackCard
-            title="⚠ Wrong answer. HP decreased."
-            :correct-answer-text="wrongFeedbackAnswerText"
-            :explanation="wrongFeedbackExplanation"
-            :source-locator="wrongFeedbackSourceLocator"
-            :supporting-excerpt="wrongFeedbackExcerpt"
-          />
+        <div v-if="showFeedback && !lastAnswerCorrect" class="answer-feedback answer-feedback--wrong">
+          <div class="answer-feedback__header">
+            <span class="answer-feedback__icon">✗</span>
+            <span class="answer-feedback__title">{{ t("speedSurvival.incorrect") }}</span>
+          </div>
+          <div v-if="feedbackCorrectAnswer" class="answer-feedback__correct">
+            <strong>{{ t("speedSurvival.correctAnswer") }}</strong>
+            <MarkdownRichText :content="feedbackCorrectAnswer" inline class-name="answer-feedback__markdown" />
+          </div>
+          <div v-if="feedbackExplanation" class="answer-feedback__explanation">
+            <strong>{{ t("speedSurvival.explanation") }}</strong>
+            <MarkdownRichText :content="feedbackExplanation" class-name="answer-feedback__markdown" />
+          </div>
+        </div>
+
+        <div v-if="showNotice" class="run-status-notice run-status-notice--danger">
+          {{ noticeMessage }}
         </div>
 
         <div v-if="runStatus === 'reduced-reward'" class="run-status-notice">
-          ⚠ Reduced rewards: -50% XP/coins
+          {{ t("endlessAbyss.reducedRewardNotice") }}
         </div>
       </footer>
     </section>
 
+    <div v-if="showReviveModal" class="revive-overlay">
+      <div class="revive-modal" role="dialog" aria-modal="true" :aria-label="t('endlessAbyss.reviveModal.dialogAria')">
+        <p class="revive-modal__eyebrow">{{ t("endlessAbyss.reviveModal.eyebrow") }}</p>
+        <h2>{{ t("endlessAbyss.reviveModal.title") }}</h2>
+        <p>{{ t("endlessAbyss.reviveModal.description") }}</p>
+        <p v-if="reviveShieldActive" class="revive-modal__buff">{{ t("endlessAbyss.reviveModal.shieldActive", { time: reviveShieldExpiresAt ?? t('endlessAbyss.reviveModal.soon') }) }}</p>
+        <p v-if="reviveError" class="revive-modal__error">{{ reviveError }}</p>
+        <div class="revive-modal__actions">
+          <button class="cast-btn" type="button" @click="purchaseRevive">{{ t("endlessAbyss.reviveModal.useCoins") }}</button>
+          <button class="return-btn" type="button" @click="leaveAbyss">{{ t("endlessAbyss.reviveModal.leave") }}</button>
+        </div>
+      </div>
+    </div>
+
     <GameSettlementModal
       :visible="showSettlement"
-      mode-name="Endless Abyss"
+      :mode-name="t('endlessAbyss.settlementModeName')"
       :xp-gained="settlementXp"
       :coin-reward="settlementCoins"
       :combo-count="settlementCombo"
       :goal-current="settlementGoalCurrent"
       :goal-total="settlementGoalTotal"
-      :review-enabled="mistakeReviewItems.length > 0"
-      :review-label="reviewLabel"
-      goal-text="Keep meditating to reach enlightenment through the abyss."
+      :league-top-percent="settlementTopPercent"
+      :goal-text="t('endlessAbyss.settlementGoal')"
       @close="closeSettlement"
       @confirm="goLibrary"
-      @review="openMistakeReview"
-    />
-
-    <MistakeReviewPanel
-      :visible="showMistakeReview"
-      :items="mistakeReviewItems"
-      @close="closeMistakeReview"
+      @continue-to-path="goToPath"
+      @review-mistakes="goToReview"
     />
   </main>
 </template>
@@ -669,7 +885,7 @@ onUnmounted(() => {
   padding: 4px 8px;
 }
 
-.question-card h1 {
+.question-card__title {
   color: var(--color-text-strong);
   font-size: 23px;
   font-weight: 800;
@@ -680,10 +896,9 @@ onUnmounted(() => {
 }
 
 .question-card__footer {
-  align-items: flex-start;
+  align-items: center;
   border-top: 1px solid var(--color-border-soft);
   display: flex;
-  gap: 12px;
   justify-content: space-between;
   margin-top: 14px;
   padding-top: 10px;
@@ -692,26 +907,6 @@ onUnmounted(() => {
 .question-card__footer span {
   color: var(--color-text-muted);
   font-size: 12px;
-}
-
-.question-card__meta {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.question-card__source,
-.question-card__excerpt {
-  line-height: 1.4;
-}
-
-.question-card__excerpt {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
 }
 
 .question-card__hint {
@@ -744,6 +939,16 @@ onUnmounted(() => {
   gap: 8px;
   height: 42px;
   padding: 0 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.answer-input--ready {
+  border-color: color-mix(in srgb, var(--color-primary-500) 32%, var(--color-border) 68%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-100) 55%, transparent);
+}
+
+.answer-input--submitting {
+  opacity: 0.78;
 }
 
 .answer-input input {
@@ -767,6 +972,20 @@ onUnmounted(() => {
   height: 42px;
   min-width: 154px;
   padding: 0 16px;
+  transition: filter 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+.cast-btn--ready {
+  filter: saturate(1.08);
+}
+
+.cast-btn--submitting {
+  transform: scale(0.98);
+}
+
+.cast-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .return-btn {
@@ -816,6 +1035,56 @@ onUnmounted(() => {
   color: var(--color-danger-title);
 }
 
+.answer-feedback {
+  background: var(--color-danger-surface);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  text-align: left;
+}
+
+.answer-feedback--wrong {
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+}
+
+.answer-feedback__header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.answer-feedback__icon {
+  align-items: center;
+  background: var(--color-danger-title);
+  border-radius: 50%;
+  color: var(--color-surface);
+  display: inline-flex;
+  font-size: 14px;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.answer-feedback__title {
+  color: var(--color-danger-title);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.answer-feedback__correct {
+  color: var(--color-danger-title);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.answer-feedback__explanation {
+  color: var(--color-danger-title);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 @media (max-width: 900px) {
   .abyss-page {
@@ -842,7 +1111,7 @@ onUnmounted(() => {
     background-size: cover, 144% auto;
   }
 
-  .question-card h1 {
+  .question-card__title {
     font-size: 19px;
     max-width: none;
   }
@@ -857,4 +1126,61 @@ onUnmounted(() => {
     width: 100%;
   }
 }
+
+.revive-overlay {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 50;
+}
+
+.revive-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-elevated);
+  max-width: 420px;
+  padding: 24px;
+  width: 100%;
+}
+
+.revive-modal__eyebrow {
+  color: var(--color-primary-500);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+}
+
+.revive-modal h2 {
+  margin: 0 0 12px;
+}
+
+.revive-modal p {
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.revive-modal__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.revive-modal__buff {
+  color: var(--color-primary-500);
+  font-weight: 700;
+}
+
+.revive-modal__error {
+  color: var(--color-trend-down);
+  font-weight: 700;
+}
+
 </style>
+
+

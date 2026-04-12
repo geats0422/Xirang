@@ -1,4 +1,4 @@
-import { getAuthHeaders } from "./authHeaders";
+﻿import { getAuthHeaders } from "./authHeaders";
 import { apiRequest } from "./http";
 
 export type RunQuestionOption = {
@@ -6,30 +6,15 @@ export type RunQuestionOption = {
   text: string;
 };
 
-export type RunAnswerFeedback = {
-  correct_options: RunQuestionOption[];
-  explanation?: string | null;
-  source_locator?: string | null;
-  supporting_excerpt?: string | null;
-};
-
-export type MistakeReviewItem = {
-  question_id: string;
-  question_text: string;
-  selected_answer_text?: string | null;
-  correct_answer_text?: string | null;
-  explanation?: string | null;
-  source_locator?: string | null;
-  supporting_excerpt?: string | null;
-};
-
 export type RunQuestion = {
   id: string;
   text: string;
+  question_type?: string;
+  blank_count?: number | null;
   options: RunQuestionOption[];
-  source_locator?: string | null;
-  supporting_excerpt?: string | null;
 };
+
+export type RunMode = "endless" | "speed" | "draft" | "review";
 
 export type CreateRunResponse = {
   run_id: string;
@@ -58,37 +43,29 @@ export type RunPathOption = {
   kind: string;
   description: string;
   goal_total: number;
-  path_version_id?: string;
-  level_node_id?: string;
+  status?: "locked" | "unlocked" | "completed";
 };
 
 export type RunPathOptionsResponse = {
-  mode: "endless" | "speed" | "draft";
-  generation_status?: "ready" | "generating" | "failed";
-  path_version_id?: string;
-  version_no?: number;
-  job_id?: string | null;
+  mode: RunMode;
   options: RunPathOption[];
 };
 
-export type RunPathRegenerationResponse = {
-  generation_status: "generating" | "ready" | "failed";
-  mode: "endless" | "speed" | "draft";
-  path_version_id?: string;
-  next_version_no?: number;
-  job_id?: string | null;
-};
-
-export type CreateRunOptions = {
-  pathId?: string;
-  pathVersionId?: string;
-  levelNodeId?: string;
-  isLegendReview?: boolean;
+export type QuestionFeedback = {
+  correct_answer: string | null;
+  correct_option_ids: string[];
+  explanation: string | null;
 };
 
 export type SubmitAnswerResponse = {
   is_correct: boolean;
-  feedback: RunAnswerFeedback | null;
+  answer: {
+    id: string;
+    question_id: string;
+    selected_option_ids: string[];
+    is_correct: boolean;
+  };
+  feedback: QuestionFeedback;
   run: {
     id: string;
     status: string;
@@ -96,6 +73,17 @@ export type SubmitAnswerResponse = {
     state: Record<string, unknown>;
   };
   settlement: SettlementPayload | null;
+};
+
+export type UseReviveResponse = {
+  run: {
+    id: string;
+    status: string;
+    score: number;
+    state: Record<string, unknown>;
+  };
+  coin_balance: number;
+  revive_cost: number;
 };
 
 export type RunListItem = {
@@ -109,34 +97,40 @@ export type RunListItem = {
 };
 
 export const createRun = async (
-  documentId: string,
-  mode: "endless" | "speed" | "draft",
+  documentId: string | undefined,
+  mode: RunMode,
   questionCount = 1,
-  options: CreateRunOptions = {},
+  pathId?: string,
+  mistakeReview?: boolean,
 ): Promise<CreateRunResponse> => {
+  const body: Record<string, unknown> = {
+    mode,
+    question_count: questionCount,
+    path_id: pathId,
+    mistake_review: mistakeReview,
+  };
+
+  if (documentId) {
+    body.document_id = documentId;
+  }
+
   return apiRequest<CreateRunResponse>("/api/v1/runs", {
     method: "POST",
     headers: getAuthHeaders(),
-    body: {
-      document_id: documentId,
-      mode,
-      question_count: questionCount,
-      path_id: options.pathId,
-      path_version_id: options.pathVersionId,
-      level_node_id: options.levelNodeId,
-      is_legend_review: options.isLegendReview ?? false,
-    },
+    body,
   });
 };
 
 export const listRunPathOptions = async (
-  documentId: string,
-  mode: "endless" | "speed" | "draft",
+  documentId: string | undefined,
+  mode: RunMode,
 ): Promise<RunPathOptionsResponse> => {
-  const encodedDocumentId = encodeURIComponent(documentId);
   const encodedMode = encodeURIComponent(mode);
+  const documentQuery = documentId
+    ? `&document_id=${encodeURIComponent(documentId)}`
+    : "";
   return apiRequest<RunPathOptionsResponse>(
-    `/api/v1/runs/path-options?mode=${encodedMode}&document_id=${encodedDocumentId}`,
+    `/api/v1/runs/path-options?mode=${encodedMode}${documentQuery}`,
     {
       headers: getAuthHeaders(),
     },
@@ -148,6 +142,7 @@ export const submitAnswer = async (
   questionId: string,
   selectedOptionIds: string[],
   answerTimeMs?: number,
+  textAnswer?: string,
 ): Promise<SubmitAnswerResponse> => {
   return apiRequest<SubmitAnswerResponse>(`/api/v1/runs/${runId}/answers`, {
     method: "POST",
@@ -156,6 +151,7 @@ export const submitAnswer = async (
       question_id: questionId,
       selected_option_ids: selectedOptionIds,
       answer_time_ms: answerTimeMs,
+      text_answer: textAnswer,
     },
   });
 };
@@ -166,17 +162,9 @@ export const listRuns = async (): Promise<RunListItem[]> => {
   });
 };
 
-
-export const regenerateRunPath = async (
-  documentId: string,
-  mode: "endless" | "speed" | "draft",
-): Promise<RunPathRegenerationResponse> => {
-  return apiRequest<RunPathRegenerationResponse>("/api/v1/runs/path-regenerations", {
+export const useRunRevive = async (runId: string): Promise<UseReviveResponse> => {
+  return apiRequest<UseReviveResponse>(`/api/v1/runs/${runId}/revive`, {
     method: "POST",
     headers: getAuthHeaders(),
-    body: {
-      document_id: documentId,
-      mode,
-    },
   });
 };

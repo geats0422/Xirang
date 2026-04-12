@@ -408,7 +408,7 @@ class TestRunService:
         doc_id = uuid4()
         questions = make_questions(10, doc_id)
 
-        for mode in [RunMode.ENDLESS, RunMode.SPEED, RunMode.DRAFT]:
+        for mode in [RunMode.ENDLESS, RunMode.SPEED, RunMode.DRAFT, RunMode.REVIEW]:
             run, _ = await service.create_run(
                 owner_user_id=user_id,
                 document_id=doc_id,

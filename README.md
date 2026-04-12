@@ -16,6 +16,7 @@ Xirang/
 │  │  ├─ pages/
 │  │  ├─ components/
 │  │  ├─ composables/
+│  │  ├─ config/
 │  │  └─ api/
 │  ├─ vite.config.ts
 │  └─ package.json
@@ -31,6 +32,7 @@ Xirang/
 │  └─ .env.example
 ├─ docs/
 │  └─ specs/2026-03-16-backend-v1-design.md
+├─ Design Document/             # 产品设计文档
 └─ AGENTS.md
 ```
 
@@ -41,9 +43,43 @@ Xirang/
 - 框架：Vue 3 + Vue Router 4
 - 构建：Vite
 - 测试：Vitest + @vue/test-utils
+- 国际化：vue-i18n（支持 en、zh-CN、zh-TW、de、it、pt、es、fr、ru、ko-KR、ko-KP）
+- 主题：CSS 变量驱动，支持 light / dark / system 三种模式
 - 联通方式：
   - 开发环境优先走 Vite Proxy（`frontend/vite.config.ts`）
   - API 基址由 `VITE_API_BASE_URL` 控制（默认为空，走相对路径）
+
+### 前端页面路由
+
+| 路由 | 页面 | 说明 |
+|---|---|---|
+| `/` | EasternFantasyLandingPage | 着陆页 |
+| `/features` | DungeonScholarFeaturesPage | 功能介绍页 |
+| `/pricing` | DungeonScholarPricingPage | 定价页（免费/高级方案 + 代币充值） |
+| `/login` | DungeonScholarLoginPage | 登录 |
+| `/home` | DungeonScholarHomePage | 主页（上传、最近地城） |
+| `/library` | DungeonScholarLibraryPage | 书库 |
+| `/library/game-modes/endless-abyss` | DungeonScholarEndlessAbyssPage | 无尽深渊模式 |
+| `/library/game-modes/speed-survival` | DungeonScholarSpeedSurvivalPage | 速答生存模式 |
+| `/library/game-modes/knowledge-draft` | DungeonScholarKnowledgeDraftPage | 知识草稿模式 |
+| `/library/game-modes/review` | DungeonScholarReviewPage | 错题复习 |
+| `/quests` | DungeonScholarQuestsPage | 每日任务 |
+| `/shop` | DungeonScholarShopPage | 虚拟道具商店 |
+| `/leaderboard` | DungeonScholarLeaderboardPage | 排行榜 |
+| `/settings` | DungeonScholarSettingsPage | 设置 |
+| `/privacy-policy` | DungeonScholarPrivacyPolicyPage | 隐私政策 |
+| `/help-center` | DungeonScholarHelpCenterPage | 帮助中心 |
+| `/terms-of-service` | DungeonScholarTermsPage | 服务条款 |
+
+### 前端关键模块
+
+| 模块 | 说明 |
+|---|---|
+| `composables/useCoinPurchase.ts` | 统一态币购买逻辑（pricing 和 shop 共用） |
+| `config/pricing.ts` | 定价配置（订阅价格、代币包、特性标志） |
+| `api/shop.ts` | 商店 API（商品列表、购买、背包、账本） |
+| `composables/useInventory.ts` | 背包状态管理 |
+| `composables/useTheme.ts` | 主题切换（light/dark/system） |
 
 ### 后端
 
@@ -67,6 +103,7 @@ Xirang/
 | settlement 更新钱包并驱动商店 | Partial | wallet/shop 服务能力有，链路打通不足 |
 | 错题解析 + 题目反馈 | Partial | 后端 review/feedback API 有，前端尚未全面接线 |
 | 反馈学习沉淀规则库 | Partial | 相关服务/作业有，worker 主流程仍需补齐 |
+| 定价页面 + 代币购买 | Done | 前端定价页、统一代币购买 composable、i18n 均已实现 |
 
 结论：当前更接近“Phase-1 核心能力基础版（部分链路可用）”，不是“完整闭环已全部打通”。
 
@@ -268,3 +305,5 @@ npm run typecheck
 1. 完成 `runs` 服务真实实现（创建 run、答题、settlement）。
 2. 完成 worker ingestion 主流程（解析、索引、题库预生成）。
 3. 暴露 shop/wallet 的完整 API，并将前端从静态数据切换到真实调用。
+4. 接入支付网关（Creem/Stripe），将定价页代币购买从 API 占位切换为真实支付。
+5. 实现订阅管理后端 API，将定价页高级方案购买接入真实流程。

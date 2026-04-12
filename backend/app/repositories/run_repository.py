@@ -1,29 +1,416 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import datetime
+from hashlib import sha1
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import delete, func, select
 
-from app.db.models.economy import DailyRewardCapUsage
-from app.db.models.learning_paths import (
-    LearningPathNode,
-    LearningPathNodeType,
-    LearningPathProgress,
-    LearningPathProgressStatus,
-    LearningPathStatus,
-    LearningPathVersion,
-    LegendReviewProgress,
-)
-from app.db.models.questions import Question, QuestionOption
+from app.db.models.profile import UserSetting
+from app.db.models.questions import Question, QuestionOption, QuestionType
+from app.db.models.review import Mistake
 from app.db.models.runs import Run, RunAnswer, RunMode, RunQuestion, RunStatus, Settlement
-from app.db.models.subscriptions import Subscription, SubscriptionStatus
 from app.services.runs.schemas import AnswerResult, QuestionData
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+
+_BLANK_TOKEN = "____"
+_MAX_TOPIC_SOURCE_QUESTIONS = 200
+_GENERIC_TOPIC_TERMS = {
+    "question",
+    "questions",
+    "document",
+    "based",
+    "answer",
+    "answers",
+    "true",
+    "false",
+    "correct",
+    "incorrect",
+    "根据文档",
+    "文档内容",
+    "正确",
+    "错误",
+}
+_TOPIC_METADATA_KEYS = {
+    "knowledge_point",
+    "knowledge_points",
+    "knowledge",
+    "topic",
+    "topics",
+    "keyword",
+    "keywords",
+    "tag",
+    "tags",
+    "concept",
+    "concepts",
+    "cluster",
+    "clusters",
+}
+
+
+def _has_blank_placeholder(prompt: str) -> bool:
+    return _BLANK_TOKEN in prompt or "___" in prompt
+
+
+def _resolve_language_family(language_code: str | None) -> str:
+    normalized = (language_code or "en").strip().lower()
+    if normalized.startswith("zh"):
+        return "zh"
+    if normalized.startswith("en"):
+        return "en"
+    return "other"
+
+
+def _blank_separator(language_family: str) -> str:
+    return "、" if language_family == "zh" else ", "
+
+
+def _strip_trailing_question(text: str) -> str:
+    return re.sub(r"[\s\uFF1F?\u3002.!\uFF01]+$", "", text.strip())
+
+
+def _stable_int(text: str) -> int:
+    return int.from_bytes(sha1(text.encode("utf-8")).digest()[:8], "big", signed=False)
+
+
+def _canonical_topic_term(raw: str) -> str | None:
+    cleaned = (
+        re.sub(r"\s+", " ", raw)
+        .strip()
+        .strip("\uff0c\u3002,.!?\uff01\uff1f:\uff1a;\uff1b()[]{}\"'")
+    )
+    if not cleaned:
+        return None
+    lowered = cleaned.lower()
+    if lowered in _GENERIC_TOPIC_TERMS:
+        return None
+    if len(cleaned) <= 1:
+        return None
+    return cleaned
+
+
+def _extract_topic_terms_from_value(value: object, sink: list[str]) -> None:
+    if isinstance(value, str):
+        candidate = _canonical_topic_term(value)
+        if candidate is not None:
+            sink.append(candidate)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _extract_topic_terms_from_value(item, sink)
+        return
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            key_normalized = str(key).strip().lower()
+            if key_normalized in _TOPIC_METADATA_KEYS:
+                _extract_topic_terms_from_value(nested, sink)
+                continue
+            if isinstance(nested, (dict, list)):
+                _extract_topic_terms_from_value(nested, sink)
+
+
+def _extract_topic_terms(
+    *,
+    metadata: dict[str, object] | None,
+    prompt: str,
+    explanation: str | None,
+) -> list[str]:
+    candidates: list[str] = []
+    if isinstance(metadata, dict):
+        _extract_topic_terms_from_value(metadata, candidates)
+
+    text_blob = f"{prompt}\n{explanation or ''}"
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9\-]{3,}|[\u4e00-\u9fff]{2,8}", text_blob):
+        candidate = _canonical_topic_term(token)
+        if candidate is not None:
+            candidates.append(candidate)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _select_questions_for_path(
+    question_rows: list[Any],
+    *,
+    count: int,
+    path_id: str | None,
+) -> list[Any]:
+    if count <= 0:
+        return []
+    if not path_id or len(question_rows) <= count:
+        return question_rows[:count]
+
+    pool_size = len(question_rows)
+    offset = _stable_int(f"offset:{path_id}") % pool_size
+    rotated = question_rows[offset:] + question_rows[:offset]
+
+    sample_size = min(pool_size, max(count * 3, count))
+    sampled_pool = rotated[:sample_size]
+    ordered = sorted(
+        sampled_pool,
+        key=lambda item: (
+            _stable_int(f"{path_id}:{item.id}"),
+            item.created_at,
+            str(item.id),
+        ),
+    )
+
+    anchor_count = min(max(1, count // 4), count)
+    anchor = question_rows[:anchor_count]
+    selected: list[Any] = list(anchor)
+    selected_ids = {item.id for item in selected}
+
+    for item in ordered:
+        if item.id in selected_ids:
+            continue
+        selected.append(item)
+        selected_ids.add(item.id)
+        if len(selected) >= count:
+            return selected
+
+    for item in rotated:
+        if item.id in selected_ids:
+            continue
+        selected.append(item)
+        if len(selected) >= count:
+            break
+    return selected[:count]
+
+
+def _resolve_path_selection_count(
+    *,
+    mode: RunMode,
+    available_count: int,
+    requested_count: int,
+    path_id: str | None,
+) -> int:
+    if available_count <= 0 or requested_count <= 0:
+        return 0
+
+    target_count = min(available_count, requested_count)
+
+    if (
+        mode == RunMode.DRAFT
+        and path_id
+        and available_count > 1
+        and target_count >= available_count
+    ):
+        return available_count - 1
+
+    return target_count
+
+
+def _select_draft_questions_with_balanced_blanks(
+    question_rows: list[Any],
+    *,
+    count: int,
+    path_id: str | None,
+) -> list[Any]:
+    if count <= 0:
+        return []
+
+    singles = [row for row in question_rows if row.question_type == QuestionType.SINGLE_CHOICE]
+    multiples = [row for row in question_rows if row.question_type == QuestionType.MULTIPLE_CHOICE]
+
+    if not singles or not multiples:
+        return _select_questions_for_path(question_rows, count=count, path_id=path_id)
+
+    if count == 1:
+        prefer_multi = bool(path_id) and (_stable_int(f"draft-multi:{path_id}") % 2 == 1)
+        source = multiples if prefer_multi else singles
+        fallback = singles if prefer_multi else multiples
+        picked = _select_questions_for_path(
+            source, count=1, path_id=f"{path_id or 'draft'}:primary"
+        )
+        if picked:
+            return picked
+        return _select_questions_for_path(
+            fallback, count=1, path_id=f"{path_id or 'draft'}:fallback"
+        )
+
+    desired_multi = count // 2
+    if count % 2 == 1 and path_id and (_stable_int(f"draft-multi:{path_id}") % 2 == 1):
+        desired_multi += 1
+
+    desired_multi = max(1, min(count - 1, desired_multi))
+    multi_count = min(len(multiples), desired_multi)
+    single_count = count - multi_count
+
+    if single_count > len(singles):
+        deficit = single_count - len(singles)
+        single_count = len(singles)
+        multi_count = min(len(multiples), multi_count + deficit)
+    if multi_count > len(multiples):
+        deficit = multi_count - len(multiples)
+        multi_count = len(multiples)
+        single_count = min(len(singles), single_count + deficit)
+
+    if single_count == 0 and len(singles) > 0:
+        single_count = 1
+        multi_count = min(len(multiples), count - 1)
+    if multi_count == 0 and len(multiples) > 0:
+        multi_count = 1
+        single_count = min(len(singles), count - 1)
+
+    selected_singles = _select_questions_for_path(
+        singles,
+        count=single_count,
+        path_id=f"{path_id or 'draft'}:single",
+    )
+    selected_multiples = _select_questions_for_path(
+        multiples,
+        count=multi_count,
+        path_id=f"{path_id or 'draft'}:multiple",
+    )
+
+    interleaved: list[Any] = []
+    single_idx = 0
+    multi_idx = 0
+    start_with_multi = bool(path_id) and (_stable_int(f"draft-order:{path_id}") % 2 == 1)
+
+    while len(interleaved) < count and (
+        single_idx < len(selected_singles) or multi_idx < len(selected_multiples)
+    ):
+        if start_with_multi:
+            if multi_idx < len(selected_multiples):
+                interleaved.append(selected_multiples[multi_idx])
+                multi_idx += 1
+            if len(interleaved) >= count:
+                break
+            if single_idx < len(selected_singles):
+                interleaved.append(selected_singles[single_idx])
+                single_idx += 1
+        else:
+            if single_idx < len(selected_singles):
+                interleaved.append(selected_singles[single_idx])
+                single_idx += 1
+            if len(interleaved) >= count:
+                break
+            if multi_idx < len(selected_multiples):
+                interleaved.append(selected_multiples[multi_idx])
+                multi_idx += 1
+
+    while len(interleaved) < count and single_idx < len(selected_singles):
+        interleaved.append(selected_singles[single_idx])
+        single_idx += 1
+    while len(interleaved) < count and multi_idx < len(selected_multiples):
+        interleaved.append(selected_multiples[multi_idx])
+        multi_idx += 1
+
+    return interleaved[:count]
+
+
+def _apply_zh_cloze_patterns(stem: str, blank_segment: str) -> str | None:
+    direct_patterns = (
+        (r"^(.+?)是谁$", rf"\1是{_BLANK_TOKEN}"),
+        (r"^(.+?)是什么$", rf"\1是{_BLANK_TOKEN}"),
+        (r"^以下哪些是(.+)$", rf"\1包括{blank_segment}"),
+        (r"^哪些是(.+)$", rf"\1包括{blank_segment}"),
+    )
+    for pattern, replacement in direct_patterns:
+        if re.search(pattern, stem):
+            return re.sub(pattern, replacement, stem)
+
+    token_replacements = (
+        ("哪一年", "____年"),
+        ("哪一个", _BLANK_TOKEN),
+        ("哪一项", _BLANK_TOKEN),
+        ("哪一位", _BLANK_TOKEN),
+        ("什么时候", _BLANK_TOKEN),
+        ("哪个", _BLANK_TOKEN),
+        ("哪项", _BLANK_TOKEN),
+        ("哪种", _BLANK_TOKEN),
+        ("哪位", _BLANK_TOKEN),
+        ("哪些", blank_segment),
+        ("什么", _BLANK_TOKEN),
+        ("谁", _BLANK_TOKEN),
+        ("何时", _BLANK_TOKEN),
+        ("哪里", _BLANK_TOKEN),
+        ("哪儿", _BLANK_TOKEN),
+        ("是否", _BLANK_TOKEN),
+    )
+    for source, target in token_replacements:
+        if source in stem:
+            return stem.replace(source, target, 1)
+    return None
+
+
+def _apply_en_cloze_patterns(stem: str, blank_segment: str) -> str | None:
+    normalized = stem.strip()
+    direct_patterns = (
+        (r"^Who\s+(.+)$", rf"{_BLANK_TOKEN} \1"),
+        (r"^Which\s+(.+)$", rf"{_BLANK_TOKEN} \1"),
+        (r"^What is\s+(.+)$", rf"\1 is {_BLANK_TOKEN}"),
+        (r"^What are\s+(.+)$", rf"\1 are {blank_segment}"),
+        (r"^When was\s+(.+)$", rf"\1 was {_BLANK_TOKEN}"),
+        (r"^Where is\s+(.+)$", rf"\1 is {_BLANK_TOKEN}"),
+        (r"^How many\s+(.+)$", rf"\1: {_BLANK_TOKEN}"),
+    )
+    for pattern, replacement in direct_patterns:
+        if re.search(pattern, normalized, flags=re.IGNORECASE):
+            return re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+    return None
+
+
+def _normalize_draft_prompt(
+    prompt: str,
+    *,
+    question_type: QuestionType,
+    correct_option_texts: list[str],
+    language_code: str = "en",
+) -> str:
+    normalized_prompt = prompt.strip()
+    if not normalized_prompt:
+        return normalized_prompt
+
+    language_family = _resolve_language_family(language_code)
+    if _has_blank_placeholder(normalized_prompt):
+        return normalized_prompt
+
+    blank_count = max(1, len(correct_option_texts))
+    if question_type != QuestionType.MULTIPLE_CHOICE:
+        blank_count = 1
+    blank_segment = _blank_separator(language_family).join([_BLANK_TOKEN] * blank_count)
+
+    if correct_option_texts:
+        replaced_prompt = normalized_prompt
+        replacements = 0
+        for answer_text in correct_option_texts:
+            candidate = answer_text.strip()
+            if not candidate or candidate not in replaced_prompt:
+                continue
+            replaced_prompt = replaced_prompt.replace(candidate, _BLANK_TOKEN, 1)
+            replacements += 1
+            if replacements >= blank_count:
+                break
+        if _has_blank_placeholder(replaced_prompt):
+            return replaced_prompt
+
+    stem = _strip_trailing_question(normalized_prompt)
+
+    if language_family == "zh":
+        zh_prompt = _apply_zh_cloze_patterns(stem, blank_segment)
+        if zh_prompt is not None:
+            return f"{zh_prompt}。"
+        return f"请根据文档将空格补充完整: {stem} {blank_segment}。"
+
+    en_prompt = _apply_en_cloze_patterns(stem, blank_segment)
+    if en_prompt is not None:
+        return f"{en_prompt}."
+    return f"{stem} {blank_segment}."
 
 
 class RunRepository:
@@ -34,13 +421,10 @@ class RunRepository:
         self,
         *,
         user_id: UUID,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         total_questions: int,
         mode_state: dict[str, object] | None = None,
-        source_path_version_id: UUID | None = None,
-        source_level_node_id: UUID | None = None,
-        is_legend_review: bool = False,
     ) -> Run:
         run = Run(
             user_id=user_id,
@@ -52,9 +436,6 @@ class RunRepository:
             correct_answers=0,
             combo_count=0,
             mode_state=mode_state or {},
-            source_path_version_id=source_path_version_id,
-            source_level_node_id=source_level_node_id,
-            is_legend_review=is_legend_review,
         )
         self._session.add(run)
         await self._session.flush()
@@ -70,6 +451,27 @@ class RunRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_completed_path_ids(
+        self, user_id: UUID, document_id: UUID | None, mode: RunMode
+    ) -> set[str]:
+        stmt = (
+            select(Run.mode_state)
+            .where(Run.user_id == user_id)
+            .where(Run.status == RunStatus.COMPLETED)
+            .where(Run.mode == mode)
+        )
+        if document_id is not None:
+            stmt = stmt.where(Run.document_id == document_id)
+        result = await self._session.execute(stmt)
+        states = result.scalars().all()
+        path_ids: set[str] = set()
+        for state in states:
+            if isinstance(state, dict):
+                path_id = state.get("path_id")
+                if isinstance(path_id, str) and path_id:
+                    path_ids.add(path_id)
+        return path_ids
+
     async def update_run(
         self,
         run_id: UUID,
@@ -81,8 +483,7 @@ class RunRepository:
         combo_count: int | None = None,
         mode_state: dict[str, object] | None = None,
         ended_at: datetime | None = None,
-        legend_reward_rate: float | None = None,
-        version_reward_discount: float | None = None,
+        clear_ended_at: bool = False,
     ) -> None:
         run = await self.get_run(run_id)
         if run is None:
@@ -100,24 +501,67 @@ class RunRepository:
             run.combo_count = combo_count
         if mode_state is not None:
             run.mode_state = mode_state
-        if ended_at is not None:
+        if clear_ended_at:
+            run.ended_at = None
+        elif ended_at is not None:
             run.ended_at = ended_at
-        if legend_reward_rate is not None:
-            run.legend_reward_rate = legend_reward_rate
-        if version_reward_discount is not None:
-            run.version_reward_discount = version_reward_discount
 
         await self._session.flush()
 
     async def list_document_questions(
         self,
         *,
-        document_id: UUID,
+        document_id: UUID | None,
         mode: RunMode,
         count: int,
         path_id: str | None = None,
+        user_id: UUID | None = None,
     ) -> list[QuestionData]:
-        stmt: Select[tuple[Question]] = select(Question).where(Question.document_id == document_id)
+        language_code = "en"
+        if mode == RunMode.DRAFT and user_id is not None:
+            language_code = await self.get_user_language_code(user_id)
+
+        if mode == RunMode.REVIEW and user_id is not None:
+            mistake_question_ids_stmt = select(Mistake.question_id).where(
+                Mistake.user_id == user_id
+            )
+            if document_id is not None:
+                mistake_question_ids_stmt = mistake_question_ids_stmt.where(
+                    Mistake.document_id == document_id
+                )
+            mistake_question_ids_subquery = mistake_question_ids_stmt.distinct().subquery()
+            stmt = select(Question).join(
+                mistake_question_ids_subquery,
+                mistake_question_ids_subquery.c.question_id == Question.id,
+            )
+        else:
+            if document_id is None:
+                return []
+            stmt = select(Question).where(Question.document_id == document_id)
+
+        # Filter by question type based on mode
+        if mode == RunMode.SPEED:
+            stmt = stmt.where(
+                Question.question_type.in_([QuestionType.TRUE_FALSE, QuestionType.SINGLE_CHOICE])
+            )
+        elif mode == RunMode.DRAFT:
+            # Draft mode prefers SINGLE_CHOICE and MULTIPLE_CHOICE
+            stmt = stmt.where(
+                Question.question_type.in_(
+                    [QuestionType.SINGLE_CHOICE, QuestionType.MULTIPLE_CHOICE]
+                )
+            )
+        elif mode == RunMode.ENDLESS:
+            stmt = stmt.where(
+                Question.question_type.in_(
+                    [
+                        QuestionType.FILL_IN_BLANK,
+                        QuestionType.SINGLE_CHOICE,
+                        QuestionType.TRUE_FALSE,
+                    ]
+                )
+            )
+
         if mode == RunMode.ENDLESS and path_id:
             target_difficulty = self._target_endless_difficulty(path_id)
             stmt = stmt.order_by(
@@ -139,18 +583,38 @@ class RunRepository:
         fetch_limit = max(count, 1)
         if mode == RunMode.DRAFT:
             fetch_limit = max(count * 3, count)
+        if path_id:
+            fetch_limit = max(fetch_limit, count * 4)
         stmt = stmt.limit(fetch_limit)
 
         result = await self._session.execute(stmt)
         question_rows = list(result.scalars().all())
 
+        if not question_rows:
+            return []
+
+        target_count = _resolve_path_selection_count(
+            mode=mode,
+            available_count=len(question_rows),
+            requested_count=count,
+            path_id=path_id,
+        )
+
         if mode == RunMode.DRAFT:
             hard = [q for q in question_rows if q.difficulty >= 3]
             soft = [q for q in question_rows if q.difficulty < 3]
             ordered = hard + soft
-            question_rows = ordered[:count]
+            question_rows = _select_draft_questions_with_balanced_blanks(
+                ordered,
+                count=target_count,
+                path_id=path_id,
+            )
         else:
-            question_rows = question_rows[:count]
+            question_rows = _select_questions_for_path(
+                question_rows,
+                count=target_count,
+                path_id=path_id,
+            )
 
         question_ids = [q.id for q in question_rows]
         option_map = await self._load_option_map(question_ids)
@@ -158,25 +622,140 @@ class RunRepository:
         questions: list[QuestionData] = []
         for question in question_rows:
             options = option_map.get(question.id, [])
-            source_locator = self._extract_source_locator(question.source_locator)
-            supporting_excerpt = self._extract_supporting_excerpt(question.question_metadata)
+            if mode == RunMode.SPEED and len(options) < 2:
+                continue
+            correct_options = [option for option in options if option.is_correct]
+            # Extract correct_answer from metadata for FILL_IN_BLANK questions
+            metadata = question.question_metadata or {}
+            raw_answer = (
+                metadata.get("answer")
+                if question.question_type == QuestionType.FILL_IN_BLANK
+                else None
+            )
+            correct_answer: str | None = str(raw_answer) if raw_answer is not None else None
+            prompt_text = question.prompt
+            blank_count: int | None = None
+            if mode == RunMode.DRAFT:
+                prompt_text = _normalize_draft_prompt(
+                    question.prompt,
+                    question_type=question.question_type,
+                    correct_option_texts=[option.content for option in correct_options],
+                    language_code=language_code,
+                )
+                if question.question_type == QuestionType.MULTIPLE_CHOICE:
+                    blank_count = max(2, len(correct_options))
+                elif question.question_type == QuestionType.SINGLE_CHOICE:
+                    blank_count = 1
+            question_type_value = question.question_type.value
+            if question_type_value == QuestionType.SINGLE_CHOICE.value and len(correct_options) > 1:
+                question_type_value = QuestionType.MULTIPLE_CHOICE.value
+
             questions.append(
                 QuestionData(
                     id=question.id,
                     document_id=question.document_id,
-                    question_text=question.prompt,
-                    question_type=question.question_type.value,
+                    question_text=prompt_text,
+                    question_type=question_type_value,
                     options=[{"id": str(option.id), "text": option.content} for option in options],
-                    correct_option_ids=[option.id for option in options if option.is_correct],
+                    correct_option_ids=[option.id for option in correct_options],
                     difficulty=question.difficulty,
+                    blank_count=blank_count,
                     chapter_reference=None,
+                    correct_answer=correct_answer,
                     explanation=question.explanation,
-                    source_locator=source_locator,
-                    supporting_excerpt=supporting_excerpt,
                 )
             )
 
         return questions
+
+    async def count_review_questions(self, *, document_id: UUID | None, user_id: UUID) -> int:
+        stmt = select(func.count(func.distinct(Mistake.question_id))).select_from(Mistake)
+        stmt = stmt.where(Mistake.user_id == user_id)
+        if document_id is not None:
+            stmt = stmt.where(Mistake.document_id == document_id)
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+    async def create_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID,
+        run_id: UUID,
+        explanation: str | None = None,
+    ) -> None:
+        mistake = Mistake(
+            user_id=user_id,
+            question_id=question_id,
+            document_id=document_id,
+            run_id=run_id,
+            explanation=explanation,
+        )
+        self._session.add(mistake)
+        await self._session.flush()
+
+    async def remove_mistake(
+        self,
+        *,
+        user_id: UUID,
+        question_id: UUID,
+        document_id: UUID | None = None,
+    ) -> None:
+        stmt = delete(Mistake).where(Mistake.user_id == user_id, Mistake.question_id == question_id)
+        if document_id is not None:
+            stmt = stmt.where(Mistake.document_id == document_id)
+        await self._session.execute(stmt)
+        await self._session.flush()
+
+    async def get_user_language_code(self, user_id: UUID) -> str:
+        stmt = select(UserSetting.language_code).where(UserSetting.user_id == user_id)
+        result = await self._session.execute(stmt)
+        language_code = result.scalar_one_or_none()
+        return str(language_code or "en")
+
+    async def count_document_questions(self, *, document_id: UUID) -> int:
+        """Count total questions available for a document."""
+        stmt = select(func.count()).select_from(Question).where(Question.document_id == document_id)
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
+
+    async def list_document_knowledge_points(
+        self,
+        *,
+        document_id: UUID,
+        limit: int = 8,
+    ) -> list[str]:
+        if limit <= 0:
+            return []
+
+        stmt = (
+            select(Question.question_metadata, Question.prompt, Question.explanation)
+            .where(Question.document_id == document_id)
+            .order_by(Question.created_at.asc())
+            .limit(_MAX_TOPIC_SOURCE_QUESTIONS)
+        )
+        result = await self._session.execute(stmt)
+        rows = list(result.all())
+        if not rows:
+            return []
+
+        counts: dict[str, int] = defaultdict(int)
+        first_seen: dict[str, int] = {}
+        for idx, (metadata, prompt, explanation) in enumerate(rows):
+            terms = _extract_topic_terms(
+                metadata=metadata if isinstance(metadata, dict) else None,
+                prompt=str(prompt or ""),
+                explanation=str(explanation) if explanation is not None else None,
+            )
+            for term in terms:
+                normalized = term.lower()
+                counts[normalized] += 1
+                if normalized not in first_seen:
+                    first_seen[normalized] = idx
+
+        ranked = sorted(counts.keys(), key=lambda key: (-counts[key], first_seen[key], key))
+        return list(ranked[:limit])
 
     @staticmethod
     def _target_endless_difficulty(path_id: str) -> int:
@@ -196,10 +775,10 @@ class RunRepository:
                 "options": question.options,
                 "correct_option_ids": [str(v) for v in question.correct_option_ids],
                 "difficulty": question.difficulty,
+                "blank_count": question.blank_count,
                 "chapter_reference": question.chapter_reference,
-                "explanation": question.explanation,
-                "source_locator": question.source_locator,
-                "supporting_excerpt": question.supporting_excerpt,
+                "correct_answer": question.correct_answer,  # For FILL_IN_BLANK
+                "explanation": question.explanation,  # For feedback
             }
             run_question = RunQuestion(
                 run_id=run_id,
@@ -243,26 +822,12 @@ class RunRepository:
                     "options": snapshot.get("options", []),
                     "correct_option_ids": snapshot.get("correct_option_ids", []),
                     "difficulty": difficulty,
-                    "explanation": snapshot.get("explanation"),
-                    "source_locator": snapshot.get("source_locator"),
-                    "supporting_excerpt": snapshot.get("supporting_excerpt"),
+                    "blank_count": snapshot.get("blank_count"),
+                    "correct_answer": snapshot.get("correct_answer"),  # For FILL_IN_BLANK
+                    "explanation": snapshot.get("explanation"),  # For feedback
                 }
             )
         return payload
-
-    @staticmethod
-    def _extract_source_locator(source_locator: dict[str, object] | None) -> str | None:
-        if not isinstance(source_locator, dict):
-            return None
-        raw_value = source_locator.get("source")
-        return raw_value.strip() if isinstance(raw_value, str) and raw_value.strip() else None
-
-    @staticmethod
-    def _extract_supporting_excerpt(metadata: dict[str, object] | None) -> str | None:
-        if not isinstance(metadata, dict):
-            return None
-        raw_value = metadata.get("supporting_excerpt")
-        return raw_value.strip() if isinstance(raw_value, str) and raw_value.strip() else None
 
     async def has_question_answer(self, run_id: UUID, question_id: UUID) -> bool:
         stmt = (
@@ -399,195 +964,6 @@ class RunRepository:
         stmt = select(Settlement).where(Settlement.run_id == run_id).limit(1)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
-
-    async def get_path_version_meta(self, *, path_version_id: UUID) -> tuple[UUID, str, int] | None:
-        stmt = select(LearningPathVersion).where(LearningPathVersion.id == path_version_id).limit(1)
-        result = await self._session.execute(stmt)
-        row = result.scalar_one_or_none()
-        if row is None:
-            return None
-        return row.document_id, row.mode, int(row.version_no)
-
-    async def get_latest_ready_path_version_no(self, *, document_id: UUID, mode: str) -> int | None:
-        stmt = select(func.max(LearningPathVersion.version_no)).where(
-            LearningPathVersion.document_id == document_id,
-            LearningPathVersion.mode == mode,
-            LearningPathVersion.status == LearningPathStatus.READY,
-        )
-        result = await self._session.execute(stmt)
-        value = result.scalar_one_or_none()
-        if value is None:
-            return None
-        return int(value)
-
-    async def get_legend_round_count(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        unit_node_id: UUID,
-    ) -> int:
-        stmt = (
-            select(LegendReviewProgress.legend_round_count)
-            .where(
-                LegendReviewProgress.user_id == user_id,
-                LegendReviewProgress.path_version_id == path_version_id,
-                LegendReviewProgress.unit_node_id == unit_node_id,
-            )
-            .limit(1)
-        )
-        result = await self._session.execute(stmt)
-        value = result.scalar_one_or_none()
-        return int(value or 0)
-
-    async def is_subscription_active(self, *, user_id: UUID, at: datetime) -> bool:
-        stmt = (
-            select(Subscription.id)
-            .where(
-                Subscription.user_id == user_id,
-                Subscription.status == SubscriptionStatus.ACTIVE,
-                Subscription.current_period_start <= at,
-                Subscription.current_period_end >= at,
-            )
-            .limit(1)
-        )
-        result = await self._session.execute(stmt)
-        return result.scalar_one_or_none() is not None
-
-    async def get_daily_reward_cap_usage(
-        self, *, user_id: UUID, date_key: date
-    ) -> DailyRewardCapUsage | None:
-        stmt = (
-            select(DailyRewardCapUsage)
-            .where(
-                DailyRewardCapUsage.user_id == user_id,
-                DailyRewardCapUsage.date_key == date_key,
-            )
-            .limit(1)
-        )
-        result = await self._session.execute(stmt)
-        return result.scalar_one_or_none()
-
-    async def upsert_daily_reward_cap_usage(
-        self,
-        *,
-        user_id: UUID,
-        date_key: date,
-        xp_delta: int,
-        coin_delta: int,
-    ) -> DailyRewardCapUsage:
-        row = await self.get_daily_reward_cap_usage(user_id=user_id, date_key=date_key)
-        if row is None:
-            row = DailyRewardCapUsage(
-                user_id=user_id,
-                date_key=date_key,
-                xp_legend_earned=max(0, xp_delta),
-                coin_legend_earned=max(0, coin_delta),
-            )
-            self._session.add(row)
-            await self._session.flush()
-            return row
-
-        row.xp_legend_earned = int(row.xp_legend_earned) + max(0, xp_delta)
-        row.coin_legend_earned = int(row.coin_legend_earned) + max(0, coin_delta)
-        await self._session.flush()
-        return row
-
-    async def upsert_learning_path_progress(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        node_id: UUID,
-        completed_run_id: UUID,
-        completed_at: datetime,
-    ) -> None:
-        stmt = (
-            select(LearningPathProgress)
-            .where(
-                LearningPathProgress.user_id == user_id,
-                LearningPathProgress.path_version_id == path_version_id,
-                LearningPathProgress.node_id == node_id,
-            )
-            .limit(1)
-        )
-        result = await self._session.execute(stmt)
-        row = result.scalar_one_or_none()
-        if row is None:
-            row = LearningPathProgress(
-                user_id=user_id,
-                path_version_id=path_version_id,
-                node_id=node_id,
-                status=LearningPathProgressStatus.COMPLETED,
-                first_completed_run_id=completed_run_id,
-                completed_runs_count=1,
-                last_completed_at=completed_at,
-            )
-            self._session.add(row)
-        else:
-            row.status = LearningPathProgressStatus.COMPLETED
-            if row.first_completed_run_id is None:
-                row.first_completed_run_id = completed_run_id
-            row.completed_runs_count = int(row.completed_runs_count) + 1
-            row.last_completed_at = completed_at
-        await self._session.flush()
-
-    async def resolve_unit_node_id(self, *, node_id: UUID) -> UUID | None:
-        stmt = select(LearningPathNode).where(LearningPathNode.id == node_id).limit(1)
-        result = await self._session.execute(stmt)
-        node = result.scalar_one_or_none()
-        if node is None:
-            return None
-        if node.node_type == LearningPathNodeType.UNIT:
-            return node.id
-
-        parent_node_id = node.parent_node_id
-        while parent_node_id is not None:
-            parent_stmt = (
-                select(LearningPathNode).where(LearningPathNode.id == parent_node_id).limit(1)
-            )
-            parent_result = await self._session.execute(parent_stmt)
-            parent = parent_result.scalar_one_or_none()
-            if parent is None:
-                return None
-            if parent.node_type == LearningPathNodeType.UNIT:
-                return parent.id
-            parent_node_id = parent.parent_node_id
-
-        return None
-
-    async def increment_legend_review_progress(
-        self,
-        *,
-        user_id: UUID,
-        path_version_id: UUID,
-        unit_node_id: UUID,
-        completed_at: datetime,
-    ) -> None:
-        stmt = (
-            select(LegendReviewProgress)
-            .where(
-                LegendReviewProgress.user_id == user_id,
-                LegendReviewProgress.path_version_id == path_version_id,
-                LegendReviewProgress.unit_node_id == unit_node_id,
-            )
-            .limit(1)
-        )
-        result = await self._session.execute(stmt)
-        row = result.scalar_one_or_none()
-        if row is None:
-            row = LegendReviewProgress(
-                user_id=user_id,
-                path_version_id=path_version_id,
-                unit_node_id=unit_node_id,
-                legend_round_count=1,
-                last_legend_run_at=completed_at,
-            )
-            self._session.add(row)
-        else:
-            row.legend_round_count = int(row.legend_round_count) + 1
-            row.last_legend_run_at = completed_at
-        await self._session.flush()
 
     async def commit(self) -> None:
         await self._session.commit()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from app.db.models.economy import PurchaseStatus, QuotaType
@@ -10,11 +10,15 @@ from app.schemas.shop import (
     PurchaseRequest,
     PurchaseResponse,
     ShopOfferResponse,
+    UseItemRequest,
+    UseItemResponse,
 )
 from app.services.wallet.service import InsufficientBalanceError
 
 if TYPE_CHECKING:
     from uuid import UUID
+
+    from app.repositories.effect_repository import EffectRepository
 
 
 class ShopOfferProtocol(Protocol):
@@ -102,6 +106,12 @@ class WalletServiceProtocol(Protocol):
         source_id: UUID | None,
         idempotency_key: str | None,
     ) -> Any: ...
+
+
+BOOST_DURATION_MINUTES = 10
+BOOST_MULTIPLIERS = {"xp_boost_1_5x": 1.5, "xp_boost_2x": 2.0, "xp_boost_3x": 3.0}
+TIME_TREASURE_DURATION_MINUTES = 10
+REVIVE_SHIELD_SECONDS = 180
 
 
 class ShopServiceError(Exception):
@@ -239,3 +249,113 @@ class ShopService:
         except Exception:
             await self.repository.rollback()
             raise
+
+    async def use_item(
+        self,
+        user_id: UUID,
+        payload: UseItemRequest,
+        effect_repo: EffectRepository,
+    ) -> UseItemResponse:
+        inventory = await self.repository.get_inventory(user_id)
+        inv_item = next((i for i in inventory if i.item_code == payload.item_code), None)
+        if not inv_item or inv_item.quantity < 1:
+            raise ValueError("INSUFFICIENT_INVENTORY: item not in inventory or quantity is 0")
+
+        await self.repository.upsert_inventory(user_id, payload.item_code, -1)
+
+        use_record_id = await effect_repo.record_use(
+            user_id=user_id,
+            item_code=payload.item_code,
+            inventory_id=getattr(inv_item, "id", None),
+            context=payload.context,
+        )
+
+        effect = await self._apply_item_effect(
+            user_id, payload.item_code, use_record_id, effect_repo, payload
+        )
+        remaining = await self.repository.get_inventory(user_id)
+        remaining_qty = next((i.quantity for i in remaining if i.item_code == payload.item_code), 0)
+
+        return UseItemResponse(
+            success=True,
+            item_code=payload.item_code,
+            quantity_remaining=remaining_qty,
+            effect_applied=effect,
+        )
+
+    async def _apply_item_effect(
+        self,
+        user_id: UUID,
+        item_code: str,
+        use_record_id: UUID,
+        effect_repo: EffectRepository,
+        payload: UseItemRequest,
+    ) -> dict[str, Any]:
+        now = datetime.now(tz=UTC)
+        if item_code in BOOST_MULTIPLIERS:
+            multiplier = BOOST_MULTIPLIERS[item_code]
+            active = [
+                e
+                for e in await effect_repo.list_active_effects(user_id)
+                if e.effect_type == "xp_boost" and e.multiplier == multiplier
+            ]
+            if active:
+                new_expires = (active[0].expires_at or now) + timedelta(
+                    minutes=BOOST_DURATION_MINUTES
+                )
+                await effect_repo.update_expires(active[0].id, new_expires)
+            else:
+                new_expires = now + timedelta(minutes=BOOST_DURATION_MINUTES)
+                await effect_repo.upsert_active_effect(
+                    user_id=user_id,
+                    effect_type="xp_boost",
+                    multiplier=multiplier,
+                    expires_at=new_expires,
+                    source_item_code=item_code,
+                    source_use_id=use_record_id,
+                )
+            return {
+                "type": "xp_boost",
+                "multiplier": multiplier,
+                "expires_at": new_expires.isoformat(),
+            }
+
+        elif item_code == "time_treasure":
+            active = [
+                e
+                for e in await effect_repo.list_active_effects(user_id)
+                if e.effect_type == "xp_boost"
+            ]
+            if not active:
+                raise ValueError("NO_ACTIVE_BOOST: no active xp boost to extend")
+            active_eff = active[0]
+            new_expires = active_eff.expires_at + timedelta(minutes=TIME_TREASURE_DURATION_MINUTES)
+            await effect_repo.update_expires(active_eff.id, new_expires)
+            return {
+                "type": "time_treasure",
+                "extended_by_minutes": TIME_TREASURE_DURATION_MINUTES,
+                "new_expires_at": new_expires.isoformat(),
+            }
+
+        elif item_code == "streak_freeze":
+            await effect_repo.upsert_active_effect(
+                user_id=user_id,
+                effect_type="streak_freeze",
+                source_item_code=item_code,
+                source_use_id=use_record_id,
+            )
+            return {"type": "streak_freeze"}
+
+        elif item_code == "revival":
+            await effect_repo.upsert_active_effect(
+                user_id=user_id,
+                effect_type="revive_shield",
+                expires_at=now + timedelta(seconds=REVIVE_SHIELD_SECONDS),
+                source_item_code=item_code,
+                source_use_id=use_record_id,
+                context={"run_id": payload.context.get("run_id") if payload.context else None},
+            )
+            return {"type": "revive_shield", "shield_seconds": REVIVE_SHIELD_SECONDS}
+
+        else:
+            raise ValueError(f"ITEM_NOT_USABLE: unknown item_code {item_code}")

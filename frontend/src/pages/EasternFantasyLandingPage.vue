@@ -71,7 +71,12 @@ watchEffect(() => {
 const navItems = computed(() => {
   // Access locale.value to make computed reactive to locale changes
   const _ = locale.value;
-  return [t("landing.features"), t("landing.pricing"), t("landing.community")];
+  return [
+    { label: t("landing.home"), href: ROUTES.landing },
+    { label: t("landing.features"), href: ROUTES.features },
+    { label: t("landing.pricing"), href: ROUTES.pricing },
+    { label: t("landing.community"), href: ROUTES.community },
+  ];
 });
 
 const featureCards = computed(() => {
@@ -103,9 +108,9 @@ const footerLinks = computed(() => {
   // Access locale.value to make computed reactive to locale changes
   const _ = locale.value;
   return [
-    { text: t("landing.privacyPolicy"), href: "/settings/privacy-policy" },
-    { text: t("landing.termsOfService"), href: "/settings/user-agreement" },
-    { text: t("landing.contactUs"), href: "/settings/help-center" },
+{ text: t("landing.privacyPolicy"), href: "/privacy-policy" },
+        { text: t("landing.termsOfService"), href: "/terms-of-service" },
+        { text: t("landing.contactUs"), href: "/help-center" },
     { text: t("landing.twitter"), href: "#" },
     { text: t("landing.discord"), href: "#" },
   ];
@@ -300,7 +305,15 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
         </div>
 
         <nav class="site-nav site-nav--centered" :aria-label="mainNavAria">
-          <a v-for="item in navItems" :key="item" href="#">{{ item }}</a>
+          <router-link
+            v-for="item in navItems"
+            :key="item.label"
+            :to="item.href"
+            class="nav-link"
+            :class="{ 'nav-link--active': $route.path === item.href }"
+          >
+            {{ item.label }}
+          </router-link>
         </nav>
 
         <div class="header-right">
@@ -383,7 +396,16 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
       </div>
 
       <nav id="mobile-nav" class="mobile-nav" :class="{ 'mobile-nav--open': isMenuOpen }" :aria-label="mobileNavAria">
-        <a v-for="item in navItems" :key="`mobile-${item}`" href="#" @click="isMenuOpen = false">{{ item }}</a>
+        <router-link
+          v-for="item in navItems"
+          :key="`mobile-${item.label}`"
+          :to="item.href"
+          class="mobile-nav-link"
+          :class="{ 'mobile-nav-link--active': $route.path === item.href }"
+          @click="isMenuOpen = false"
+        >
+          {{ item.label }}
+        </router-link>
       </nav>
     </header>
 
@@ -556,12 +578,43 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
   gap: var(--space-2);
 }
 
-.site-nav--centered a,
+.site-nav--centered .nav-link,
 .site-footer__links a {
   color: var(--color-text-tertiary);
   font-size: 14px;
   text-decoration: none;
+  position: relative;
   transition: color 0.2s ease;
+}
+
+.site-nav--centered .nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--color-primary-500);
+  transition: width 0.3s ease, left 0.3s ease;
+}
+
+.site-nav--centered .nav-link:hover {
+  color: var(--color-primary-700);
+}
+
+.site-nav--centered .nav-link:hover::after {
+  width: 100%;
+  left: 0;
+}
+
+.site-nav--centered .nav-link--active {
+  color: var(--color-primary-600);
+  font-weight: 500;
+}
+
+.site-nav--centered .nav-link--active::after {
+  width: 100%;
+  left: 0;
 }
 
 .menu-toggle {
@@ -585,10 +638,23 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
   padding: 0 var(--space-8);
 }
 
-.mobile-nav a {
+.mobile-nav .mobile-nav-link {
   color: var(--color-text-tertiary);
   padding: var(--space-2) 0;
   text-decoration: none;
+  position: relative;
+  transition: color 0.2s ease, padding-left 0.2s ease;
+}
+
+.mobile-nav .mobile-nav-link:hover {
+  color: var(--color-primary-600);
+  padding-left: var(--space-2);
+}
+
+.mobile-nav .mobile-nav-link--active {
+  color: var(--color-primary-600);
+  font-weight: 500;
+  padding-left: var(--space-2);
 }
 
 .site-nav--centered a:hover,

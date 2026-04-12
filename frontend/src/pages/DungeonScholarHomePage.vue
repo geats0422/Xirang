@@ -11,17 +11,13 @@ import { useScholarData } from "../composables/useScholarData";
 const { t, locale } = useI18n();
 
 type UploadState = "idle" | "loading" | "success" | "failure";
-type HomeDocumentStatus = "ready" | "processing" | "failed";
 
 type HomeDocumentCard = {
   id: string;
   title: string;
   createdAt: string;
-  lastVisited: string;
   progress: number;
   icon: string;
-  status: HomeDocumentStatus;
-  actionLabel: string;
 };
 
 type NotificationItem = {
@@ -31,13 +27,6 @@ type NotificationItem = {
 };
 
 const getDocIcon = (): string => "📖";
-
-const normalizeHomeDocumentStatus = (status: string | undefined): HomeDocumentStatus => {
-  if (status === "ready" || status === "failed") {
-    return status;
-  }
-  return "processing";
-};
 
 const {
   profileName,
@@ -65,25 +54,13 @@ const fetchDocuments = async () => {
       })
       .slice(0, 9);
 
-    documents.value = sortedRecentDocs.map((doc) => {
-      const status = normalizeHomeDocumentStatus(doc.status);
-      const actionLabel = status === "ready"
-        ? "Begin Study"
-        : status === "failed"
-          ? "Go to Library"
-          : "Processing...";
-
-      return {
-        id: doc.id,
-        title: doc.title,
-        createdAt: doc.created_at ?? "",
-        lastVisited: "Just now",
-        progress: 0,
-        icon: getDocIcon(),
-        status,
-        actionLabel,
-      };
-    });
+    documents.value = sortedRecentDocs.map((doc) => ({
+      id: doc.id,
+      title: doc.title,
+      createdAt: doc.created_at ?? "",
+      progress: 0,
+      icon: getDocIcon(),
+    }));
   } catch (error) {
     console.error("Failed to fetch documents:", error);
     documents.value = [];
@@ -104,7 +81,7 @@ watch(locale, () => {
 
 const shopRoute = ROUTES.shop;
 
-const { currentPath, navigateTo, router, routingTarget } = useRouteNavigation();
+const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
 
 const uploadState = ref<UploadState>("idle");
 const isDragging = ref(false);
@@ -119,31 +96,6 @@ const isBatchDeleteMode = ref(false);
 const selectedDocumentIds = ref<string[]>([]);
 
 const selectedCount = computed(() => selectedDocumentIds.value.length);
-const cardNotice = ref<string | null>(null);
-
-const openHomeDocument = async (card: HomeDocumentCard) => {
-  if (card.status === "processing") {
-    cardNotice.value = "This document is still processing. Please wait.";
-    return;
-  }
-
-  if (card.status === "failed") {
-    cardNotice.value = "Document parsing failed. Please retry from Library.";
-    await navigateTo(ROUTES.library);
-    return;
-  }
-
-  cardNotice.value = null;
-  await router.push({
-    path: ROUTES.gameModes,
-    query: {
-      flow: "begin",
-      documentId: card.id,
-      title: card.title,
-      format: "SCROLL",
-    },
-  });
-};
 
 const handleBrowseClick = () => {
   fileInput.value?.click();
@@ -375,7 +327,7 @@ defineExpose({
           <h2>{{ $t("home.recentTitle") }}</h2>
           <div class="recent-section__actions">
             <button class="recent-section__batch-btn" type="button" @click="toggleBatchDeleteMode">
-              {{ isBatchDeleteMode ? "Cancel Batch" : "Batch Delete" }}
+              {{ isBatchDeleteMode ? $t("home.cancelBatch") : $t("home.batchDelete") }}
             </button>
             <button
               v-if="isBatchDeleteMode"
@@ -384,13 +336,11 @@ defineExpose({
               :disabled="selectedCount === 0"
               @click="openBatchDeleteConfirm"
             >
-              Delete Selected ({{ selectedCount }})
+              {{ $t("home.deleteSelected", { count: selectedCount }) }}
             </button>
             <a href="#">{{ $t("home.viewAll") }}</a>
           </div>
         </div>
-
-        <p v-if="cardNotice" class="recent-section__notice">{{ cardNotice }}</p>
 
         <div class="dungeon-grid">
           <article v-for="card in documents" :key="card.id" class="dungeon-card">
@@ -416,28 +366,19 @@ defineExpose({
                 </button>
                 <div v-if="activeCardMenuId === card.id" class="dungeon-card__menu-popover">
                   <button class="dungeon-card__menu-action dungeon-card__menu-action--danger" type="button" @click="requestDelete(card)">
-                    Delete
+                    {{ $t("home.delete") }}
                   </button>
                 </div>
               </div>
             </div>
             <h3>{{ card.title }}</h3>
-            <p>{{ $t("home.lastVisitedPrefix") }} {{ card.lastVisited }}</p>
-            <span class="dungeon-card__status" :class="`dungeon-card__status--${card.status}`">{{ card.status }}</span>
+            <p>{{ $t("home.lastVisitedPrefix") }} {{ $t("home.lastVisitedNow") }}</p>
             <div class="dungeon-card__progress">
               <div class="progress-track" role="presentation">
                 <span class="progress-fill" :style="{ width: `${card.progress}%` }" />
               </div>
               <strong>{{ card.progress }}%</strong>
             </div>
-            <button
-              class="dungeon-card__action"
-              :class="`dungeon-card__action--${card.status}`"
-              type="button"
-              @click="openHomeDocument(card)"
-            >
-              {{ card.actionLabel }}
-            </button>
           </article>
         </div>
       </section>
@@ -445,7 +386,7 @@ defineExpose({
       <DocumentDeleteConfirmModal
         :visible="Boolean(pendingDeleteCard) || pendingBatchDeleteIds.length > 0"
         :title="pendingDeleteCard?.title || ''"
-        :message="pendingBatchDeleteIds.length > 0 ? `Are you sure you want to delete ${pendingBatchDeleteIds.length} selected documents?` : ''"
+        :message="pendingBatchDeleteIds.length > 0 ? $t('home.deleteSelectedConfirm', { count: pendingBatchDeleteIds.length }) : ''"
         :processing="isDeleting"
         @cancel="closeDeleteModal"
         @confirm="confirmDelete"
@@ -638,16 +579,6 @@ defineExpose({
 
 .recent-section {
   margin-top: 22px;
-}
-
-.recent-section__notice {
-  background: var(--color-chip-gold-bg);
-  border: 1px solid var(--color-muted-gold);
-  border-radius: 8px;
-  color: var(--color-chip-gold-text);
-  font-size: 13px;
-  margin: 10px 0 0;
-  padding: 10px 12px;
 }
 
 .recent-section__head {
@@ -846,31 +777,6 @@ defineExpose({
   margin: 8px 0 0;
 }
 
-.dungeon-card__status {
-  align-self: flex-start;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  margin-top: 10px;
-  padding: 4px 10px;
-  text-transform: capitalize;
-}
-
-.dungeon-card__status--ready {
-  background: color-mix(in srgb, var(--color-status-done) 14%, transparent);
-  color: var(--color-status-done);
-}
-
-.dungeon-card__status--processing {
-  background: color-mix(in srgb, var(--color-primary-500) 12%, transparent);
-  color: var(--color-primary-600);
-}
-
-.dungeon-card__status--failed {
-  background: color-mix(in srgb, var(--color-danger-title) 12%, transparent);
-  color: var(--color-danger-title);
-}
-
 .dungeon-card__progress {
   align-items: center;
   display: grid;
@@ -895,33 +801,6 @@ defineExpose({
 .dungeon-card__progress strong {
   color: #475569;
   font-size: 13px;
-}
-
-.dungeon-card__action {
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  margin-top: 12px;
-  min-height: 36px;
-}
-
-.dungeon-card__action--ready {
-  background: var(--color-primary-50);
-  border-color: var(--color-primary-100);
-  color: var(--color-primary-600);
-}
-
-.dungeon-card__action--processing {
-  background: var(--color-border-soft);
-  color: var(--color-text-muted);
-}
-
-.dungeon-card__action--failed {
-  background: color-mix(in srgb, var(--color-danger-surface) 80%, transparent);
-  border-color: var(--color-danger-border);
-  color: var(--color-danger-title);
 }
 
 @media (max-width: 1080px) {

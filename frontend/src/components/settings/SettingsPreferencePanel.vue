@@ -6,6 +6,7 @@ import { useScholarData } from "../../composables/useScholarData";
 import { SUPPORTED_LOCALES, type SupportedLocale } from "../../i18n";
 
 type PreferenceRow = {
+  id?: ToggleKey;
   icon: string;
   title: string;
   description: string;
@@ -30,7 +31,7 @@ const defaultToggleStates: Record<ToggleKey, boolean> = {
 
 const { t, locale } = useI18n();
 const { theme, setTheme } = useTheme();
-const { applyLanguage } = useScholarData();
+const { applyLanguage, updateSettingState } = useScholarData();
 
 const showLangDropdown = ref(false);
 const languageSelectRef = ref<HTMLElement | null>(null);
@@ -43,12 +44,8 @@ const currentLangLabel = computed(() => {
 });
 
 const resolveToggleKey = (row: PreferenceRow): ToggleKey => {
-  const normalized = row.title.toLowerCase();
-  if (normalized.includes("sound")) {
-    return "sound";
-  }
-  if (normalized.includes("haptic")) {
-    return "haptic";
+  if (row.id === "sound" || row.id === "haptic" || row.id === "reminder") {
+    return row.id;
   }
   return "reminder";
 };
@@ -106,9 +103,14 @@ const toggleLangDropdown = () => {
   showLangDropdown.value = !showLangDropdown.value;
 };
 
-const selectLanguage = (lang: SupportedLocale) => {
+const selectLanguage = async (lang: SupportedLocale) => {
+  if (lang === locale.value) {
+    showLangDropdown.value = false;
+    return;
+  }
   applyLanguage(lang);
   showLangDropdown.value = false;
+  await updateSettingState({ language_code: lang });
 };
 
 const handleDocumentClick = (event: MouseEvent) => {
@@ -144,7 +146,7 @@ onBeforeUnmount(() => {
   <section class="panel">
     <div class="panel__header">
       <span class="panel__icon">☷</span>
-      <h3>Game Preferences</h3>
+      <h3>{{ t("settings.preferences.title") }}</h3>
     </div>
 
     <div class="prefs-list">
@@ -157,7 +159,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-if="row.kind === 'theme'" class="segmented" role="group" aria-label="Theme">
+        <div v-if="row.kind === 'theme'" class="segmented" role="group" :aria-label="t('settings.preferences.themeLabel')">
           <button
             v-for="themeOption in themeOptions"
             :key="themeOption"
@@ -176,7 +178,7 @@ onBeforeUnmount(() => {
             <span>▾</span>
           </button>
 
-          <div v-if="showLangDropdown" class="dropdown-menu" role="menu" aria-label="Language">
+          <div v-if="showLangDropdown" class="dropdown-menu" role="menu" :aria-label="t('settings.preferences.languageLabel')">
             <button
               v-for="lang in SUPPORTED_LOCALES"
               :key="lang"

@@ -19,24 +19,10 @@ class QuestionData:
     options: list[dict[str, str]]
     correct_option_ids: list[UUID]
     difficulty: int
+    blank_count: int | None = None
     chapter_reference: str | None = None
-    explanation: str | None = None
-    source_locator: str | None = None
-    supporting_excerpt: str | None = None
-
-
-@dataclass(slots=True)
-class AnswerFeedbackOption:
-    id: str
-    text: str
-
-
-@dataclass(slots=True)
-class AnswerFeedback:
-    correct_options: list[AnswerFeedbackOption]
-    explanation: str | None = None
-    source_locator: str | None = None
-    supporting_excerpt: str | None = None
+    correct_answer: str | None = None  # For FILL_IN_BLANK questions
+    explanation: str | None = None  # Question explanation for feedback
 
 
 @dataclass(slots=True)
@@ -62,7 +48,6 @@ class SubmitAnswerResult:
     is_correct: bool
     run: Run
     settlement: Settlement | None = None
-    feedback: AnswerFeedback | None = None
 
 
 @dataclass(slots=True)

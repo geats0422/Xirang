@@ -23,11 +23,16 @@ export const ensureAuthIdentity = (): { accessToken: string; userId: string } =>
 
 export const getAuthHeaders = (): Record<string, string> => {
   const identity = ensureAuthIdentity();
-  if (!identity.accessToken || !identity.userId) {
+  if (!identity.accessToken) {
     return {};
   }
-  return {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${identity.accessToken}`,
-    "X-User-Id": identity.userId,
+  };
+  if (identity.userId) {
+    headers["X-User-Id"] = identity.userId;
+  }
+  return {
+    ...headers,
   };
 };

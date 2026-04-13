@@ -1,5 +1,4 @@
 services:
-  # ===== 后端 API =====
   - type: web
     name: xirang-api
     runtime: python
@@ -13,10 +12,18 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
       - key: DATABASE_URL
         sync: false
       - key: SECRET_KEY
         generateValue: true
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
       - key: CORS_ORIGINS
         value: "https://xirang.vercel.app"
       - key: FRONTEND_BASE_URL
@@ -25,11 +32,37 @@ services:
         value: local
       - key: UPLOAD_DIR
         value: /tmp/xirang-uploads
-      - key: PAGEINDEX_MOCK_FALLBACK
-        value: "true"
+      - key: MAX_FILE_SIZE_MB
+        value: "50"
       - key: NVIDIA_API_KEY
         sync: false
+      - key: NVIDIA_BASE_URL
+        value: "https://integrate.api.nvidia.com/v1"
+      - key: NVIDIA_MODEL
+        value: "nvidia/nemotron-3-nano-30b-a3b"
       - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: "https://api.openai.com/v1"
+      - key: OPENAI_MODEL
+        value: "gpt-4o-mini"
+      - key: PAGEINDEX_URL
+        value: "http://localhost:8080/pageindex"
+      - key: PAGEINDEX_API_KEY
+        sync: false
+      - key: PAGEINDEX_MOCK_FALLBACK
+        value: "true"
+      - key: MINERU_URL
+        value: "http://127.0.0.1:8300"
+      - key: MINERU_TIMEOUT_SECONDS
+        value: "1800"
+      - key: MINERU_BACKEND
+        value: hybrid-auto-engine
+      - key: MINERU_LANG_LIST
+        value: ch
+      - key: SUPABASE_URL
+        value: "https://mvakgrqpgpoehjstrbez.supabase.co"
+      - key: SUPABASE_ANON_KEY
         sync: false
       - key: GITHUB_CLIENT_ID
         sync: false
@@ -52,7 +85,6 @@ services:
       - key: MICROSOFT_CALLBACK_URL
         value: "https://xirang-api.onrender.com/api/v1/auth/oauth/microsoft/callback"
 
-  # ===== Background Worker =====
   - type: worker
     name: xirang-worker
     runtime: python
@@ -65,6 +97,10 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
       - key: DATABASE_URL
         sync: false
       - key: SECRET_KEY
@@ -73,9 +109,33 @@ services:
         value: local
       - key: UPLOAD_DIR
         value: /tmp/xirang-uploads
-      - key: PAGEINDEX_MOCK_FALLBACK
-        value: "true"
       - key: NVIDIA_API_KEY
         sync: false
+      - key: NVIDIA_BASE_URL
+        value: "https://integrate.api.nvidia.com/v1"
+      - key: NVIDIA_MODEL
+        value: "nvidia/nemotron-3-nano-30b-a3b"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: "https://api.openai.com/v1"
+      - key: OPENAI_MODEL
+        value: "gpt-4o-mini"
       - key: PAGEINDEX_URL
-        value: "http://localhost:8080"
+        value: "http://localhost:8080/pageindex"
+      - key: PAGEINDEX_API_KEY
+        sync: false
+      - key: PAGEINDEX_MOCK_FALLBACK
+        value: "true"
+      - key: MINERU_URL
+        value: "http://127.0.0.1:8300"
+      - key: MINERU_TIMEOUT_SECONDS
+        value: "1800"
+      - key: MINERU_BACKEND
+        value: hybrid-auto-engine
+      - key: MINERU_LANG_LIST
+        value: ch
+      - key: WORKER_POLL_INTERVAL_SECONDS
+        value: "5"
+      - key: WORKER_MAX_CONCURRENT_JOBS
+        value: "3"

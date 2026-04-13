@@ -47,14 +47,8 @@ class Run(UUIDPrimaryKeyMixin, Base):
         PGUUID(as_uuid=True),
         ForeignKey("document_question_sets.id", ondelete="SET NULL"),
     )
-    source_path_version_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("learning_path_versions.id", ondelete="SET NULL"),
-    )
-    source_level_node_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("learning_path_nodes.id", ondelete="SET NULL"),
-    )
+    source_path_version_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    source_level_node_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     is_legend_review: Mapped[bool] = mapped_column(
         nullable=False,
         default=False,

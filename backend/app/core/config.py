@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/xirang"
     database_echo: bool = False
-    pageindex_url: str = "http://localhost:8000/pageindex"
+    pageindex_url: str = "http://localhost:8080/pageindex"
     pageindex_auto_start: bool = True
     pageindex_timeout_seconds: int = 30
     pageindex_startup_timeout_seconds: int = 30
@@ -65,6 +65,9 @@ class Settings(BaseSettings):
         ],
     )
     frontend_base_url: str = "http://localhost:5173"
+
+    supabase_url: str | None = None
+    supabase_anon_key: str | None = None
 
     github_client_id: str | None = None
     github_client_secret: str | None = None

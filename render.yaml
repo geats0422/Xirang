@@ -1,0 +1,81 @@
+services:
+  # ===== 后端 API =====
+  - type: web
+    name: xirang-api
+    runtime: python
+    plan: free
+    region: singapore
+    branch: main
+    rootDir: backend
+    buildCommand: pip install uv && uv sync --frozen --no-dev && uv cache prune
+    startCommand: uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "https://xirang.vercel.app"
+      - key: FRONTEND_BASE_URL
+        value: "https://xirang.vercel.app"
+      - key: STORAGE_MODE
+        value: local
+      - key: UPLOAD_DIR
+        value: /tmp/xirang-uploads
+      - key: PAGEINDEX_MOCK_FALLBACK
+        value: "true"
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CALLBACK_URL
+        value: "https://xirang-api.onrender.com/api/v1/auth/oauth/github/callback"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        value: "https://xirang-api.onrender.com/api/v1/auth/oauth/google/callback"
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_TENANT_ID
+        value: common
+      - key: MICROSOFT_CALLBACK_URL
+        value: "https://xirang-api.onrender.com/api/v1/auth/oauth/microsoft/callback"
+
+  # ===== Background Worker =====
+  - type: worker
+    name: xirang-worker
+    runtime: python
+    plan: starter
+    region: singapore
+    branch: main
+    rootDir: backend
+    buildCommand: pip install uv && uv sync --frozen --no-dev && uv cache prune
+    startCommand: uv run python -m app.workers.main
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: STORAGE_MODE
+        value: local
+      - key: UPLOAD_DIR
+        value: /tmp/xirang-uploads
+      - key: PAGEINDEX_MOCK_FALLBACK
+        value: "true"
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: PAGEINDEX_URL
+        value: "http://localhost:8080"

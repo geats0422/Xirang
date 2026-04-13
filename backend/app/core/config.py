@@ -1,5 +1,6 @@
 """Application configuration."""
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -7,12 +8,20 @@ from typing import Annotated
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+def _resolve_env_file() -> Path:
+    base_dir = Path(__file__).resolve().parents[2]
+    env = os.getenv("APP_ENV", "local").lower()
+    env_file = base_dir / f".env.{env}"
+    if env_file.exists():
+        return env_file
+    fallback = base_dir / ".env"
+    return fallback if fallback.exists() else env_file
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=ENV_FILE,
+        env_file=_resolve_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )

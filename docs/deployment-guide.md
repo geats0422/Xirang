@@ -93,7 +93,24 @@ engine = create_async_engine(url, poolclass=NullPool)
 
 ## 第二部分：后端部署到 Render
 
-### 2.1 创建 `render.yaml`（Blueprint）
+### 2.1 后端多环境配置说明
+
+`backend/app/core/config.py` 已支持根据 `APP_ENV` 环境变量自动加载对应的环境文件：
+
+| `APP_ENV` | 读取的文件 | 用途 |
+|---|---|---|
+| `local`（默认值） | `.env.local` | 本地开发 |
+| `production` | `.env.production` | Render / 线上部署 |
+| 任意其他值 | `.env.{APP_ENV}` | 自定义环境 |
+
+如果对应的 `.env.{APP_ENV}` 文件不存在，会自动回退到 `.env`（兼容旧项目）。
+
+**建议的用法：**
+- 本地开发时确保 `backend/.env.local` 存在，`DATABASE_URL` 指向本地 PostgreSQL
+- 部署前复制 `.env.production` 模板并填入生产 secret（Supabase 连接串、OAuth credentials 等）
+- Render 的环境变量均来自 `.env.production` 中的值
+
+### 2.2 创建 `render.yaml`（Blueprint）
 
 在仓库**根目录**创建 `render.yaml`：
 
@@ -184,7 +201,7 @@ services:
 - 移除了 `databases` 部分
 - `startCommand` 中加入了 `alembic upgrade head` 自动迁移
 
-### 2.2 配置 DATABASE_URL
+### 2.3 配置 DATABASE_URL
 
 在 Render Dashboard 中为 API 和 Worker **分别**设置 `DATABASE_URL`：
 
@@ -194,10 +211,10 @@ postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.co
 
 > 两个服务需要填写**相同的** DATABASE_URL。
 
-### 2.3 关键配置说明
+### 2.4 关键配置说明
 
 | 配置项 | 说明 |
-|---|---|
+|---|---|---|
 | `rootDir: backend` | Render 从 monorepo 的 `backend/` 子目录构建 |
 | `buildCommand` | 安装 uv → 同步依赖 → 清理缓存 |
 | `startCommand` (Web) | 先运行 Alembic 迁移，再启动 uvicorn |
@@ -205,7 +222,7 @@ postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.co
 | `healthCheckPath: /health` | Render 通过此路径检测服务健康状态 |
 | `sync: false` | 标记为 secret，在 Dashboard 手动填写 |
 
-### 2.4 Worker 架构说明
+### 2.5 Worker 架构说明
 
 当前 Worker 是一个**长轮询进程**（非 Celery），它：
 - 轮询 `jobs` 表中的待处理任务
@@ -217,7 +234,7 @@ postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.co
 - **MinerU**：文档解析服务。如果不可用，仅支持 markdown/txt 格式上传
 - 如果暂时不需要文档处理功能，可以**先不部署 Worker**，只部署 API
 
-### 2.5 Render 部署步骤
+### 2.6 Render 部署步骤
 
 1. 将 `render.yaml` 提交到仓库根目录
 2. 在 Render Dashboard → **Blueprints** → **New Blueprint Instance**

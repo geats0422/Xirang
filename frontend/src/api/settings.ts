@@ -37,6 +37,28 @@ export type SettingsUpdateRequest = Partial<
   >
 >;
 
+export type AiConfigResponse = {
+  model: string;
+  temperature: number;
+  max_tokens: number;
+};
+
+export type AiModelsResponse = {
+  available_models: string[];
+};
+
+export const getAiConfig = async (): Promise<AiConfigResponse> => {
+  return apiRequest<AiConfigResponse>("/api/v1/settings/ai-config", {
+    headers: getAuthHeaders(),
+  });
+};
+
+export const getAiModels = async (): Promise<AiModelsResponse> => {
+  return apiRequest<AiModelsResponse>("/api/v1/settings/ai-models", {
+    headers: getAuthHeaders(),
+  });
+};
+
 /** Fetch available LLM models from backend */
 export const getAvailableModels = async (): Promise<ModelInfo[]> => {
   return apiRequest<ModelInfo[]>("/api/v1/settings/models");

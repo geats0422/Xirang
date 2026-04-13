@@ -504,7 +504,74 @@ Supabase 提供的连接串格式为 `postgresql://...`，项目需要 `postgres
 
 ---
 
-## 第八部分：费用估算
+## 第八部分：MinerU 部署（优云智算 UModel）
+
+### 8.1 为什么需要 MinerU
+
+Worker 的 `document_ingestion` 任务需要把用户上传的 PDF、DOCX、PPTX 解析为 Markdown，才能进入后续的 PageIndex 索引和 LLM 题库生成流程。
+
+- **Markdown / TXT**：不需要 MinerU，直接读取文本内容即可处理
+- **PDF / DOC / DOCX / PPT / PPTX**：必须调用 MinerU 进行文档解析
+
+如果 MinerU 不可用，上传非文本格式文档会 ingestion 失败。
+
+### 8.2 在优云智算部署 MinerU
+
+[优云智算 (UModel)](https://www.umodel.cn/) 提供一键部署的开源模型服务，支持快速启动 MinerU 解析服务，按量计费，无需自己维护 GPU 机器。
+
+**部署步骤：**
+
+1. 注册并登录 [优云智算](https://www.umodel.cn/)
+2. 进入 **模型广场** 或 **应用中心**，搜索 **MinerU**
+3. 选择合适的 GPU 实例（如 RTX 4090 / RTX 3090），点击 **一键部署**
+4. 配置实例参数（一般保持默认即可）：
+   - 导出格式：Markdown (`md`)
+   - 语言支持：中文 (`ch`)
+5. 等待实例启动完成（约 1-2 分钟）
+6. 部署完成后，在实例详情页获取：**外部访问 URL**
+   - 格式示例：`https://mineru-xxxxx.umodel.cn`
+
+### 8.3 更新后端环境变量
+
+在 Render Dashboard 中，对 **xirang-api** 和 **xirang-worker** 分别更新：
+
+| 变量 | 值 | 说明 |
+|---|---|---|
+| `MINERU_URL` | `https://你的-mineru-域名.umodel.cn` | 优云智算实例的外部访问地址 |
+| `MINERU_BACKEND` | `hybrid-auto-engine` | 默认解析引擎 |
+| `MINERU_LANG_LIST` | `ch` | 中文文档解析 |
+
+> 不需要配置 `MINERU_API_KEY`，当前 `MinerUClient` 使用无鉴权的 `/file_parse` 和 `/health` 端点。
+
+### 8.4 验证 MinerU 可用性
+
+更新环境变量后，重新部署 API 和 Worker（Manual Deploy → Deploy latest commit）。
+
+**健康检查测试：**
+```bash
+curl "https://你的-mineru-域名.umodel.cn/health"
+```
+应返回非 4xx/5xx 响应。
+
+**解析测试：**
+上传一个 PDF 到前端书库，观察 Worker 日志：
+- `document_ingestion` 任务状态从 `processing` 变为 `ready`
+- 不再出现 `MinerU parse failed` 或连接超时错误
+
+### 8.5 费用参考
+
+优云智算 MinerU 实例按 GPU 小时计费，月费用视使用频率而定：
+
+| 使用场景 | 推荐配置 | 估算月费用 |
+|---|---|---|
+| 低频测试 | RTX 3090，随用随开 | ¥50-100 |
+| 日常运行 | RTX 4090 常驻 | ¥200-400 |
+
+> 优云智算支持**停机不收费**模式。如果文档上传频率不高，可以在不使用时暂停实例，需要时再通过 API 或控制台唤醒。
+
+---
+
+## 第九部分：费用估算
 
 | 服务 | 平台 | 实例类型 | 月费用 |
 |---|---|---|---|

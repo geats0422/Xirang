@@ -19,7 +19,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     pageindex_ready, managed_process = await ensure_pageindex_ready_with_launch(settings)
     if not pageindex_ready:
-        raise RuntimeError(f"PageIndex did not become ready at {settings.pageindex_url}")
+        if not settings.pageindex_mock_fallback:
+            raise RuntimeError(f"PageIndex did not become ready at {settings.pageindex_url}")
+        managed_process = None
 
     app.state.pageindex_process = managed_process
 

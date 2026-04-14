@@ -38,6 +38,7 @@ class DocumentRepository:
         file_size_bytes: int,
         mime_type: str | None,
         checksum_sha256: str | None,
+        content_text: str | None = None,
     ) -> Document:
         document = Document(
             owner_user_id=owner_user_id,
@@ -48,6 +49,7 @@ class DocumentRepository:
             file_size_bytes=file_size_bytes,
             mime_type=mime_type,
             checksum_sha256=checksum_sha256,
+            content_text=content_text,
             ingest_status=DocumentStatus.PROCESSING,
         )
         self._session.add(document)

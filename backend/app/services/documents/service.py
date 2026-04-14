@@ -58,6 +58,7 @@ class DocumentRepositoryProtocol(Protocol):
         file_size_bytes: int,
         mime_type: str | None,
         checksum_sha256: str | None,
+        content_text: str | None = None,
     ) -> Any: ...
 
     async def get_document_by_id(self, document_id: UUID) -> Any | None: ...
@@ -162,6 +163,8 @@ class DocumentService:
         format: Any,
         mime_type: str,
     ) -> UploadResult:
+        from app.db.models.documents import DocumentFormat
+
         checksum = hashlib.sha256(file_content).hexdigest()
 
         storage_key = f"{owner_user_id}/{uuid4()}/{file_name}"
@@ -181,6 +184,10 @@ class DocumentService:
             desired_title=title,
         )
 
+        content_text = None
+        if format in (DocumentFormat.MARKDOWN, DocumentFormat.TXT):
+            content_text = file_content.decode("utf-8", errors="ignore")
+
         document = await self.repository.create_document(
             owner_user_id=owner_user_id,
             title=resolved_title,
@@ -190,6 +197,7 @@ class DocumentService:
             file_size_bytes=len(file_content),
             mime_type=mime_type,
             checksum_sha256=checksum,
+            content_text=content_text,
         )
 
         job = await self.repository.create_job(

@@ -27,6 +27,7 @@ class FakeDocument:
     mime_type: str | None
     checksum_sha256: str | None
     source_uri: str | None
+    content_text: str | None
     ingest_status: DocumentStatus
     page_count: int | None
     word_count: int | None
@@ -86,6 +87,7 @@ class FakeDocumentRepository:
         file_size_bytes: int,
         mime_type: str | None,
         checksum_sha256: str | None,
+        content_text: str | None = None,
     ) -> FakeDocument:
         now = datetime.now(UTC)
         doc = FakeDocument(
@@ -99,6 +101,7 @@ class FakeDocumentRepository:
             mime_type=mime_type,
             checksum_sha256=checksum_sha256,
             source_uri=None,
+            content_text=content_text,
             ingest_status=DocumentStatus.PROCESSING,
             page_count=None,
             word_count=None,

@@ -106,9 +106,12 @@ class QuestionValidator:
     def _has_meaningful_overlap(explanation: str, excerpt: str) -> bool:
         compact_explanation = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff]", "", explanation).lower()
         compact_excerpt = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff]", "", excerpt).lower()
-        if compact_explanation and compact_excerpt:
-            if compact_excerpt in compact_explanation or compact_explanation in compact_excerpt:
-                return True
+        if (
+            compact_explanation
+            and compact_excerpt
+            and (compact_excerpt in compact_explanation or compact_explanation in compact_excerpt)
+        ):
+            return True
 
         def tokenize(text: str) -> set[str]:
             latin_tokens = {token.lower() for token in re.findall(r"[A-Za-z0-9_]{3,}", text)}

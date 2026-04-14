@@ -559,6 +559,7 @@ async def _process_document_ingestion(
             file_name=document.file_name,
             document_format=document.format,
             mineru_client=mineru_client,
+            content_text=document.content_text,
         )
         if not content.strip():
             raise ValueError("Document content is empty")
@@ -771,8 +772,11 @@ async def _load_document_markdown(
     file_name: str,
     document_format: DocumentFormat,
     mineru_client: MinerUClientProtocol,
+    content_text: str | None = None,
 ) -> str:
     if document_format in (DocumentFormat.MARKDOWN, DocumentFormat.TXT):
+        if content_text is not None:
+            return normalize_markdown(content_text)
         raw_content = _read_document_content(storage_key, storage)
         return normalize_markdown(raw_content)
 

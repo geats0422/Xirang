@@ -30,6 +30,7 @@ class FakeDocument:
     ingest_status: DocumentStatus
     format: DocumentFormat
     file_name: str
+    content_text: str | None = None
 
 
 @dataclass

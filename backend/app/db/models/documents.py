@@ -114,6 +114,7 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     mime_type: Mapped[str | None] = mapped_column(String(120))
     checksum_sha256: Mapped[str | None] = mapped_column(String(64))
     source_uri: Mapped[str | None] = mapped_column(Text())
+    content_text: Mapped[str | None] = mapped_column(Text())
     ingest_status: Mapped[DocumentStatus] = mapped_column(
         Enum(
             DocumentStatus, native_enum=False, create_constraint=True, values_callable=enum_values

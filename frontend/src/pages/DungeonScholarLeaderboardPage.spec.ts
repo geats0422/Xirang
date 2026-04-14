@@ -178,7 +178,6 @@ describe("DungeonScholarLeaderboardPage", () => {
     });
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Default User");
     expect(wrapper.text()).not.toContain("Scholar 000000");
   });
 });

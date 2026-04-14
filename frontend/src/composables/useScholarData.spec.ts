@@ -110,15 +110,17 @@ describe("useScholarData profile name priority", () => {
     expect(state.profileName.value).toBe("testuser2");
   });
 
-  it("falls back to Default user when unauthenticated", async () => {
+  it("returns null profile name when unauthenticated", async () => {
     window.localStorage.setItem("xirang:isAuthenticated", "false");
-    window.localStorage.setItem("xirang:username", "testuser2");
-    mocks.getMyProfile.mockResolvedValue(buildProfile(null));
+    window.localStorage.removeItem("xirang:username");
+    mocks.getMyProfile.mockRejectedValue(new ApiError("Unauthorized", 401, null));
+    mocks.getCurrentAuthUser.mockRejectedValue(new ApiError("Unauthorized", 401, null));
 
     const state = useScholarData();
     await state.hydrate();
 
-    expect(state.profileName.value).toBe("Default user");
+    expect(state.profileName.value).toBeNull();
+    expect(state.isAuthenticated.value).toBe(false);
   });
 
   it("hydrates linked email from auth me", async () => {

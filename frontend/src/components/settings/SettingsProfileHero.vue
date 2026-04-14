@@ -3,14 +3,14 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 
 const props = defineProps<{
-  profileName?: string;
-  profileLevel?: string;
+  profileName?: string | null;
+  profileLevel?: string | null;
 }>();
 
 const { t } = useI18n();
 
-const displayName = computed(() => props.profileName?.trim() || t("settings.profile.defaultName"));
-const displayLevel = computed(() => props.profileLevel?.trim() || t("settings.profile.defaultLevel"));
+const displayName = computed(() => props.profileName?.trim() || "");
+const displayLevel = computed(() => props.profileLevel?.trim() || "");
 
 defineEmits<{
   editProfile: [];

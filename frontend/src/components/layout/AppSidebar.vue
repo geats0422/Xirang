@@ -20,8 +20,8 @@ const props = withDefaults(
   defineProps<{
     currentPath: string;
     routingTarget: string | null;
-    profileLevel?: string;
-    profileName?: string;
+    profileLevel?: string | null;
+    profileName?: string | null;
   }>(),
   {
     profileLevel: "",
@@ -55,8 +55,8 @@ const navLabels = computed(() => {
   return navItems.map((item) => t(item.i18nKey));
 });
 
-const displayProfileName = computed(() => props.profileName?.trim() || t("sidebar.defaultProfileName"));
-const displayProfileLevel = computed(() => props.profileLevel?.trim() || t("sidebar.defaultProfileLevel"));
+const displayProfileName = computed(() => props.profileName?.trim() || "");
+const displayProfileLevel = computed(() => props.profileLevel?.trim() || "");
 </script>
 
 <template>

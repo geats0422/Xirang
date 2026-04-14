@@ -28,15 +28,8 @@ type ProviderConfig = {
   models: string[];
 };
 
-const DEFAULT_DISPLAY_NAME = "Default user";
-const DEFAULT_LEVEL_LABEL = "Level 1 Scholar";
-
 const getStoredUsername = (): string | null => {
   if (typeof window === "undefined") {
-    return null;
-  }
-  const isAuthenticated = window.localStorage.getItem("xirang:isAuthenticated") === "true";
-  if (!isAuthenticated) {
     return null;
   }
   const value = window.localStorage.getItem("xirang:username")?.trim();
@@ -45,10 +38,6 @@ const getStoredUsername = (): string | null => {
 
 const getStoredEmail = (): string | null => {
   if (typeof window === "undefined") {
-    return null;
-  }
-  const isAuthenticated = window.localStorage.getItem("xirang:isAuthenticated") === "true";
-  if (!isAuthenticated) {
     return null;
   }
   const value = window.localStorage.getItem("xirang:email")?.trim();
@@ -68,16 +57,17 @@ const clearAuthSessionStorage = () => {
   window.localStorage.removeItem("xirang:isAuthenticated");
 };
 
-const resolveProfileName = (displayName: string | null | undefined): string => {
+const resolveProfileName = (displayName: string | null | undefined): string | null => {
   const normalizedDisplayName = typeof displayName === "string" ? displayName.trim() : "";
   if (normalizedDisplayName.length > 0) {
     return normalizedDisplayName;
   }
-  return getStoredUsername() || DEFAULT_DISPLAY_NAME;
+  return getStoredUsername();
 };
 
-const profileName = ref(DEFAULT_DISPLAY_NAME);
-const profileLevel = ref(DEFAULT_LEVEL_LABEL);
+const profileName = ref<string | null>(null);
+const profileLevel = ref<string | null>(null);
+const isAuthenticated = ref(false);
 const coins = ref(0);
 const hasCoinBalance = ref(false);
 const streak = ref(0);
@@ -318,13 +308,13 @@ const hydrate = async () => {
 
   if (profileResult.status === "fulfilled") {
     profileName.value = resolveProfileName(profileResult.value.display_name);
-    profileLevel.value = profileResult.value.tier_label?.trim() || DEFAULT_LEVEL_LABEL;
+    profileLevel.value = profileResult.value.tier_label?.trim() || null;
   } else {
     if (isUnauthorized(profileResult.reason)) {
       clearAuthSessionStorage();
     }
-    profileName.value = storedUsername || DEFAULT_DISPLAY_NAME;
-    profileLevel.value = DEFAULT_LEVEL_LABEL;
+    profileName.value = storedUsername;
+    profileLevel.value = null;
   }
 
   if (authUserResult.status === "fulfilled") {
@@ -425,6 +415,8 @@ const hydrate = async () => {
     leaderboard.value = [];
   }
 
+  isAuthenticated.value = authUserResult.status === "fulfilled" || Boolean(getStoredUsername());
+
   isBootstrapped.value = true;
 };
 
@@ -520,6 +512,7 @@ export const useScholarData = () => {
     documents,
     hapticEnabled,
     hydrate,
+    isAuthenticated,
     isBootstrapped,
     language,
     linkedEmail,

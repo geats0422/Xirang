@@ -9,7 +9,7 @@ const props = withDefaults(
     progress: number;
     userXp?: number;
     userLevel?: number;
-    userName?: string;
+    userName?: string | null;
     energyPoints?: number;
     userRank?: number;
     dailyFocus?: Array<{
@@ -44,7 +44,7 @@ const levelTitle = computed(() => {
   return t("leaderboard.summary.levelTitle", { level, rank: t(rankKey) });
 });
 
-const displayUserName = computed(() => props.userName?.trim() || t("leaderboard.summary.defaultUserName"));
+const displayUserName = computed(() => props.userName?.trim() || "");
 const displayRank = computed(() => {
   if (!props.userRank || props.userRank <= 0) {
     return "--";

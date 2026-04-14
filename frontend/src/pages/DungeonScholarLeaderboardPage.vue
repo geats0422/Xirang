@@ -61,7 +61,7 @@ const toStandingRow = (entry: LeaderboardEntry): StandingRow => {
 
   return {
     rank: String(entry.rank),
-    scholar: entry.display_name || t("leaderboard.defaultScholar"),
+    scholar: entry.display_name?.trim() || "",
     guild: "",
     xp: new Intl.NumberFormat(locale.value).format(entry.total_xp),
     status,

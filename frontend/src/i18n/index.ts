@@ -12,15 +12,11 @@ const messages = {
       leaderboard: "Leaderboard",
       settings: "Settings",
       userProfileAria: "User profile",
-      defaultProfileName: "Default user",
-      defaultProfileLevel: "Level 1 Scholar",
     },
     settings: {
       title: "Settings",
       subtitle: "Manage your profile, game preferences, and ancient technologies.",
       profile: {
-        defaultName: "Default user",
-        defaultLevel: "Level 1 Scholar",
         edit: "Edit Profile",
         tier: "Beta Tier",
         bio: "Master of the Azure Archives. Currently exploring the depths of the Python Caverns.",
@@ -246,14 +242,12 @@ const messages = {
     leaderboard: {
       metaTitle: "Xi Rang Leaderboard",
       youSuffix: "You",
-      defaultScholar: "Default User",
       topbarTitle: "Hall of Sages",
       searchAria: "Search scholars",
       searchPlaceholder: "Search for scrolls, scholars, or guilds...",
       notifications: "Notifications",
       summary: {
         levelTitle: "Level {level} · {rank}",
-        defaultUserName: "Default user",
         currentRank: "Current Rank {rank}",
         rankTitle: {
           novice: "Novice Scholar",
@@ -1290,15 +1284,11 @@ const messages = {
       leaderboard: "排行榜",
       settings: "设置",
       userProfileAria: "用户档案",
-      defaultProfileName: "默认用户",
-      defaultProfileLevel: "1 级学者",
     },
     settings: {
       title: "设置",
       subtitle: "管理你的档案、游戏偏好与古卷引擎。",
       profile: {
-        defaultName: "默认用户",
-        defaultLevel: "1 级学者",
         edit: "编辑资料",
         tier: "测试等级",
         bio: "青卷藏书阁守护者，正在探索 Python 洞窟深处。",
@@ -1515,14 +1505,12 @@ const messages = {
     leaderboard: {
       metaTitle: "息壤排行榜",
       youSuffix: "你",
-      defaultScholar: "默认用户",
       topbarTitle: "贤者殿",
       searchAria: "搜索学者",
       searchPlaceholder: "搜索卷轴、学者或公会...",
       notifications: "通知",
       summary: {
         levelTitle: "{level} 级 · {rank}",
-        defaultUserName: "默认用户",
         currentRank: "当前排名 {rank}",
         rankTitle: {
           novice: "新手学者",
@@ -2694,7 +2682,6 @@ const messages = {
     leaderboard: {
       metaTitle: "息壤排行榜",
       youSuffix: "你",
-      defaultScholar: "預設用戶",
       topbarTitle: "賢者殿",
       searchAria: "搜尋學者",
       searchPlaceholder: "搜尋卷軸、學者或公會...",
@@ -3773,7 +3760,6 @@ const messages = {
     leaderboard: {
       metaTitle: "Xi Rang Classifica",
       youSuffix: "Tu",
-      defaultScholar: "Utente predefinito",
       topbarTitle: "Sala dei Saggi",
       searchAria: "Cerca scienziati",
       searchPlaceholder: "Cerca pergamene, scienziati o gilde...",
@@ -4287,7 +4273,6 @@ const messages = {
     leaderboard: {
       metaTitle: "Xi Rang Rangliste",
       youSuffix: "Du",
-      defaultScholar: "Standard-Benutzer",
       topbarTitle: "Halle der Weisen",
       searchAria: "Gelehrte suchen",
       searchPlaceholder: "Schriftrollen, Gelehrte oder Gilden durchsuchen...",
@@ -4522,7 +4507,6 @@ const messages = {
     leaderboard: {
       metaTitle: "Xi Rang Ranking",
       youSuffix: "Você",
-      defaultScholar: "Usuário Padrão",
       topbarTitle: "Salão dos Sábios",
       searchAria: "Buscar estudioso",
       searchPlaceholder: "Buscar pergaminhos, estudioso ou guildas...",
@@ -4757,7 +4741,6 @@ const messages = {
     leaderboard: {
       metaTitle: "Xi Rang Clasificación",
       youSuffix: "Tú",
-      defaultScholar: "Usuario Predeterminado",
       topbarTitle: "Sala de los Sabios",
       searchAria: "Buscar eruditos",
       searchPlaceholder: "Buscar pergaminos, eruditos o gremios...",
@@ -4992,7 +4975,6 @@ const messages = {
     leaderboard: {
       metaTitle: "Xi Rang Classement",
       youSuffix: "Vous",
-      defaultScholar: "Utilisateur par défaut",
       topbarTitle: "Salle des Sages",
       searchAria: "Rechercher des scolastiques",
       searchPlaceholder: "Rechercher rouleaux, scolastiques ou guildes...",
@@ -5506,7 +5488,6 @@ const messages = {
     leaderboard: {
       metaTitle: "Xi Rang Рейтинг",
       youSuffix: "Вы",
-      defaultScholar: "Пользователь по умолчанию",
       topbarTitle: "Зал Мудрецов",
       searchAria: "Поиск учёных",
       searchPlaceholder: "Поиск свитков, учёных или гильдий...",
@@ -6020,7 +6001,6 @@ support: {
     leaderboard: {
       metaTitle: "Xi Rang 리더보드",
       youSuffix: "나",
-      defaultScholar: "기본 사용자",
       topbarTitle: "현자의 전당",
       searchAria: "학자 검색",
       searchPlaceholder: "두루마리, 학자 또는 길드 검색...",
@@ -6533,7 +6513,6 @@ heroStatBottomLine2: "보존",
     leaderboard: {
       metaTitle: "Xi Rang 순위",
       youSuffix: "나",
-      defaultScholar: "기본 사용자",
       topbarTitle: "현자의 전당",
       searchAria: "학자 찾기",
       searchPlaceholder: "두루마리, 학자 또는 조합 찾기...",

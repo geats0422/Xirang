@@ -38,6 +38,9 @@ const formState = ref({
   confirmPassword: "",
 });
 
+const showPassword = ref(false);
+const showConfirmPassword = ref(false);
+
 const isSubmitting = ref(false);
 const fieldErrors = ref<Record<string, string>>({});
 
@@ -63,8 +66,6 @@ const languageOptions = SUPPORTED_LOCALES.filter((item) => item === "en" || item
 
 const bgImage = "/login-assets/bg-pattern.svg";
 const heroImage = "/taotie-hero.svg";
-const mailIcon = "/login-assets/icon-mail.svg";
-const eyeIcon = "/login-assets/icon-eye.svg";
 
 const formTitle = computed(() => (isSignUpRoute.value ? t("login.signUpTitle") : t("login.title")));
 const formSubtitle = computed(() =>
@@ -393,7 +394,12 @@ watch(
                 :class="{ 'input--error': fieldErrors.email }"
                 autocomplete="email"
               />
-              <img class="email-form__field-icon email-form__field-icon--mail" :src="mailIcon" alt="" aria-hidden="true" />
+              <span class="email-form__field-icon email-form__field-icon--mail" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5" opacity="0.6" />
+                  <path d="M2 7L12 13L22 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+                </svg>
+              </span>
             </span>
             <span v-if="fieldErrors.email" class="email-form__error">{{ fieldErrors.email }}</span>
           </label>
@@ -403,12 +409,28 @@ watch(
             <span class="email-form__input-wrap">
               <input
                 v-model="formState.password"
-                type="password"
+                :type="showPassword ? 'text' : 'password'"
                 :placeholder="$t('login.passwordPlaceholder')"
                 :class="{ 'input--error': fieldErrors.password }"
                 :autocomplete="isSignUpRoute ? 'new-password' : 'current-password'"
               />
-              <img class="email-form__field-icon email-form__field-icon--eye" :src="eyeIcon" alt="" aria-hidden="true" />
+              <button
+                type="button"
+                class="email-form__field-icon email-form__field-icon--eye"
+                aria-hidden="true"
+                tabindex="-1"
+                @click="showPassword = !showPassword"
+              >
+                <svg v-if="!showPassword" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5" opacity="0.6" />
+                </svg>
+                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5" opacity="0.6" />
+                  <path d="M2 2L22 22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6" />
+                </svg>
+              </button>
             </span>
             <span v-if="fieldErrors.password" class="email-form__error">{{ fieldErrors.password }}</span>
           </label>
@@ -418,12 +440,28 @@ watch(
             <span class="email-form__input-wrap">
               <input
                 v-model="formState.confirmPassword"
-                type="password"
+                :type="showConfirmPassword ? 'text' : 'password'"
                 :placeholder="$t('login.confirmPasswordPlaceholder')"
                 :class="{ 'input--error': fieldErrors.confirmPassword }"
                 autocomplete="new-password"
               />
-              <img class="email-form__field-icon email-form__field-icon--eye" :src="eyeIcon" alt="" aria-hidden="true" />
+              <button
+                type="button"
+                class="email-form__field-icon email-form__field-icon--eye"
+                aria-hidden="true"
+                tabindex="-1"
+                @click="showConfirmPassword = !showConfirmPassword"
+              >
+                <svg v-if="!showConfirmPassword" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5" opacity="0.6" />
+                </svg>
+                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5" opacity="0.6" />
+                  <path d="M2 2L22 22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6" />
+                </svg>
+              </button>
             </span>
             <span v-if="fieldErrors.confirmPassword" class="email-form__error">{{ fieldErrors.confirmPassword }}</span>
           </label>
@@ -765,18 +803,26 @@ watch(
 }
 
 .email-form__field-icon {
-  display: block;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  cursor: default;
+  display: flex;
   flex: 0 0 auto;
-}
-
-.email-form__field-icon--mail {
-  height: 12px;
-  width: 15px;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  width: 20px;
 }
 
 .email-form__field-icon--eye {
-  height: 11.25px;
-  width: 16.5px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.email-form__field-icon--eye:hover {
+  color: #334155;
 }
 
 .email-form__error {

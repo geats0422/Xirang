@@ -272,6 +272,13 @@ const footerLinksAria = computed(() => {
   return t("landing.footerLinksAria");
 });
 
+const checkIsAuthenticated = (): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem("xirang:isAuthenticated") === "true";
+};
+
 const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => {
   if (isRouting.value) {
     return;
@@ -284,8 +291,14 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
     window.setTimeout(() => resolve(), 220);
   });
 
-  const targetPath =
-    action === "get-started" ? ROUTES.home : action === "sign-up" ? ROUTES.signUp : ROUTES.login;
+  let targetPath: string;
+  if (action === "get-started") {
+    targetPath = checkIsAuthenticated() ? ROUTES.home : ROUTES.login;
+  } else if (action === "sign-up") {
+    targetPath = ROUTES.signUp;
+  } else {
+    targetPath = ROUTES.login;
+  }
   await router.push(targetPath);
 
   isRouting.value = false;
@@ -431,7 +444,7 @@ const routeByAuthState = async (action: "login" | "sign-up" | "get-started") => 
               >
                 {{ getStartedLabel }}
               </BaseButton>
-              <BaseButton variant="ghost">{{ watchDemoLabel }}</BaseButton>
+              <BaseButton variant="ghost" @click="router.push(ROUTES.helpCenter)">{{ watchDemoLabel }}</BaseButton>
             </div>
             <p class="hero__social">{{ scholarsJoinedLabel }}</p>
           </div>

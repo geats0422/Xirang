@@ -1,200 +1,151 @@
-# Xirang Monorepo
+# Xirang 息壤
 
-息壤项目当前采用前后端同仓结构：
+> 投喂一点知识，生长无限闯关路径。
 
-- `frontend/`: Vue 3 + TypeScript + Vite
-- `backend/`: FastAPI + SQLAlchemy + PostgreSQL
+Xirang（息壤）是一个 AI 驱动的游戏化学习平台。上传学习材料，AI 自动解析生成个性化题库，通过无尽深渊、速答生存、知识草稿三种模式进行挑战，获得经验值和代币奖励。
 
-本文档以“当前代码真实状态”为准，包含：架构说明、启动步骤、环境变量、前后端联通方式、Phase-1 完成度盘点与验证命令。
+## 项目状态
 
-## 1. 仓库结构
+**核心闭环已完整实现**：上传 → 解析 → 题库生成 → 答题 → 结算 → 奖励 → 商店
 
-```text
-Xirang/
-├─ frontend/                    # Vue 3 应用
-│  ├─ src/
-│  │  ├─ pages/
-│  │  ├─ components/
-│  │  ├─ composables/
-│  │  ├─ config/
-│  │  └─ api/
-│  ├─ vite.config.ts
-│  └─ package.json
-├─ backend/                     # FastAPI 服务
-│  ├─ app/
-│  │  ├─ api/v1/
-│  │  ├─ services/
-│  │  ├─ repositories/
-│  │  ├─ workers/
-│  │  └─ db/models/
-│  ├─ tests/
-│  ├─ pyproject.toml
-│  └─ .env.example
-├─ docs/
-│  └─ specs/2026-03-16-backend-v1-design.md
-├─ Design Document/             # 产品设计文档
-└─ AGENTS.md
-```
+**待完成**：支付网关集成（Creem/Stripe）
 
-## 2. 技术架构
+---
+
+## 技术架构
 
 ### 前端
 
-- 框架：Vue 3 + Vue Router 4
-- 构建：Vite
-- 测试：Vitest + @vue/test-utils
-- 国际化：vue-i18n（支持 en、zh-CN、zh-TW、de、it、pt、es、fr、ru、ko-KR、ko-KP）
-- 主题：CSS 变量驱动，支持 light / dark / system 三种模式
-- 联通方式：
-  - 开发环境优先走 Vite Proxy（`frontend/vite.config.ts`）
-  - API 基址由 `VITE_API_BASE_URL` 控制（默认为空，走相对路径）
-
-### 前端页面路由
-
-| 路由 | 页面 | 说明 |
-|---|---|---|
-| `/` | EasternFantasyLandingPage | 着陆页 |
-| `/features` | DungeonScholarFeaturesPage | 功能介绍页 |
-| `/pricing` | DungeonScholarPricingPage | 定价页（免费/高级方案 + 代币充值） |
-| `/login` | DungeonScholarLoginPage | 登录 |
-| `/home` | DungeonScholarHomePage | 主页（上传、最近地城） |
-| `/library` | DungeonScholarLibraryPage | 书库 |
-| `/library/game-modes/endless-abyss` | DungeonScholarEndlessAbyssPage | 无尽深渊模式 |
-| `/library/game-modes/speed-survival` | DungeonScholarSpeedSurvivalPage | 速答生存模式 |
-| `/library/game-modes/knowledge-draft` | DungeonScholarKnowledgeDraftPage | 知识草稿模式 |
-| `/library/game-modes/review` | DungeonScholarReviewPage | 错题复习 |
-| `/quests` | DungeonScholarQuestsPage | 每日任务 |
-| `/shop` | DungeonScholarShopPage | 虚拟道具商店 |
-| `/leaderboard` | DungeonScholarLeaderboardPage | 排行榜 |
-| `/settings` | DungeonScholarSettingsPage | 设置 |
-| `/privacy-policy` | DungeonScholarPrivacyPolicyPage | 隐私政策 |
-| `/help-center` | DungeonScholarHelpCenterPage | 帮助中心 |
-| `/terms-of-service` | DungeonScholarTermsPage | 服务条款 |
-
-### 前端关键模块
-
-| 模块 | 说明 |
-|---|---|
-| `composables/useCoinPurchase.ts` | 统一态币购买逻辑（pricing 和 shop 共用） |
-| `config/pricing.ts` | 定价配置（订阅价格、代币包、特性标志） |
-| `api/shop.ts` | 商店 API（商品列表、购买、背包、账本） |
-| `composables/useInventory.ts` | 背包状态管理 |
-| `composables/useTheme.ts` | 主题切换（light/dark/system） |
+- **框架**: Vue 3 + TypeScript + Vite
+- **路由**: Vue Router 4
+- **状态**: Composition API + 本地存储
+- **测试**: Vitest + @vue/test-utils
+- **国际化**: vue-i18n（11 种语言）
+- **主题**: CSS 变量驱动，支持 light/dark/system
 
 ### 后端
 
-- 框架：FastAPI
-- 数据层：SQLAlchemy 2.0（async）+ PostgreSQL
-- 任务：`jobs` + worker 轮询执行
-- 检索/AI：PageIndex + OpenAI（按配置）
-- Python 包管理与执行：`uv`
+- **框架**: FastAPI + SQLAlchemy 2.0 (async)
+- **数据库**: PostgreSQL + pgvector
+- **任务队列**: 自定义 Job + Worker 轮询
+- **AI 解析**: PageIndex + OpenAI/NVIDIA
+- **文档解析**: MinerU (PDF)
+- **包管理**: uv
 
-## 3. Phase-1 完成度（对照设计规格）
+---
 
-对照 `docs/specs/2026-03-16-backend-v1-design.md` 的第一阶段核心闭环（1.1）做当前盘点：
+## 核心功能闭环
 
-| 核心链路 | 状态 | 说明 |
-|---|---|---|
-| 注册/登录/refresh/登出 | Done | API 与服务、测试链路均存在 |
-| 上传后立即可见 processing | Partial | 后端上传与状态具备，前端书库仍以静态数据为主 |
-| 解析+建索引+题库预生成 | Done | worker `document_ingestion` 已实现索引与题库生成编排（含失败回写） |
-| ready 后进入三模式 | Partial | 前端模式页存在，后端 run 已落地，但前端模式页仍以静态流为主 |
-| 完成答题并返回 settlement | Done | runs 服务与仓储已实现，答题完成后可生成 settlement |
-| settlement 更新钱包并驱动商店 | Partial | wallet/shop 服务能力有，链路打通不足 |
-| 错题解析 + 题目反馈 | Partial | 后端 review/feedback API 有，前端尚未全面接线 |
-| 反馈学习沉淀规则库 | Partial | 相关服务/作业有，worker 主流程仍需补齐 |
-| 定价页面 + 代币购买 | Done | 前端定价页、统一代币购买 composable、i18n 均已实现 |
+### 1. 文档上传与解析 ✅
 
-结论：当前更接近“Phase-1 核心能力基础版（部分链路可用）”，不是“完整闭环已全部打通”。
+| 组件 | 状态 | 说明 |
+|------|------|------|
+| 前端上传 | ✅ | `uploadDocument()` 调用 `/api/v1/documents/upload` |
+| 文件存储 | ✅ | 支持 local/S3 模式 |
+| 异步解析 | ✅ | Worker 自动处理 ingestion job |
+| 状态追踪 | ✅ | processing → indexing → generating → ready |
+| PageIndex 索引 | ✅ | 文档向量化索引，支持语义检索 |
+| 题库生成 | ✅ | LLM 自动生成选择题、填空题、判断题 |
 
-## 4. 前后端联通现状
+### 2. 游戏模式 ✅
 
-### 已完成的联通改造
+支持三种答题模式，全部接入真实后端 API：
 
-1. 新增前端 API 基础层：
-   - `frontend/src/api/http.ts`
-   - `frontend/src/api/system.ts`
-2. 新增后端健康检查联通 composable：
-   - `frontend/src/composables/useBackendHealth.ts`
-3. 首页接入后端健康状态展示：
-   - `frontend/src/pages/DungeonScholarHomePage.vue`
-4. Vite 代理配置：
-   - `frontend/vite.config.ts`
-   - 代理 `/api` 与 `/health` 到后端（默认 `http://localhost:8000`）
-5. 前端环境变量模板：
-   - `frontend/.env.example`
+| 模式 | 路由 | 状态 | 特点 |
+|------|------|------|------|
+| 无尽深渊 | `/library/game-modes/endless-abyss` | ✅ | 多楼层闯关，连击加成 |
+| 速答生存 | `/library/game-modes/speed-survival` | ✅ | 限时挑战，三种路线 |
+| 知识草稿 | `/library/game-modes/knowledge-draft` | ✅ | 组卡策略，知识点覆盖 |
+| 错题复习 | `/library/game-modes/review` | ✅ | 基于错题集的智能复习 |
 
-### 说明
+### 3. Run 生命周期 ✅
 
-- 当前已具备“真实网络联通”的基础能力（前端可请求后端健康接口）。
-- 业务接口的端到端联通仍取决于后端各域服务依赖是否已完整接入（当前部分路由仍为占位依赖）。
+```
+创建 Run → 获取题目 → 答题 → 提交 → 结算 → 奖励发放
+```
 
-## 5. 环境准备
+- **创建**: `POST /api/v1/runs`
+- **答题**: `POST /api/v1/runs/{id}/answers`
+- **结算**: 自动计算 XP/COIN 奖励
+- **复活**: 支持复活盾道具
 
-## 5.1 通用要求
+### 4. 经济系统 ✅
+
+| 功能 | API | 状态 |
+|------|-----|------|
+| 钱包余额 | `GET /api/v1/shop/balance` | ✅ |
+| 商品列表 | `GET /api/v1/shop/items` | ✅ |
+| 购买道具 | `POST /api/v1/shop/purchase` | ✅ |
+| 背包管理 | `GET /api/v1/shop/inventory` | ✅ |
+| 交易记录 | `GET /api/v1/shop/ledger` | ✅ |
+| 使用道具 | `POST /api/v1/shop/use-item` | ✅ |
+
+资产类型：COIN（代币）、XP（经验值）
+
+### 5. 每日任务 ✅
+
+- `GET /api/v1/quests` - 获取今日任务
+- `POST /api/v1/quests/{id}/claim` - 领取奖励
+- 自动追踪答题进度、登录等事件
+
+### 6. 排行榜 ✅
+
+- `GET /api/v1/leaderboard` - 周榜/月榜/总榜
+- 支持 XP、答题正确率等多维度排行
+
+### 7. 错题与反馈 ✅
+
+- 错题自动收录
+- 支持题目反馈（错误报告、建议）
+- AI 解析错题原因
+
+---
+
+## 页面路由
+
+| 路由 | 页面 | 功能 |
+|------|------|------|
+| `/` | 着陆页 | 产品介绍 |
+| `/login` | 登录页 | 邮箱/社交登录 |
+| `/home` | 主页 | 文档上传、最近地城 |
+| `/library` | 书库 | 文档列表、进度追踪 |
+| `/library/game-modes/*` | 游戏模式 | 三种答题模式 |
+| `/quests` | 每日任务 | 任务列表、奖励领取 |
+| `/shop` | 商店 | 道具购买、背包 |
+| `/leaderboard` | 排行榜 | 多维度排行 |
+| `/settings` | 设置 | 个人资料、偏好 |
+| `/pricing` | 定价页 | 代币包、订阅方案 |
+
+---
+
+## 本地开发
+
+### 环境要求
 
 - Node.js 18+
 - Python 3.11+
-- `uv`
-- PostgreSQL 15+
+- PostgreSQL 15+ (需 pgvector 扩展)
+- uv (`pip install uv`)
 
-## 5.2 后端环境变量
-
-复制并编辑：
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-关键变量（以 `backend/app/core/config.py` 与 `.env.example` 为准）：
-
-| 变量 | 说明 | 默认/示例 |
-|---|---|---|
-| `DATABASE_URL` | PostgreSQL 连接串 | `postgresql+asyncpg://postgres:postgres@localhost:5432/xirang` |
-| `SECRET_KEY` | JWT 签名密钥 | 本地请自定义 |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access Token 过期分钟 | `30` |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh Token 过期天数 | `7` |
-| `OPENAI_API_KEY` | OpenAI Key | 需要时配置 |
-| `PAGEINDEX_URL` | PageIndex 地址 | `http://localhost:8080` |
-| `PAGEINDEX_API_KEY` | PageIndex 鉴权 | 可空 |
-| `STORAGE_MODE` | 存储模式 | `local` |
-| `UPLOAD_DIR` | 本地上传目录 | `.data/uploads` |
-| `MAX_FILE_SIZE_MB` | 文件大小上限（MB） | `50` |
-| `CORS_ORIGINS` | 允许跨域来源（逗号分隔） | `http://localhost:5173,http://localhost:3000` |
-| `LOG_LEVEL` | 日志级别 | `INFO` |
-
-## 5.3 前端环境变量
-
-复制并编辑：
-
-```bash
-cp frontend/.env.example frontend/.env
-```
-
-| 变量 | 说明 | 默认/示例 |
-|---|---|---|
-| `VITE_API_BASE_URL` | 前端 API 基址。留空时使用相对路径（本地默认通过 Vite `/api` 代理） | 空 |
-| `VITE_API_PROXY_TARGET` | Vite 开发代理目标后端地址 | `http://localhost:8000` |
-| `VITE_ENABLE_BACKEND_HEALTH_CHECK` | 首页是否自动请求 `/health` 检测后端连通性 | `false` |
-
-## 6. 本地运行
-
-## 6.1 启动后端
+### 启动后端
 
 ```bash
 cd backend
 uv venv .venv
 uv sync --extra dev
+
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env 设置 DATABASE_URL, SECRET_KEY 等
+
+# 初始化数据库
 uv run alembic upgrade head
+
+# 启动服务
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-后端健康检查：
-
-- `GET http://localhost:8000/health`
-- `GET http://localhost:8000/api/v1/health`
-
-## 6.2 启动前端
+### 启动前端
 
 ```bash
 cd frontend
@@ -204,106 +155,145 @@ npm run dev
 
 默认地址：`http://localhost:5173`
 
-## 6.3 联通验证
-
-1. 确保后端在 `8000` 端口运行。
-2. 打开前端首页（`/home`）。
-3. 观察状态条中的后端连通状态：
-   - `Connected to ...` 表示联通成功。
-  - `Cannot reach backend service` 表示联通失败，需检查代理或后端是否启动。
-
-如果你看到 Vite 日志：
-
-`[vite] http proxy error: /health AggregateError [ECONNREFUSED]`
-
-通常表示前端代理目标（默认 `http://localhost:8000`）没有可用后端进程。请先启动后端，或把 `VITE_ENABLE_BACKEND_HEALTH_CHECK=false` 保持关闭。
-
-## 7. 质量验证命令
-
-## 7.1 后端（在 `backend/`）
+### 启动 Worker
 
 ```bash
-uv run ruff check app tests
-uv run mypy app
-uv run pytest tests -q --tb=short
+cd backend
+uv run python -m app.workers.main
 ```
 
-## 7.2 前端（在 `frontend/`）
+---
+
+## 环境变量
+
+### 后端 (`backend/.env`)
 
 ```bash
+# 必需
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/xirang
+SECRET_KEY=your-secret-key
+
+# AI 服务（至少配置一个）
+OPENAI_API_KEY=sk-...
+NVIDIA_API_KEY=nvapi-...
+
+# PageIndex（可选，文档索引）
+PAGEINDEX_URL=http://localhost:8080
+
+# 存储
+STORAGE_MODE=local  # 或 s3
+UPLOAD_DIR=.data/uploads
+
+# CORS
+CORS_ORIGINS=http://localhost:5173,https://your-frontend.com
+```
+
+### 前端 (`frontend/.env`)
+
+```bash
+# 开发环境（使用 Vite 代理）
+VITE_API_BASE_URL=
+VITE_API_PROXY_TARGET=http://localhost:8000
+
+# 生产环境（直接访问后端）
+# VITE_API_BASE_URL=https://api.xirang.app/api/v1
+```
+
+---
+
+## 部署
+
+### 后端 (Render)
+
+1. 创建 Web Service，选择 Docker 或 Python 3.11
+2. 设置环境变量（`SECRET_KEY`, `DATABASE_URL`, `CORS_ORIGINS`）
+3. 配置健康检查：`/health`
+4. 免费层注意：15 分钟无活动会休眠，建议配置 cron-job 定期 ping
+
+### 前端 (Vercel)
+
+```bash
+cd frontend
+vercel --prod
+```
+
+配置 `vercel.json` 重写规则：
+```json
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://your-api.com/api/$1" },
+    { "source": "/health", "destination": "https://your-api.com/health" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+```
+
+---
+
+## 质量检查
+
+### 后端
+
+```bash
+cd backend
+uv run ruff check app tests
+uv run mypy app
+uv run pytest -q --tb=short
+```
+
+### 前端
+
+```bash
+cd frontend
 npm run lint
 npm run typecheck
 npm run test
 npm run build
 ```
 
-## 7.3 启动检查（建议每次联调前执行）
+---
 
-后端（在 `backend/`）：
+## 项目结构
 
-```bash
-uv run pytest tests/api/test_system.py tests/api/test_auth_wiring.py -q --tb=short
+```
+Xirang/
+├── frontend/              # Vue 3 前端
+│   ├── src/
+│   │   ├── api/          # API 客户端
+│   │   ├── components/   # 组件
+│   │   ├── composables/  # 组合式函数
+│   │   ├── pages/        # 页面
+│   │   └── ...
+│   └── vercel.json
+├── backend/               # FastAPI 后端
+│   ├── app/
+│   │   ├── api/v1/       # API 路由
+│   │   ├── services/     # 业务逻辑
+│   │   ├── repositories/ # 数据访问
+│   │   ├── workers/      # 异步任务
+│   │   └── db/models/    # 数据模型
+│   └── tests/
+└── docs/                  # 文档
 ```
 
-前端（在 `frontend/`）：
+---
 
-```bash
-npm run lint
-npm run typecheck
-```
+## 下一步
 
-## 8. 本次关键修复
+### Phase 2: 商业化
 
-1. 清理 FastAPI 422 弃用告警：
-   - `backend/app/api/v1/runs.py`
-   - `HTTP_422_UNPROCESSABLE_ENTITY` -> `HTTP_422_UNPROCESSABLE_CONTENT`
-2. 增加前后端最小联通链路：
-   - API client + health 请求 + Vite 代理 + 首页状态展示。
-3. 完成 runs 核心闭环实现：
-   - 新增 `backend/app/repositories/run_repository.py`
-   - 完成 `backend/app/services/runs/service.py` 真实生命周期实现（create/list/submit/settlement）
-   - `backend/app/api/v1/runs.py` 接入真实依赖注入
-4. 完成 ingestion worker 主流程：
-   - `backend/app/workers/main.py` 实现 document ingestion 编排（文档读取、索引、题库生成、状态回写）
-   - 扩展 `backend/app/repositories/document_repository.py` 以支持 ingestion/question-set 持久化
-5. 贯通 settlement -> wallet/shop：
-   - `backend/app/services/runs/service.py` 在 run 结算时自动写入 COIN 与 XP 账本（幂等 key）
-   - 新增 `backend/app/repositories/wallet_repository.py` 与 `backend/app/repositories/shop_repository.py`
-   - `backend/app/api/v1/shop.py` 实装 `/items` `/purchase` `/inventory` `/balance` `/ledger`
+- [ ] **支付网关集成**
+  - Creem/Stripe 接入
+  - 代币包购买
+  - 订阅方案（Free/Super）
 
-## 9. 常见问题
+- [ ] **高级功能**
+  - 团队协作空间
+  - 学习路径定制
+  - AI 导师对话
 
-### Q1: 前端显示后端离线
+---
 
-- 检查后端是否启动在 `http://localhost:8000`
-- 检查 `frontend/.env` 中 `VITE_API_PROXY_TARGET`
-- 检查后端 `CORS_ORIGINS` 是否包含前端地址
+## 许可证
 
-### Q2: 本地测试通过但业务接口返回 500
-
-- 部分 API 在当前阶段仍依赖占位实现或未完成接线。
-- 测试中很多接口使用 dependency override/fake service，不等价于生产 wiring 全量完工。
-
-### Q4: 如何快速判断 auth 链路是否异常
-
-- 检查后端日志中的 `auth_request` 事件：
-  - 成功样例：`auth_request endpoint=/api/v1/auth/login status_code=200 ...`
-  - 告警样例：`auth_request endpoint=/api/v1/auth/register status_code=409 ... failure_reason=duplicate_identity`
-- 如果出现 5xx，请优先检查：
-  - `backend/app/api/v1/auth.py` 的 `get_auth_service` 是否是可执行依赖注入
-  - `backend/app/repositories/auth_repository.py` 是否存在真实实现
-
-### Q3: 为什么只接了健康检查
-
-- 当前目标是先确保前后端网络与配置层联通可观测。
-- 完整业务闭环仍需继续补齐 runs/ingestion/shop 等核心链路实现。
-
-## 10. 下一步建议
-
-按 Phase-1 核心闭环优先级，建议继续：
-
-1. 完成 `runs` 服务真实实现（创建 run、答题、settlement）。
-2. 完成 worker ingestion 主流程（解析、索引、题库预生成）。
-3. 暴露 shop/wallet 的完整 API，并将前端从静态数据切换到真实调用。
-4. 接入支付网关（Creem/Stripe），将定价页代币购买从 API 占位切换为真实支付。
-5. 实现订阅管理后端 API，将定价页高级方案购买接入真实流程。
+MIT

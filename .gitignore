@@ -37,6 +37,9 @@ test-results/
 
 # Misc
 nul
+
+# Design Documents (参考文档，非项目代码)
+Design Document/
 package-lock.json
 auth-test-home-after-login.png
 tmp_uploads/

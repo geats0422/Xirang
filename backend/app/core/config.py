@@ -120,9 +120,9 @@ class Settings(BaseSettings):
 
     @property
     def llm_base_url(self) -> str | None:
-        if self.openai_base_url:
+        if self.openai_api_key:
             return self.openai_base_url
-        if self.nvidia_base_url:
+        if self.nvidia_api_key:
             return self.nvidia_base_url
         return None
 

@@ -344,31 +344,13 @@ const bootstrapRun = async () => {
   }
 };
 
-const goBack = async () => {
-  const isMistakeReview = String(route.query.mistakeReview ?? "").toLowerCase() === "true";
-  await router.push({
-    path: isMistakeReview ? ROUTES.gameModes : route.query.documentId ? ROUTES.levelPath : ROUTES.gameModes,
-    query: route.query,
-  });
-};
-
 const goLibrary = async () => {
   await router.push(ROUTES.library);
 };
 
 const goPreviousPage = async () => {
   backNavigating.value = true;
-
-  if (window.history.length > 1) {
-    router.back();
-    window.setTimeout(() => {
-      backNavigating.value = false;
-    }, 220);
-    return;
-  }
-
-  await goBack();
-
+  await router.push(ROUTES.gameModes);
   window.setTimeout(() => {
     backNavigating.value = false;
   }, 220);

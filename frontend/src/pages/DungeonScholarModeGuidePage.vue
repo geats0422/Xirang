@@ -45,18 +45,7 @@ const tipItems = computed(() =>
 );
 
 const goBack = async () => {
-  if (window.history.length > 1) {
-    await router.back();
-    return;
-  }
-
-  await router.push({
-    path: ROUTES.levelPath,
-    query: {
-      ...route.query,
-      mode: mode.value,
-    },
-  });
+  await router.push(ROUTES.gameModes);
 };
 </script>
 

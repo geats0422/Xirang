@@ -350,7 +350,7 @@ const goLibrary = async () => {
 
 const goPreviousPage = async () => {
   backNavigating.value = true;
-  await router.push(ROUTES.gameModes);
+  await router.push({ path: ROUTES.gameModes, query: route.query });
   window.setTimeout(() => {
     backNavigating.value = false;
   }, 220);

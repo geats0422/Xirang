@@ -334,7 +334,7 @@ const startLearning = async () => {
 };
 
 const backToModes = () => {
-  router.push(ROUTES.gameModes);
+  router.push({ path: ROUTES.gameModes, query: route.query });
 };
 
 const openGuide = async () => {

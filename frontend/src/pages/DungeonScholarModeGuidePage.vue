@@ -45,7 +45,7 @@ const tipItems = computed(() =>
 );
 
 const goBack = async () => {
-  await router.push(ROUTES.gameModes);
+  await router.push({ path: ROUTES.gameModes, query: route.query });
 };
 </script>
 

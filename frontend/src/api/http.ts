@@ -4,7 +4,7 @@ import { getAuthHeaders } from "./authHeaders";
 type RequestMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
-const DEFAULT_TIMEOUT_MS = 10000;
+const DEFAULT_TIMEOUT_MS = 120000; // 增加到 120 秒以充分应对 Render 免费层冷启动
 
 // Shared promise to avoid multiple simultaneous refresh attempts
 let refreshingPromise: Promise<string> | null = null;

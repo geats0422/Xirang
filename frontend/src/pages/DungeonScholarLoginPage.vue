@@ -242,6 +242,13 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
 
+  // 等待后端唤醒（Render 免费层冷启动需要 30-90 秒）
+  try {
+    await wakeupServer();
+  } catch {
+    // 即使唤醒失败也继续尝试登录
+  }
+
   try {
     if (isSignUpRoute.value) {
       const response = await registerWithPassword({

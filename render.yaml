@@ -29,7 +29,17 @@ services:
       - key: FRONTEND_BASE_URL
         value: "https://xirang.vercel.app"
       - key: STORAGE_MODE
-        value: local
+        value: r2
+      - key: R2_BUCKET_NAME
+        value: xirang-r2
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
       - key: UPLOAD_DIR
         value: /tmp/xirang-uploads
       - key: MAX_FILE_SIZE_MB
@@ -106,7 +116,17 @@ services:
       - key: SECRET_KEY
         sync: false
       - key: STORAGE_MODE
-        value: local
+        value: r2
+      - key: R2_BUCKET_NAME
+        value: xirang-r2
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
       - key: UPLOAD_DIR
         value: /tmp/xirang-uploads
       - key: NVIDIA_API_KEY

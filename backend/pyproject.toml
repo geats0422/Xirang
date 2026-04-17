@@ -20,6 +20,7 @@ dependencies = [
     "httpx>=0.26.0",
     "openai>=1.10.0",
     "pgvector>=0.3.6",
+    "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]
@@ -77,7 +78,11 @@ disallow_untyped_defs = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg.*", "jose.*", "passlib.*", "pgvector.*"]
+module = ["asyncpg.*", "boto3.*", "botocore.*", "jose.*", "passlib.*", "pgvector.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["boto3", "botocore", "botocore.config"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

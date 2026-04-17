@@ -14,6 +14,7 @@ class FileValidationError(ValueError):
 class StorageMode(StrEnum):
     LOCAL = "local"
     OBJECT = "object"
+    R2 = "r2"
 
 
 @dataclass(slots=True)
@@ -78,6 +79,12 @@ class DocumentStorage:
     def delete(self, storage_key: str) -> None:
         raise NotImplementedError
 
+    def read_bytes(self, storage_key: str) -> bytes:
+        raise NotImplementedError
+
+    def read_text(self, storage_key: str) -> str:
+        return self.read_bytes(storage_key).decode("utf-8", errors="ignore")
+
 
 def build_storage(*, storage_mode: StorageMode, upload_dir: Path | None = None) -> DocumentStorage:
     if storage_mode == StorageMode.LOCAL:
@@ -85,6 +92,30 @@ def build_storage(*, storage_mode: StorageMode, upload_dir: Path | None = None) 
 
         return LocalDocumentStorage(root_dir=upload_dir or Path(".data/uploads"))
 
-    from app.services.documents.storage_object import ObjectStorageDocumentStorage
+    if storage_mode == StorageMode.R2:
+        from app.core.config import get_settings
+        from app.services.documents.storage_r2 import R2DocumentStorage
 
-    return ObjectStorageDocumentStorage()
+        settings = get_settings()
+        if not settings.r2_bucket_name:
+            raise ValueError("R2_BUCKET_NAME is required when STORAGE_MODE=r2")
+        if not settings.r2_endpoint_url:
+            raise ValueError("R2_ACCOUNT_ID is required when STORAGE_MODE=r2")
+        if not settings.r2_access_key_id:
+            raise ValueError("R2_ACCESS_KEY_ID is required when STORAGE_MODE=r2")
+        if not settings.r2_secret_access_key:
+            raise ValueError("R2_SECRET_ACCESS_KEY is required when STORAGE_MODE=r2")
+
+        return R2DocumentStorage(
+            bucket=settings.r2_bucket_name,
+            endpoint_url=settings.r2_endpoint_url,
+            access_key=settings.r2_access_key_id,
+            secret_key=settings.r2_secret_access_key,
+        )
+
+    if storage_mode == StorageMode.OBJECT:
+        from app.services.documents.storage_object import ObjectStorageDocumentStorage
+
+        return ObjectStorageDocumentStorage()
+
+    raise ValueError(f"Unsupported storage mode: {storage_mode}")

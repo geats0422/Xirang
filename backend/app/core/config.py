@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
     storage_mode: str = "local"
     upload_dir: str = ".data/uploads"
+    r2_bucket_name: str | None = None
+    r2_account_id: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_public_url: str | None = None
     max_file_size_bytes: int = 50 * 1024 * 1024
     allowed_extensions: list[str] = Field(
         default_factory=lambda: ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md"]
@@ -133,6 +138,12 @@ class Settings(BaseSettings):
         if self.nvidia_api_key:
             return self.nvidia_model
         return self.openai_model
+
+    @property
+    def r2_endpoint_url(self) -> str | None:
+        if self.r2_account_id:
+            return f"https://{self.r2_account_id}.r2.cloudflarestorage.com"
+        return None
 
 
 @lru_cache

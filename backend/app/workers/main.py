@@ -34,7 +34,7 @@ from app.integrations.mineru.client import MinerUClient
 from app.integrations.pageindex.client import PageIndexClient
 from app.repositories.document_repository import DocumentRepository
 from app.services.documents.normalizer import normalize_markdown
-from app.services.documents.storage import StorageMode
+from app.services.documents.storage import DocumentStorage, StorageMode
 from app.services.documents.storage import build_storage as build_document_storage
 from app.services.questions.generator import GeneratedQuestion, QuestionGenerator
 from app.services.retrieval.pageindex_backend import (
@@ -731,43 +731,9 @@ async def _process_document_failed_cleanup(
     await repository.commit()
 
 
-def _read_document_content(storage_key: str, storage: Any) -> str:
-    root_dir = None
-    storage_any = cast("Any", storage)
-    if hasattr(storage_any, "root_dir"):
-        root_dir = storage_any.root_dir
-    if isinstance(root_dir, Path):
-        target = root_dir / storage_key
-        if target.exists():
-            return target.read_text(encoding="utf-8", errors="ignore")
-
-    fallback = Path(storage_key)
-    if fallback.exists():
-        return fallback.read_text(encoding="utf-8", errors="ignore")
-
-    raise FileNotFoundError(f"Cannot locate source document at {storage_key}")
-
-
-def _read_document_bytes(storage_key: str, storage: Any) -> bytes:
-    root_dir = None
-    storage_any = cast("Any", storage)
-    if hasattr(storage_any, "root_dir"):
-        root_dir = storage_any.root_dir
-    if isinstance(root_dir, Path):
-        target = root_dir / storage_key
-        if target.exists():
-            return target.read_bytes()
-
-    fallback = Path(storage_key)
-    if fallback.exists():
-        return fallback.read_bytes()
-
-    raise FileNotFoundError(f"Cannot locate source document at {storage_key}")
-
-
 async def _load_document_markdown(
     *,
-    storage: Any,
+    storage: DocumentStorage,
     storage_key: str,
     file_name: str,
     document_format: DocumentFormat,
@@ -777,10 +743,10 @@ async def _load_document_markdown(
     if document_format in (DocumentFormat.MARKDOWN, DocumentFormat.TXT):
         if content_text is not None:
             return normalize_markdown(content_text)
-        raw_content = _read_document_content(storage_key, storage)
+        raw_content = await asyncio.to_thread(storage.read_text, storage_key)
         return normalize_markdown(raw_content)
 
-    raw_bytes = _read_document_bytes(storage_key, storage)
+    raw_bytes = await asyncio.to_thread(storage.read_bytes, storage_key)
     parsed_markdown = await mineru_client.parse_to_markdown(
         file_name=file_name,
         file_bytes=raw_bytes,

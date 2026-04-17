@@ -33,3 +33,7 @@ class LocalDocumentStorage(DocumentStorage):
         target = self.root_dir / storage_key
         if target.exists():
             target.unlink()
+
+    def read_bytes(self, storage_key: str) -> bytes:
+        target = self.root_dir / storage_key
+        return target.read_bytes()

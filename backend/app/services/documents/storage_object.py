@@ -14,3 +14,6 @@ class ObjectStorageDocumentStorage(DocumentStorage):
 
     def delete(self, storage_key: str) -> None:
         raise NotImplementedError("Object storage adapter is not configured yet")
+
+    def read_bytes(self, storage_key: str) -> bytes:
+        raise NotImplementedError("Object storage adapter is not configured yet")

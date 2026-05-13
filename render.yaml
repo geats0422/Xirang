@@ -142,7 +142,7 @@ services:
       - key: OPENAI_MODEL
         value: "gpt-4o-mini"
       - key: PAGEINDEX_URL
-        value: "https://xirang-api.onrender.com/pageindex"
+        value: "https://api.xiranglearn.quest/pageindex"
       - key: PAGEINDEX_API_KEY
         sync: false
       - key: PAGEINDEX_MOCK_FALLBACK

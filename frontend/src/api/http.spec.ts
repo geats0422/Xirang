@@ -21,6 +21,15 @@ describe("resolveUrl", () => {
     expect(resolveUrl("api/v1/test", "http://localhost:8000/")).toBe("http://localhost:8000/api/v1/test");
   });
 
+  it("avoids duplicate /api/v1 when base URL already includes it", () => {
+    expect(resolveUrl("/api/v1/auth/login", "http://localhost:8000/api/v1")).toBe(
+      "http://localhost:8000/api/v1/auth/login",
+    );
+    expect(resolveUrl("api/v1/health", "https://xirang-api.onrender.com/api/v1/")).toBe(
+      "https://xirang-api.onrender.com/api/v1/health",
+    );
+  });
+
   it("returns absolute URLs unchanged", () => {
     expect(resolveUrl("http://example.com/api", "http://localhost:8000")).toBe("http://example.com/api");
   });

@@ -45,6 +45,15 @@ export const resolveUrl = (path: string, baseUrl: string = API_BASE_URL): string
   if (!normalizedBaseUrl) {
     return normalizedPath;
   }
+
+  const pathWithoutLeadingSlash = normalizedPath.replace(/^\/+/, "");
+  const baseUrlEndsWithApiV1 = /\/api\/v1$/i.test(normalizedBaseUrl);
+  const pathStartsWithApiV1 = /^api\/v1(\/|$)/i.test(pathWithoutLeadingSlash);
+
+  if (baseUrlEndsWithApiV1 && pathStartsWithApiV1) {
+    return `${normalizedBaseUrl}/${pathWithoutLeadingSlash.replace(/^api\/v1\/?/i, "")}`;
+  }
+
   return `${normalizedBaseUrl}${normalizedPath}`;
 };
 

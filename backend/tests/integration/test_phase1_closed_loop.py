@@ -13,13 +13,37 @@ class TestPhase1ClosedLoop:
         from app.services.auth.tokens import TokenService
 
         class FakeUser:
-            def __init__(self, id, username, username_normalized, email, email_normalized):
+            def __init__(
+                self,
+                id,
+                username,
+                username_normalized,
+                email,
+                email_normalized,
+                email_verified_at=None,
+            ):
                 self.id = id
                 self.username = username
                 self.username_normalized = username_normalized
                 self.email = email
                 self.email_normalized = email_normalized
+                self.email_verified_at = email_verified_at
                 self.status = "active"
+
+        class FakeVerificationCode:
+            def __init__(self, **kw):
+                self.id = uuid4()
+                self.attempt_count = 0
+                self.consumed_at = None
+                for key, value in kw.items():
+                    setattr(self, key, value)
+
+        class FakeMailClient:
+            def __init__(self):
+                self.sent_codes = []
+
+            async def send_verification_code(self, *, email, code, idempotency_key):
+                self.sent_codes.append((email, code, idempotency_key))
 
         class FakeCredential:
             def __init__(self, user_id, password_hash):
@@ -43,6 +67,7 @@ class TestPhase1ClosedLoop:
                 self.profiles = {}
                 self.settings = {}
                 self.wallets = {}
+                self.verification_codes = []
                 self.committed = False
 
             async def get_user_by_email(self, email):
@@ -58,6 +83,25 @@ class TestPhase1ClosedLoop:
                 user = FakeUser(id=uuid4(), **kw)
                 self.users[user.id] = user
                 return user
+
+            async def create_email_verification_code(self, **kw):
+                verification_code = FakeVerificationCode(**kw)
+                self.verification_codes.append(verification_code)
+                return verification_code
+
+            async def get_latest_email_verification_code(self, **kw):
+                for verification_code in reversed(self.verification_codes):
+                    if verification_code.email_normalized == kw["email_normalized"]:
+                        return verification_code
+                return None
+
+            async def increment_email_verification_attempts(self, **kw):
+                return None
+
+            async def consume_email_verification_code(self, **kw):
+                latest = self.verification_codes[-1]
+                latest.consumed_at = kw["consumed_at"]
+                return latest
 
             async def create_auth_credential(self, **kw):
                 cred = FakeCredential(**kw)
@@ -106,16 +150,21 @@ class TestPhase1ClosedLoop:
             refresh_token_expire_days=7,
             algorithm="HS256",
         )
+        mail_client = FakeMailClient()
         service = AuthService(
             repository=repo,
             password_service=PasswordService(),
             token_service=token_svc,
+            mail_client=mail_client,
         )
+
+        await service.send_registration_verification_code(email="test@example.com")
 
         result = await service.register(
             username="testuser",
             email="test@example.com",
             password="SecurePass123!",
+            verification_code=mail_client.sent_codes[-1][1],
         )
 
         assert result.user.username == "testuser"

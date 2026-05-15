@@ -30,6 +30,7 @@ from app.db.models.profile import UserSetting
 from app.db.models.questions import QuestionType
 from app.db.session import get_session_factory
 from app.integrations.agents.client import AgentsClient, OpenAIClient
+from app.integrations.markitdown.client import MarkItDownClient, MarkItDownClientError
 from app.integrations.mineru.client import MinerUClient
 from app.integrations.pageindex.client import PageIndexClient
 from app.repositories.document_repository import DocumentRepository
@@ -46,6 +47,8 @@ from app.workers.job_runner import JobRunner
 from app.workers.registry import JobRegistry
 
 logger = logging.getLogger(__name__)
+
+MINERU_COST_PER_PAGE_USD = 0.001
 
 
 class IngestionRepositoryProtocol(Protocol):
@@ -169,6 +172,10 @@ class MinerUClientProtocol(Protocol):
         backend: str | None = None,
         lang_list: tuple[str, ...] | None = None,
     ) -> str: ...
+
+
+class MarkdownConverterProtocol(Protocol):
+    async def convert_to_markdown(self, *, file_name: str, file_bytes: bytes) -> str: ...
 
 
 class CleanupRepositoryProtocol(Protocol):
@@ -481,6 +488,7 @@ def build_job_registry() -> JobRegistry:
         backend=settings.mineru_backend,
         lang_list=tuple(settings.mineru_lang_list),
     )
+    markdown_converter = MarkItDownClient()
 
     agents_client = AgentsClient()
     provider = agents_client.registry.get_default()
@@ -497,6 +505,7 @@ def build_job_registry() -> JobRegistry:
                 index_backend=index_backend,
                 default_llm_client=default_llm_client,
                 mineru_client=mineru_client,
+                markdown_converter=markdown_converter,
             )
 
     async def document_failed_cleanup_handler(job: Job) -> None:
@@ -518,6 +527,7 @@ async def _process_document_ingestion(
     index_backend: IngestionIndexBackendProtocol,
     default_llm_client: Any,
     mineru_client: MinerUClientProtocol,
+    markdown_converter: MarkdownConverterProtocol | None = None,
 ) -> None:
     payload = job.payload if isinstance(job.payload, dict) else {}
     raw_document_id = payload.get("document_id")
@@ -559,6 +569,7 @@ async def _process_document_ingestion(
             file_name=document.file_name,
             document_format=document.format,
             mineru_client=mineru_client,
+            markdown_converter=markdown_converter or MarkItDownClient(),
             content_text=document.content_text,
         )
         if not content.strip():
@@ -738,6 +749,7 @@ async def _load_document_markdown(
     file_name: str,
     document_format: DocumentFormat,
     mineru_client: MinerUClientProtocol,
+    markdown_converter: MarkdownConverterProtocol,
     content_text: str | None = None,
 ) -> str:
     if document_format in (DocumentFormat.MARKDOWN, DocumentFormat.TXT):
@@ -747,11 +759,111 @@ async def _load_document_markdown(
         return normalize_markdown(raw_content)
 
     raw_bytes = await asyncio.to_thread(storage.read_bytes, storage_key)
+
+    try:
+        parsed_markdown = await markdown_converter.convert_to_markdown(
+            file_name=file_name,
+            file_bytes=raw_bytes,
+        )
+    except MarkItDownClientError:
+        if document_format != DocumentFormat.PDF:
+            raise
+        logger.info("MarkItDown failed for PDF %s; falling back to MinerU", file_name)
+        mineru_markdown = await _load_with_mineru(
+            file_name=file_name,
+            file_bytes=raw_bytes,
+            mineru_client=mineru_client,
+        )
+        _log_conversion_completed(
+            file_name=file_name,
+            document_format=document_format,
+            converter="mineru",
+            content=mineru_markdown,
+            fallback_reason="markitdown_failed",
+        )
+        return mineru_markdown
+
+    normalized_markdown = normalize_markdown(parsed_markdown)
+    if document_format == DocumentFormat.PDF and _should_fallback_to_mineru(
+        normalized_markdown
+    ):
+        logger.info(
+            "MarkItDown output for PDF %s looked low quality; falling back to MinerU",
+            file_name,
+        )
+        mineru_markdown = await _load_with_mineru(
+            file_name=file_name,
+            file_bytes=raw_bytes,
+            mineru_client=mineru_client,
+        )
+        _log_conversion_completed(
+            file_name=file_name,
+            document_format=document_format,
+            converter="mineru",
+            content=mineru_markdown,
+            fallback_reason="low_quality_pdf",
+        )
+        return mineru_markdown
+
+    _log_conversion_completed(
+        file_name=file_name,
+        document_format=document_format,
+        converter="markitdown",
+        content=normalized_markdown,
+        fallback_reason=None,
+    )
+    return normalized_markdown
+
+
+async def _load_with_mineru(
+    *,
+    file_name: str,
+    file_bytes: bytes,
+    mineru_client: MinerUClientProtocol,
+) -> str:
     parsed_markdown = await mineru_client.parse_to_markdown(
         file_name=file_name,
-        file_bytes=raw_bytes,
+        file_bytes=file_bytes,
     )
     return normalize_markdown(parsed_markdown)
+
+
+def _should_fallback_to_mineru(markdown: str) -> bool:
+    text = markdown.strip()
+    if len(text) < 40:
+        return True
+
+    readable_chars = re.findall(r"[A-Za-z0-9\u4e00-\u9fff]", text)
+    if len(readable_chars) < 30:
+        return True
+
+    return len(readable_chars) / max(len(text), 1) < 0.25
+
+
+def _log_conversion_completed(
+    *,
+    file_name: str,
+    document_format: DocumentFormat,
+    converter: str,
+    content: str,
+    fallback_reason: str | None,
+) -> None:
+    estimated_pages = _estimate_page_count(content)
+    estimated_cost = round(estimated_pages * MINERU_COST_PER_PAGE_USD, 6)
+    logger.info(
+        "document_conversion_completed",
+        extra={
+            "file_name": file_name,
+            "document_format": document_format.value,
+            "converter": converter,
+            "fallback_reason": fallback_reason,
+            "estimated_mineru_pages": estimated_pages,
+            "estimated_mineru_cost_usd": estimated_cost if converter == "mineru" else 0.0,
+            "estimated_mineru_cost_avoided_usd": (
+                estimated_cost if converter == "markitdown" else 0.0
+            ),
+        },
+    )
 
 
 def _estimate_page_count(content: str) -> int:

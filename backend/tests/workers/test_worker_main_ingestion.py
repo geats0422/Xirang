@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -48,6 +49,12 @@ class FakeJob:
 class FakeStorage:
     def __init__(self, root_dir: Path) -> None:
         self.root_dir = root_dir
+
+    def read_text(self, storage_key: str) -> str:
+        return (self.root_dir / storage_key).read_text(encoding="utf-8")
+
+    def read_bytes(self, storage_key: str) -> bytes:
+        return (self.root_dir / storage_key).read_bytes()
 
     async def delete(self, storage_key: str) -> None:
         target = self.root_dir / storage_key
@@ -138,7 +145,20 @@ class FakeSession:
         return Result()
 
 
+class FakeMarkdownConverter:
+    def __init__(self, markdown: str = "# Parsed\n\nMarkItDown markdown content with enough study text.") -> None:
+        self.markdown = markdown
+        self.calls: list[tuple[str, bytes]] = []
+
+    async def convert_to_markdown(self, *, file_name: str, file_bytes: bytes) -> str:
+        self.calls.append((file_name, file_bytes))
+        return self.markdown
+
+
 class FakeMinerUClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes]] = []
+
     async def parse_to_markdown(
         self,
         *,
@@ -147,10 +167,9 @@ class FakeMinerUClient:
         backend: str | None = None,
         lang_list: tuple[str, ...] | None = None,
     ) -> str:
-        _ = file_name
-        _ = file_bytes
         _ = backend
         _ = lang_list
+        self.calls.append((file_name, file_bytes))
         return "# Parsed\n\nMinerU markdown content"
 
 
@@ -328,6 +347,7 @@ async def test_process_document_ingestion_marks_ready_on_success(
         index_backend=FakeIndexBackend(),
         default_llm_client=FakeLLMClient(),
         mineru_client=FakeMinerUClient(),
+        markdown_converter=FakeMarkdownConverter(),
     )
 
     assert document.ingest_status == DocumentStatus.READY
@@ -367,6 +387,7 @@ async def test_process_document_ingestion_marks_failed_on_index_error(tmp_path: 
             index_backend=FailingIndexBackend(),
             default_llm_client=FakeLLMClient(),
             mineru_client=FakeMinerUClient(),
+            markdown_converter=FakeMarkdownConverter(),
         )
 
     assert document.ingest_status == DocumentStatus.FAILED
@@ -394,7 +415,7 @@ async def test_process_document_ingestion_marks_failed_on_index_error(tmp_path: 
         (DocumentFormat.PPTX, "document.pptx", b"PPTX-BINARY"),
     ],
 )
-async def test_process_document_ingestion_uses_mineru_for_non_text_formats(
+async def test_process_document_ingestion_uses_markitdown_for_non_text_formats(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     doc_format: DocumentFormat,
@@ -418,6 +439,8 @@ async def test_process_document_ingestion_uses_mineru_for_non_text_formats(
     )
     repository = FakeRepository(document)
     job = FakeJob(id=uuid4(), payload={"document_id": str(document.id)})
+    markdown_converter = FakeMarkdownConverter()
+    mineru_client = FakeMinerUClient()
 
     await _process_document_ingestion(
         job,
@@ -426,8 +449,119 @@ async def test_process_document_ingestion_uses_mineru_for_non_text_formats(
         session=FakeSession(),
         index_backend=FakeIndexBackend(),
         default_llm_client=FakeLLMClient(),
-        mineru_client=FakeMinerUClient(),
+        mineru_client=mineru_client,
+        markdown_converter=markdown_converter,
     )
 
     assert document.ingest_status == DocumentStatus.READY
     assert repository.ingestion_job_status == JobStatus.COMPLETED
+    assert markdown_converter.calls == [(file_name, binary_content)]
+    assert mineru_client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_process_document_ingestion_falls_back_to_mineru_for_low_quality_pdf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(worker_main, "_create_llm_client_for_model", lambda model: None)
+    owner_id = uuid4()
+    file_name = "scanned.pdf"
+    binary_content = b"PDF-SCANNED-BINARY"
+    storage_key = f"{owner_id}/{file_name}"
+    file_path = tmp_path / storage_key
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(binary_content)
+
+    document = FakeDocument(
+        id=uuid4(),
+        owner_user_id=owner_id,
+        storage_path=storage_key,
+        ingest_status=DocumentStatus.PROCESSING,
+        format=DocumentFormat.PDF,
+        file_name=file_name,
+    )
+    repository = FakeRepository(document)
+    job = FakeJob(id=uuid4(), payload={"document_id": str(document.id)})
+    markdown_converter = FakeMarkdownConverter(markdown="image")
+    mineru_client = FakeMinerUClient()
+
+    caplog.set_level(logging.INFO, logger="app.workers.main")
+
+    await _process_document_ingestion(
+        job,
+        repository,
+        FakeStorage(tmp_path),
+        session=FakeSession(),
+        index_backend=FakeIndexBackend(),
+        default_llm_client=FakeLLMClient(),
+        mineru_client=mineru_client,
+        markdown_converter=markdown_converter,
+    )
+
+    assert document.ingest_status == DocumentStatus.READY
+    assert repository.ingestion_job_status == JobStatus.COMPLETED
+    assert markdown_converter.calls == [(file_name, binary_content)]
+    assert mineru_client.calls == [(file_name, binary_content)]
+    assert any(
+        record.message == "document_conversion_completed"
+        and getattr(record, "converter", None) == "mineru"
+        and getattr(record, "fallback_reason", None) == "low_quality_pdf"
+        and getattr(record, "estimated_mineru_cost_usd", None) == pytest.approx(0.001)
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_document_ingestion_logs_markitdown_cost_avoidance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(worker_main, "_create_llm_client_for_model", lambda model: None)
+    owner_id = uuid4()
+    file_name = "electronic.pdf"
+    binary_content = b"PDF-ELECTRONIC-BINARY"
+    storage_key = f"{owner_id}/{file_name}"
+    file_path = tmp_path / storage_key
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(binary_content)
+
+    document = FakeDocument(
+        id=uuid4(),
+        owner_user_id=owner_id,
+        storage_path=storage_key,
+        ingest_status=DocumentStatus.PROCESSING,
+        format=DocumentFormat.PDF,
+        file_name=file_name,
+    )
+    repository = FakeRepository(document)
+    job = FakeJob(id=uuid4(), payload={"document_id": str(document.id)})
+    markdown_converter = FakeMarkdownConverter(
+        markdown="# Chapter\n\n" + "Readable electronic PDF content. " * 80
+    )
+    mineru_client = FakeMinerUClient()
+
+    caplog.set_level(logging.INFO, logger="app.workers.main")
+
+    await _process_document_ingestion(
+        job,
+        repository,
+        FakeStorage(tmp_path),
+        session=FakeSession(),
+        index_backend=FakeIndexBackend(),
+        default_llm_client=FakeLLMClient(),
+        mineru_client=mineru_client,
+        markdown_converter=markdown_converter,
+    )
+
+    assert document.ingest_status == DocumentStatus.READY
+    assert mineru_client.calls == []
+    assert any(
+        record.message == "document_conversion_completed"
+        and getattr(record, "converter", None) == "markitdown"
+        and getattr(record, "fallback_reason", None) is None
+        and getattr(record, "estimated_mineru_cost_avoided_usd", None) == pytest.approx(0.001)
+        for record in caplog.records
+    )

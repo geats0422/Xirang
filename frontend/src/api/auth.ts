@@ -36,6 +36,17 @@ export type RegisterInput = {
   username: string;
   email: string;
   password: string;
+  verificationCode: string;
+};
+
+export type SendRegistrationVerificationCodeInput = {
+  email: string;
+};
+
+export type SendRegistrationVerificationCodeResponse = {
+  ok: boolean;
+  expires_in_seconds: number;
+  resend_after_seconds: number;
 };
 
 export type AuthApiError = {
@@ -100,6 +111,18 @@ export const registerWithPassword = async (input: RegisterInput): Promise<AuthRe
       username: input.username,
       email: input.email,
       password: input.password,
+      verification_code: input.verificationCode,
+    },
+  });
+};
+
+export const sendRegistrationVerificationCode = async (
+  input: SendRegistrationVerificationCodeInput,
+): Promise<SendRegistrationVerificationCodeResponse> => {
+  return apiRequest<SendRegistrationVerificationCodeResponse>("/api/v1/auth/register/code", {
+    method: "POST",
+    body: {
+      email: input.email,
     },
   });
 };

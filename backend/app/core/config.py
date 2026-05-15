@@ -19,6 +19,21 @@ def _resolve_env_file() -> Path:
     return fallback if fallback.exists() else env_file
 
 
+def read_env_file_value(key: str) -> str | None:
+    env_file = _resolve_env_file()
+    if not env_file.exists():
+        return None
+    value: str | None = None
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, raw_value = stripped.split("=", 1)
+        if name.strip() == key:
+            value = raw_value.strip().strip('"').strip("'") or None
+    return value
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=_resolve_env_file(),
@@ -79,6 +94,29 @@ class Settings(BaseSettings):
         ],
     )
     frontend_base_url: str = "http://localhost:5173"
+    creem_api_base_url: str = "https://api.creem.io"
+    creem_api_key: str | None = None
+    creem_webhook_secret: str | None = None
+    creem_product_coin_60: str | None = None
+    creem_product_coin_300: str | None = None
+    creem_product_coin_680: str | None = None
+    creem_product_coin_1500: str | None = None
+    creem_product_coin_3500: str | None = None
+    creem_product_sub_monthly: str | None = None
+    creem_product_sub_quarterly: str | None = None
+    creem_product_sub_yearly: str | None = None
+    creem_checkout_success_url: str = "http://localhost:5173/settings"
+    creem_checkout_cancel_url: str = "http://localhost:5173/pricing"
+    premium_regions: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: [
+            "US", "GB", "CA", "AU", "DE", "FR", "JP", "SG", "NL", "SE", "CH", "NO", "DK", "FI", "IE", "NZ", "BE", "AT", "IT", "ES",
+        ]
+    )
+    developing_regions: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: [
+            "IN", "ID", "PH", "VN", "TH", "MY", "BR", "MX", "AR", "CO", "PE", "EG", "NG", "KE", "PK", "BD", "UA", "RO", "BG",
+        ]
+    )
 
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
@@ -95,6 +133,14 @@ class Settings(BaseSettings):
     microsoft_client_secret: str | None = None
     microsoft_tenant_id: str = "common"
     microsoft_callback_url: str = "http://localhost:8000/api/v1/auth/oauth/microsoft/callback"
+
+    resend_api_key: str | None = None
+    resend_from_email: str = "Xirang <noreply@example.com>"
+    resend_timeout_seconds: float = 10.0
+    verification_code_secret: str | None = None
+    verification_code_ttl_seconds: int = 600
+    verification_code_resend_cooldown_seconds: int = 60
+    verification_code_max_attempts: int = 5
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -114,6 +160,15 @@ class Settings(BaseSettings):
             return ["ch"]
         langs = [item.strip() for item in value.split(",") if item.strip()]
         return langs or ["ch"]
+
+    @field_validator("premium_regions", "developing_regions", mode="before")
+    @classmethod
+    def parse_region_list(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, list):
+            return [item.strip().upper() for item in value if isinstance(item, str) and item.strip()]
+        if not value:
+            return []
+        return [item.strip().upper() for item in value.split(",") if item.strip()]
 
     @property
     def llm_api_key(self) -> str | None:

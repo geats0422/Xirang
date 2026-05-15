@@ -18,6 +18,7 @@ import {
   persistAuthTokens,
   persistAuthUserProfile,
   registerWithPassword,
+  sendRegistrationVerificationCode,
 } from "../api/auth";
 import { wakeupServer } from "../api/wakeup";
 import { validatePassword } from "../utils/passwordValidator";
@@ -36,12 +37,17 @@ const formState = ref({
   email: "",
   password: "",
   confirmPassword: "",
+  verificationCode: "",
 });
 
 const showPassword = ref(false);
 const showConfirmPassword = ref(false);
 
 const isSubmitting = ref(false);
+const isSendingCode = ref(false);
+const codeSent = ref(false);
+const codeCooldown = ref(0);
+let cooldownTimer: ReturnType<typeof setInterval> | null = null;
 const fieldErrors = ref<Record<string, string>>({});
 
 const socialProviders = computed(() => [
@@ -103,6 +109,38 @@ const goToSignUp = async () => {
     return;
   }
   await router.push(ROUTES.signUp);
+};
+
+const sendVerificationCode = async () => {
+  const email = formState.value.email.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    fieldErrors.value.email = t("validation.emailInvalid");
+    return;
+  }
+
+  isSendingCode.value = true;
+  fieldErrors.value.email = "";
+
+  try {
+    const result = await sendRegistrationVerificationCode({ email });
+    codeSent.value = true;
+    codeCooldown.value = result.resend_after_seconds;
+    if (cooldownTimer) {
+      clearInterval(cooldownTimer);
+    }
+    cooldownTimer = setInterval(() => {
+      codeCooldown.value = Math.max(0, codeCooldown.value - 1);
+      if (codeCooldown.value <= 0 && cooldownTimer) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = null;
+      }
+    }, 1000);
+  } catch (error) {
+    const message = getAuthErrorMessage(error);
+    toast.error(message);
+  } finally {
+    isSendingCode.value = false;
+  }
 };
 
 const oauthProcessing = ref(false);
@@ -255,6 +293,7 @@ const handleSubmit = async () => {
         username: formState.value.username.trim(),
         email: formState.value.email.trim().toLowerCase(),
         password: formState.value.password,
+        verificationCode: formState.value.verificationCode.trim(),
       });
       persistAuthSession(response);
       toast.success(t("notifications.registerSuccess"));
@@ -288,7 +327,7 @@ watch(
   () => route.path,
   () => {
     clearFieldErrors();
-    formState.value = { username: "", email: "", password: "", confirmPassword: "" };
+    formState.value = { username: "", email: "", password: "", confirmPassword: "", verificationCode: "" };
   }
 );
 
@@ -409,6 +448,31 @@ watch(
               </span>
             </span>
             <span v-if="fieldErrors.email" class="email-form__error">{{ fieldErrors.email }}</span>
+          </label>
+
+          <label v-if="isSignUpRoute" class="email-form__field">
+            <span>{{ $t("login.verificationCodeLabel") }}</span>
+            <span class="email-form__input-wrap email-form__input-wrap--code">
+              <input
+                v-model="formState.verificationCode"
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                :placeholder="$t('login.verificationCodePlaceholder')"
+                :class="{ 'input--error': fieldErrors.verificationCode }"
+                autocomplete="one-time-code"
+              />
+              <button
+                type="button"
+                class="email-form__send-code"
+                :disabled="isSendingCode || codeCooldown > 0"
+                @click="sendVerificationCode"
+              >
+                {{ codeCooldown > 0 ? `${codeCooldown}s` : (isSendingCode ? $t("login.sendingCode") : (codeSent ? $t("login.resendCode") : $t("login.sendCode"))) }}
+              </button>
+            </span>
+            <span v-if="codeSent" class="email-form__code-sent">{{ $t("login.codeSent") }}</span>
+            <span v-if="fieldErrors.verificationCode" class="email-form__error">{{ fieldErrors.verificationCode }}</span>
           </label>
 
           <label class="email-form__field">
@@ -834,6 +898,38 @@ watch(
 
 .email-form__error {
   color: #dc2626;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.email-form__input-wrap--code {
+  gap: 8px;
+}
+
+.email-form__send-code {
+  background: rgba(16, 139, 150, 0.1);
+  border: 1px solid rgba(16, 139, 150, 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--color-primary-700);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.email-form__send-code:hover:not(:disabled) {
+  background: rgba(16, 139, 150, 0.2);
+}
+
+.email-form__send-code:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.email-form__code-sent {
+  color: #059669;
   font-size: 12px;
   margin-top: 4px;
 }

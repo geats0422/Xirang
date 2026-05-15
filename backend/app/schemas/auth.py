@@ -7,6 +7,17 @@ class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=100)
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=255)
+    verification_code: str = Field(min_length=6, max_length=6)
+
+
+class SendRegistrationVerificationCodeRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class SendRegistrationVerificationCodeResponse(BaseModel):
+    ok: bool
+    expires_in_seconds: int
+    resend_after_seconds: int
 
 
 class LoginRequest(BaseModel):

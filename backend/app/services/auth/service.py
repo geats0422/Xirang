@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -24,6 +27,18 @@ class DuplicateIdentityError(AuthServiceError):
 
 class InvalidTokenError(AuthServiceError):
     status_code = 401
+
+
+class VerificationCodeCooldownError(AuthServiceError):
+    status_code = 429
+
+
+class VerificationCodeAttemptsExceededError(AuthServiceError):
+    status_code = 429
+
+
+class EmailDeliveryError(AuthServiceError):
+    status_code = 503
 
 
 @dataclass(slots=True)
@@ -57,6 +72,28 @@ class AuthRepositoryProtocol(Protocol):
         username_normalized: str,
         email: str,
         email_normalized: str,
+        email_verified_at: datetime | None = None,
+    ) -> Any: ...
+
+    async def create_email_verification_code(
+        self,
+        *,
+        email_normalized: str,
+        code_hash: str,
+        purpose: str,
+        max_attempts: int,
+        expires_at: datetime,
+        last_sent_at: datetime,
+    ) -> Any: ...
+
+    async def get_latest_email_verification_code(
+        self, *, email_normalized: str, purpose: str
+    ) -> Any | None: ...
+
+    async def increment_email_verification_attempts(self, *, code_id: UUID) -> Any: ...
+
+    async def consume_email_verification_code(
+        self, *, code_id: UUID, consumed_at: datetime
     ) -> Any: ...
 
     async def create_auth_credential(self, *, user_id: UUID, password_hash: str) -> Any: ...
@@ -115,11 +152,112 @@ class AuthRepositoryProtocol(Protocol):
     async def rollback(self) -> None: ...
 
 
+class VerificationMailClientProtocol(Protocol):
+    async def send_verification_code(
+        self, *, email: str, code: str, idempotency_key: str
+    ) -> None: ...
+
+
 @dataclass(slots=True)
 class AuthService:
     repository: AuthRepositoryProtocol
     password_service: Any
     token_service: Any
+    verification_secret: str = "local-dev-secret-key"
+    mail_client: VerificationMailClientProtocol | None = None
+    verification_ttl_seconds: int = 600
+    verification_resend_cooldown_seconds: int = 60
+    verification_max_attempts: int = 5
+
+    def _hash_verification_code(self, *, email_normalized: str, code: str) -> str:
+        message = f"registration:{email_normalized}:{code}".encode()
+        return hmac.new(
+            self.verification_secret.encode(), message, hashlib.sha256
+        ).hexdigest()
+
+    def _verify_registration_code_hash(
+        self, *, email_normalized: str, code: str, code_hash: str
+    ) -> bool:
+        expected = self._hash_verification_code(
+            email_normalized=email_normalized, code=code.strip()
+        )
+        return hmac.compare_digest(expected, code_hash)
+
+    async def send_registration_verification_code(self, *, email: str) -> dict[str, int | bool]:
+        if self.mail_client is None:
+            raise EmailDeliveryError("Email delivery is not configured")
+
+        email_normalized = email.lower().strip()
+        if await self.repository.get_user_by_email(email_normalized):
+            raise DuplicateIdentityError(f"Email already registered: {email}")
+
+        now = datetime.now(UTC)
+        latest = await self.repository.get_latest_email_verification_code(
+            email_normalized=email_normalized,
+            purpose="registration",
+        )
+        if latest is not None and latest.consumed_at is None:
+            cooldown_until = latest.last_sent_at + timedelta(
+                seconds=self.verification_resend_cooldown_seconds
+            )
+            if cooldown_until > now:
+                raise VerificationCodeCooldownError("Please wait before requesting another code")
+
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        code_hash = self._hash_verification_code(
+            email_normalized=email_normalized,
+            code=code,
+        )
+        record = await self.repository.create_email_verification_code(
+            email_normalized=email_normalized,
+            code_hash=code_hash,
+            purpose="registration",
+            max_attempts=self.verification_max_attempts,
+            expires_at=now + timedelta(seconds=self.verification_ttl_seconds),
+            last_sent_at=now,
+        )
+        try:
+            await self.mail_client.send_verification_code(
+                email=email_normalized,
+                code=code,
+                idempotency_key=f"registration-code:{record.id}",
+            )
+        except Exception as exc:
+            await self.repository.rollback()
+            raise EmailDeliveryError("Failed to send verification email") from exc
+
+        await self.repository.commit()
+        return {
+            "ok": True,
+            "expires_in_seconds": self.verification_ttl_seconds,
+            "resend_after_seconds": self.verification_resend_cooldown_seconds,
+        }
+
+    async def _consume_registration_verification_code(
+        self, *, email_normalized: str, code: str
+    ) -> None:
+        latest = await self.repository.get_latest_email_verification_code(
+            email_normalized=email_normalized,
+            purpose="registration",
+        )
+        if latest is None or latest.consumed_at is not None:
+            raise AuthServiceError("Verification code not found")
+
+        now = datetime.now(UTC)
+        if latest.expires_at <= now:
+            raise AuthServiceError("Verification code expired")
+        if latest.attempt_count >= latest.max_attempts:
+            raise VerificationCodeAttemptsExceededError("Verification attempts exceeded")
+
+        if not self._verify_registration_code_hash(
+            email_normalized=email_normalized,
+            code=code,
+            code_hash=latest.code_hash,
+        ):
+            await self.repository.increment_email_verification_attempts(code_id=latest.id)
+            raise AuthServiceError("Invalid verification code")
+
+        await self.repository.consume_email_verification_code(code_id=latest.id, consumed_at=now)
 
     async def _issue_tokens_for_user(self, *, user_id: UUID) -> TokenPair:
         session_token = self.token_service.create_session_token()
@@ -211,7 +349,9 @@ class AuthService:
         await self.repository.commit()
         return AuthResult(user=user, tokens=tokens)
 
-    async def register(self, username: str, email: str, password: str) -> AuthResult:
+    async def register(
+        self, username: str, email: str, password: str, verification_code: str
+    ) -> AuthResult:
         email_normalized = email.lower().strip()
         username_normalized = username.lower().strip()
 
@@ -219,6 +359,11 @@ class AuthService:
             raise DuplicateIdentityError(f"Email already registered: {email}")
         if await self.repository.get_user_by_username(username_normalized):
             raise DuplicateIdentityError(f"Username already taken: {username}")
+
+        await self._consume_registration_verification_code(
+            email_normalized=email_normalized,
+            code=verification_code,
+        )
 
         from app.services.auth.passwords import PasswordValidationError
 
@@ -233,6 +378,7 @@ class AuthService:
             username_normalized=username_normalized,
             email=email,
             email_normalized=email_normalized,
+            email_verified_at=datetime.now(UTC),
         )
         if user is None:
             raise AuthServiceError("Failed to create user")

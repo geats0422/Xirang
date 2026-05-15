@@ -17,7 +17,14 @@ from app.services.auth.service import DuplicateIdentityError, InvalidCredentials
 
 @dataclass
 class FakeApiAuthService:
-    async def register(self, *, username: str, email: str, password: str) -> AuthWithUserResponse:
+    async def send_registration_verification_code(self, *, email: str) -> dict[str, int | bool]:
+        if email == "dupe@example.com":
+            raise DuplicateIdentityError("Email already registered")
+        return {"ok": True, "expires_in_seconds": 600, "resend_after_seconds": 60}
+
+    async def register(
+        self, *, username: str, email: str, password: str, verification_code: str
+    ) -> AuthWithUserResponse:
         if email == "dupe@example.com":
             raise DuplicateIdentityError("Email already registered")
         return self._success(username=username, email=email)
@@ -64,7 +71,12 @@ def test_register_endpoint_returns_created_auth_payload() -> None:
 
     response = client.post(
         "/api/v1/auth/register",
-        json={"username": "Hero", "email": "hero@example.com", "password": "secret-pass"},
+        json={
+            "username": "Hero",
+            "email": "hero@example.com",
+            "password": "secret-pass",
+            "verification_code": "123456",
+        },
     )
 
     assert response.status_code == 201
@@ -78,10 +90,28 @@ def test_register_endpoint_maps_duplicate_identity_to_conflict() -> None:
 
     response = client.post(
         "/api/v1/auth/register",
-        json={"username": "Hero", "email": "dupe@example.com", "password": "secret-pass"},
+        json={
+            "username": "Hero",
+            "email": "dupe@example.com",
+            "password": "secret-pass",
+            "verification_code": "123456",
+        },
     )
 
     assert response.status_code == 409
+
+
+def test_send_registration_verification_code_returns_timing_payload() -> None:
+    client = create_test_client()
+
+    response = client.post("/api/v1/auth/register/code", json={"email": "hero@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "expires_in_seconds": 600,
+        "resend_after_seconds": 60,
+    }
 
 
 def test_login_endpoint_returns_auth_payload() -> None:

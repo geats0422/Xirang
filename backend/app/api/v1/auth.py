@@ -15,8 +15,13 @@ from app.api.dependencies.auth import parse_bearer_token
 from app.core.config import get_settings
 from app.db.models.auth import AuthProvider
 from app.db.session import get_db_session
+from app.integrations.resend.client import ResendVerificationMailClient
 from app.repositories.auth_repository import AuthRepository
-from app.schemas.auth import LoginRequest, RegisterRequest
+from app.schemas.auth import (
+    LoginRequest,
+    RegisterRequest,
+    SendRegistrationVerificationCodeRequest,
+)
 from app.services.auth.passwords import PasswordService
 from app.services.auth.service import (
     AuthService,
@@ -363,6 +368,17 @@ async def get_auth_service(session: AsyncSession = Depends(get_db_session)) -> A
         repository=AuthRepository(session),
         password_service=PasswordService(),
         token_service=token_service,
+        verification_secret=settings.verification_code_secret or settings.secret_key,
+        mail_client=ResendVerificationMailClient(
+            api_key=settings.resend_api_key,
+            from_email=settings.resend_from_email,
+            timeout_seconds=settings.resend_timeout_seconds,
+        )
+        if settings.resend_api_key
+        else None,
+        verification_ttl_seconds=settings.verification_code_ttl_seconds,
+        verification_resend_cooldown_seconds=settings.verification_code_resend_cooldown_seconds,
+        verification_max_attempts=settings.verification_code_max_attempts,
     )
 
 
@@ -714,6 +730,7 @@ async def register(
             username=request.username,
             email=request.email,
             password=request.password,
+            verification_code=request.verification_code,
         )
         log_auth_event(
             endpoint="/api/v1/auth/register",
@@ -745,14 +762,56 @@ async def register(
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     except AuthServiceError as e:
+        status_code = e.status_code
         log_auth_event(
             endpoint="/api/v1/auth/register",
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status_code,
             started_at=started_at,
             request_id=x_request_id,
             failure_reason="validation_error",
         )
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+        raise HTTPException(status_code=status_code, detail=str(e)) from e
+
+
+@router.post("/register/code")
+async def send_registration_verification_code(
+    request: SendRegistrationVerificationCodeRequest,
+    service: Any = Depends(get_auth_service),
+    x_request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
+) -> dict[str, Any]:
+    started_at = time.perf_counter()
+    try:
+        result = await service.send_registration_verification_code(email=request.email)
+        log_auth_event(
+            endpoint="/api/v1/auth/register/code",
+            status_code=status.HTTP_200_OK,
+            started_at=started_at,
+            request_id=x_request_id,
+        )
+        return {
+            "ok": result["ok"],
+            "expires_in_seconds": result["expires_in_seconds"],
+            "resend_after_seconds": result["resend_after_seconds"],
+        }
+    except DuplicateIdentityError as e:
+        log_auth_event(
+            endpoint="/api/v1/auth/register/code",
+            status_code=status.HTTP_409_CONFLICT,
+            started_at=started_at,
+            request_id=x_request_id,
+            failure_reason="duplicate_identity",
+        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    except AuthServiceError as e:
+        status_code = e.status_code
+        log_auth_event(
+            endpoint="/api/v1/auth/register/code",
+            status_code=status_code,
+            started_at=started_at,
+            request_id=x_request_id,
+            failure_reason="verification_error",
+        )
+        raise HTTPException(status_code=status_code, detail=str(e)) from e
 
 
 @router.post("/login")

@@ -12,6 +12,8 @@ from app.db.models.auth import (
     AuthIdentity,
     AuthProvider,
     AuthSession,
+    EmailVerificationCode,
+    EmailVerificationPurpose,
     User,
     UserStatus,
 )
@@ -56,16 +58,77 @@ class AuthRepository:
         username_normalized: str,
         email: str,
         email_normalized: str,
+        email_verified_at: datetime | None = None,
     ) -> User:
         user = User(
             username=username,
             username_normalized=username_normalized,
             email=email,
             email_normalized=email_normalized,
+            email_verified_at=email_verified_at,
         )
         self._session.add(user)
         await self._session.flush()
         return user
+
+    async def create_email_verification_code(
+        self,
+        *,
+        email_normalized: str,
+        code_hash: str,
+        purpose: str,
+        max_attempts: int,
+        expires_at: datetime,
+        last_sent_at: datetime,
+    ) -> EmailVerificationCode:
+        verification_code = EmailVerificationCode(
+            email_normalized=email_normalized,
+            code_hash=code_hash,
+            purpose=EmailVerificationPurpose(purpose),
+            max_attempts=max_attempts,
+            expires_at=expires_at,
+            last_sent_at=last_sent_at,
+        )
+        self._session.add(verification_code)
+        await self._session.flush()
+        return verification_code
+
+    async def get_latest_email_verification_code(
+        self, *, email_normalized: str, purpose: str
+    ) -> EmailVerificationCode | None:
+        stmt = (
+            select(EmailVerificationCode)
+            .where(
+                EmailVerificationCode.email_normalized == email_normalized,
+                EmailVerificationCode.purpose == EmailVerificationPurpose(purpose),
+            )
+            .order_by(EmailVerificationCode.created_at.desc())
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def increment_email_verification_attempts(
+        self, *, code_id: UUID
+    ) -> EmailVerificationCode | None:
+        verification_code = await self._session.get(EmailVerificationCode, code_id)
+        if verification_code is None:
+            return None
+
+        verification_code.attempt_count += 1
+        await self._session.flush()
+        return verification_code
+
+    async def consume_email_verification_code(
+        self, *, code_id: UUID, consumed_at: datetime
+    ) -> EmailVerificationCode | None:
+        verification_code = await self._session.get(EmailVerificationCode, code_id)
+        if verification_code is None:
+            return None
+
+        verification_code.consumed_at = consumed_at
+        await self._session.flush()
+        return verification_code
 
     async def create_auth_credential(self, *, user_id: UUID, password_hash: str) -> AuthCredential:
         credential = AuthCredential(user_id=user_id, password_hash=password_hash)

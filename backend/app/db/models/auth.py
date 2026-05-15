@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,6 +26,10 @@ class AuthProvider(StrEnum):
     GOOGLE = "google"
     GITHUB = "github"
     MICROSOFT = "microsoft"
+
+
+class EmailVerificationPurpose(StrEnum):
+    REGISTRATION = "registration"
 
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
@@ -63,6 +67,16 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         nullable=False, default=0, server_default="0"
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    subscription_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="free", server_default="free"
+    )
+    subscription_tier: Mapped[str | None] = mapped_column(String(20))
+    subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    creem_customer_id: Mapped[str | None] = mapped_column(String(100))
+    creem_subscription_id: Mapped[str | None] = mapped_column(String(100))
+    pricing_region: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="standard", server_default="standard"
+    )
 
 
 class AuthCredential(TimestampMixin, Base):
@@ -113,6 +127,42 @@ class AuthSession(UUIDPrimaryKeyMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EmailVerificationCode(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "email_verification_codes"
+    __table_args__ = (
+        Index(
+            "ix_email_verification_codes_email_purpose_created",
+            "email_normalized",
+            "purpose",
+            "created_at",
+        ),
+    )
+
+    email_normalized: Mapped[str] = mapped_column(String(255), nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    purpose: Mapped[EmailVerificationPurpose] = mapped_column(
+        Enum(
+            EmailVerificationPurpose,
+            native_enum=False,
+            create_constraint=True,
+            values_callable=enum_values,
+        ),
+        nullable=False,
+        default=EmailVerificationPurpose.REGISTRATION,
+        server_default=EmailVerificationPurpose.REGISTRATION.value,
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5, server_default="5")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
 
 
 class AuthIdentity(UUIDPrimaryKeyMixin, Base):

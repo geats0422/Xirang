@@ -16,17 +16,17 @@ export type CoinPackage = {
 
 export const PRICING_CONFIG: PricingConfig = {
   plans: {
-    monthly: { free: 0, pro: 35 },
-    quarterly: { free: 0, pro: 90 },
-    yearly: { free: 0, pro: 300 },
+    monthly: { free: 0, pro: 8 },
+    quarterly: { free: 0, pro: 20 },
+    yearly: { free: 0, pro: 70 },
   },
   discounts: {
-    quarterly: 10,
-    yearly: 20,
+    quarterly: 17,
+    yearly: 27,
   },
   originalPrices: {
-    quarterly: 100,
-    yearly: 360,
+    quarterly: 24,
+    yearly: 96,
   },
 };
 
@@ -34,6 +34,8 @@ export const COIN_PACKAGES: CoinPackage[] = [
   { coins: 60, price: 6, popular: false },
   { coins: 300, price: 30, popular: true },
   { coins: 680, price: 68, popular: false },
+  { coins: 1500, price: 120, popular: false },
+  { coins: 3500, price: 245, popular: false },
 ];
 
 export const PRICING_FEATURES = {

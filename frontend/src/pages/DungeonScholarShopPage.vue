@@ -14,7 +14,8 @@ import ShopItemCard from "../components/shop/ShopItemCard.vue";
 import CoinPackTopUpModal from "../components/shop/modals/CoinPackTopUpModal.vue";
 import ItemUseConfirmModal from "../components/shop/modals/ItemUseConfirmModal.vue";
 import { useInventory } from "../composables/useInventory";
-import { useCoinPurchase } from "../composables/useCoinPurchase";
+import { createCheckout } from "../api/payments";
+import { COIN_PACKAGES } from "../config/pricing";
 
 type ShopItem = {
   offerId: string;
@@ -49,8 +50,6 @@ const selectedInventoryItem = ref<{ itemCode: string; name: string; description:
 const selectedTopUpOffer = ref<{ id: string; coin_amount: number; price_usd: number; label: string } | null>(null);
 
 const { inventory, refresh: refreshInventory, quantityOf } = useInventory();
-
-const { openPurchaseModal: openSharedPurchaseModal } = useCoinPurchase();
 
 const iconMap: Record<string, string> = {
   streak_freeze: "❄",
@@ -302,7 +301,6 @@ const handlePurchase = async (item: ShopItem) => {
   if (isPurchasing.value) return;
 
   if (item.isCoinPack) {
-    selectedItem.value = item;
     showTopUpModal.value = true;
     return;
   }
@@ -352,19 +350,20 @@ const handleTopUpPurchase = async (offerId: string) => {
 
 const confirmTopUpPurchase = async () => {
   if (!selectedTopUpOffer.value) return;
-
-  const mappedOffer = {
-    id: selectedTopUpOffer.value.id,
-    coin_amount: selectedTopUpOffer.value.coin_amount,
-    price_usd: selectedTopUpOffer.value.price_usd,
-    label: selectedTopUpOffer.value.label,
-    recommended: false,
-  };
-
-  openSharedPurchaseModal(mappedOffer);
-  showTopUpConfirmModal.value = false;
-  showTopUpModal.value = false;
-  selectedTopUpOffer.value = null;
+  purchaseError.value = null;
+  try {
+    const checkout = await createCheckout({
+      productType: "coin",
+      plan: String(selectedTopUpOffer.value.coin_amount),
+    });
+    showTopUpConfirmModal.value = false;
+    showTopUpModal.value = false;
+    selectedTopUpOffer.value = null;
+    window.location.href = checkout.checkout_url;
+  } catch (error) {
+    console.error("Top-up purchase failed:", error);
+    purchaseError.value = error instanceof Error ? error.message : "购买失败，请稍后重试";
+  }
 };
 
 const closePurchaseConfirm = () => {
@@ -454,11 +453,13 @@ const topUpOffers = computed(() => {
       recommended: false,
     }));
   if (realOffers.length > 0) return realOffers;
-  return [
-    { id: "demo-1", coin_amount: 60, price_usd: 6, label: "灵钱宝匣·小", recommended: false },
-    { id: "demo-2", coin_amount: 300, price_usd: 30, label: "灵钱宝匣·中", recommended: true },
-    { id: "demo-3", coin_amount: 680, price_usd: 68, label: "灵钱宝匣·大", recommended: false },
-  ];
+  return COIN_PACKAGES.map((pack) => ({
+    id: `coin-${pack.coins}`,
+    coin_amount: pack.coins,
+    price_usd: pack.price,
+    label: `${translateOr("shop.items.coinPack.name", "灵钱宝匣")} · ${pack.coins}`,
+    recommended: pack.popular,
+  }));
 });
 const toolItems = computed(() => shopItems.value.filter((i) => !i.isCoinPack));
 
@@ -544,6 +545,7 @@ defineExpose({
           <h2>{{ topUpConfirmTitle }}</h2>
           <p v-if="selectedTopUpOffer">将获得 {{ selectedTopUpOffer.coin_amount }} 灵钱。</p>
           <p v-if="selectedTopUpOffer" class="purchase-modal__price">需支付 ${{ selectedTopUpOffer.price_usd }}</p>
+          <p v-if="purchaseError" class="purchase-modal__error">{{ purchaseError }}</p>
           <footer class="purchase-modal__actions">
             <button class="confirm-btn" type="button" @click="confirmTopUpPurchase">确认购买</button>
             <button class="cancel-btn" type="button" @click="showTopUpConfirmModal = false">取消</button>
@@ -799,6 +801,12 @@ defineExpose({
 .purchase-modal__price {
   color: #0f766e;
   font-weight: 700;
+}
+
+.purchase-modal__error {
+  color: #ef4444;
+  font-size: 13px;
+  margin: 8px 0 0;
 }
 
 .purchase-modal__actions {

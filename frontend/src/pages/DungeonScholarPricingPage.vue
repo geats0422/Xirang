@@ -7,7 +7,7 @@ import { useTheme, type Theme } from "../composables/useTheme";
 import { SUPPORTED_LOCALES, type SupportedLocale } from "../i18n";
 import { ROUTES } from "../constants/routes";
 import { PRICING_CONFIG, COIN_PACKAGES } from "../config/pricing";
-import { useCoinPurchase, type CoinOffer } from "../composables/useCoinPurchase";
+import { createCheckout } from "../api/payments";
 
 const isMenuOpen = ref(false);
 const router = useRouter();
@@ -18,39 +18,18 @@ const activeAction = ref<"login" | "sign-up" | "get-started" | null>(null);
 const showLangDropdown = ref(false);
 const billingCycle = ref<"monthly" | "quarterly" | "yearly">("monthly");
 
-const {
-  coinOffers,
-  showPurchaseModal,
-  selectedOffer,
-  isPurchasing,
-  purchaseError,
-  openPurchaseModal,
-  closePurchaseModal,
-  confirmPurchase,
-} = useCoinPurchase();
-
-const handleSubscribe = (plan: "free" | "pro") => {
+const handleSubscribe = async (plan: "free" | "pro") => {
   if (plan === "free") {
     alert(t("pricing.alreadyFree", "You are already on the free plan!"));
     return;
   }
-  alert(t("pricing.comingSoon", "Pro subscription is coming soon!"));
+  const checkout = await createCheckout({ productType: "subscription", plan: billingCycle.value });
+  window.location.href = checkout.checkout_url;
 };
 
-const handleBuyCoins = (coins: number, price: number) => {
-  const offer = coinOffers.value.find((o) => o.coin_amount === coins && o.price_usd === price);
-  if (offer) {
-    openPurchaseModal(offer);
-  } else {
-    const fallbackOffer: CoinOffer = {
-      id: `coin_pack_${coins}`,
-      coin_amount: coins,
-      price_usd: price,
-      label: `${coins} Coins`,
-      recommended: false,
-    };
-    openPurchaseModal(fallbackOffer);
-  }
+const handleBuyCoins = async (coins: number) => {
+  const checkout = await createCheckout({ productType: "coin", plan: String(coins) });
+  window.location.href = checkout.checkout_url;
 };
 
 const themeCycle: Theme[] = ["light", "dark", "system"];
@@ -511,8 +490,8 @@ const coinPackages = COIN_PACKAGES;
                   </div>
                   <h3 class="plan-name">{{ pricingPlans.pro.name }}</h3>
                   <div class="plan-price">
-                    <span v-if="pricingPlans.pro.originalPrice" class="price-original">¥{{ pricingPlans.pro.originalPrice }}</span>
-                    <span class="price-amount">¥{{ pricingPlans.pro.price }}</span>
+                    <span v-if="pricingPlans.pro.originalPrice" class="price-original">${{ pricingPlans.pro.originalPrice }}</span>
+                    <span class="price-amount">${{ pricingPlans.pro.price }}</span>
                     <span class="price-period">{{ pricingPlans.pro.period }}</span>
                   </div>
                   <div v-if="pricingPlans.pro.discount" class="save-badge">
@@ -582,7 +561,7 @@ const coinPackages = COIN_PACKAGES;
               <div class="coin-amount">{{ pkg.coins }}</div>
               <div class="coin-label">{{ t("pricing.coins") }}</div>
               <div class="coin-price">${{ pkg.price }}</div>
-              <BaseButton :variant="pkg.popular ? 'primary' : 'ghost'" size="sm" @click="handleBuyCoins(pkg.coins, pkg.price)">
+              <BaseButton :variant="pkg.popular ? 'primary' : 'ghost'" size="sm" @click="handleBuyCoins(pkg.coins)">
                 {{ t("pricing.buyNow") }}
               </BaseButton>
             </div>
@@ -643,46 +622,6 @@ const coinPackages = COIN_PACKAGES;
         <p class="site-footer__copyright">{{ copyrightLabel }}</p>
       </div>
     </footer>
-
-    <!-- Purchase Confirmation Modal -->
-    <transition name="modal-fade">
-      <div
-        v-if="showPurchaseModal"
-        class="purchase-modal-overlay"
-        @click="closePurchaseModal"
-      >
-        <div class="purchase-modal" @click.stop>
-          <div class="purchase-modal__header">
-            <h3>{{ t("pricing.confirmPurchase", "确认购买") }}</h3>
-            <button class="purchase-modal__close" @click="closePurchaseModal">×</button>
-          </div>
-          <div class="purchase-modal__body">
-            <div v-if="selectedOffer" class="purchase-offer">
-              <div class="purchase-offer__icon">🪙</div>
-              <div class="purchase-offer__details">
-                <div class="purchase-offer__amount">{{ selectedOffer.coin_amount }} {{ t("pricing.coins", "代币") }}</div>
-                <div class="purchase-offer__price">${{ selectedOffer.price_usd }}</div>
-              </div>
-            </div>
-            <p class="purchase-modal__note">{{ t("pricing.purchaseNote", "点击确认后将跳转至支付页面") }}</p>
-            <div v-if="purchaseError" class="purchase-modal__error">{{ purchaseError }}</div>
-          </div>
-          <div class="purchase-modal__footer">
-            <BaseButton variant="ghost" size="sm" @click="closePurchaseModal">
-              {{ t("common.cancel", "取消") }}
-            </BaseButton>
-            <BaseButton
-              variant="primary"
-              size="sm"
-              :loading="isPurchasing"
-              @click="confirmPurchase"
-            >
-              {{ t("pricing.confirm", "确认购买") }}
-            </BaseButton>
-          </div>
-        </div>
-      </div>
-    </transition>
   </div>
 </template>
 

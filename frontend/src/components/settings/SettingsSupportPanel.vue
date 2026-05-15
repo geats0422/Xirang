@@ -5,6 +5,10 @@ import { useRouter } from "vue-router";
 const { t } = useI18n();
 const router = useRouter();
 
+const emit = defineEmits<{
+  openSubscription: [];
+}>();
+
 const navigateTo = (path: string) => {
   router.push(path);
 };
@@ -25,7 +29,7 @@ const navigateTo = (path: string) => {
           <p class="support-row__desc">{{ t("settings.support.subscriptionDesc") }}</p>
         </div>
       </div>
-      <button class="plan-btn" type="button">{{ t("settings.support.manage") }}</button>
+      <button class="plan-btn" type="button" @click="emit('openSubscription')">{{ t("settings.support.manage") }}</button>
     </div>
 
     <div class="legal-links">

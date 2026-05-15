@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getShopInventory: vi.fn(),
   getActiveEffects: vi.fn(),
   useItem: vi.fn(),
+  createCheckout: vi.fn(),
 }));
 
 vi.mock("../api/shop", () => ({
@@ -39,6 +40,10 @@ vi.mock("../composables/useActiveEffects", () => ({
   }),
 }));
 
+vi.mock("../api/payments", () => ({
+  createCheckout: mocks.createCheckout,
+}));
+
 const createTestRouter = async () => {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -63,6 +68,7 @@ describe("DungeonScholarShopPage", () => {
     mocks.getShopInventory.mockResolvedValue([]);
     mocks.getActiveEffects.mockResolvedValue({ effects: [] });
     mocks.useItem.mockResolvedValue({ success: true, quantity_remaining: 0 });
+    mocks.createCheckout.mockResolvedValue({ checkout_url: "https://checkout.local" });
   });
 
   it("renders wallet balance", async () => {
@@ -101,6 +107,27 @@ describe("DungeonScholarShopPage", () => {
 
     const cards = wrapper.findAllComponents({ name: "ShopItemCard" });
     expect(cards.length).toBeGreaterThan(0);
+  });
+
+  it("opens coin top-up modal when clicking coin pack purchase", async () => {
+    mocks.listShopItems.mockResolvedValue([
+      { id: "coin-offer", item_code: "coin_pack", rarity: "legendary", price_amount: 6 },
+      { id: "offer-1", item_code: "streak_freeze", rarity: "common", price_amount: 120 },
+    ]);
+    const router = await createTestRouter();
+    const wrapper = mount(DungeonScholarShopPage, {
+      global: { plugins: [router, i18n] },
+    });
+
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    const firstCard = wrapper.findComponent({ name: "ShopItemCard" });
+    await firstCard.vm.$emit("purchase");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".topup-modal").exists()).toBe(true);
+    expect(mocks.createCheckout).not.toHaveBeenCalled();
   });
 
   it("shows bag modal when clicking bag button", async () => {

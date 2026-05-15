@@ -38,6 +38,9 @@ test-results/
 # Environment
 .env
 .env.local
+render.yaml
+render.yml
+render.ymal
 *.log
 
 # Misc

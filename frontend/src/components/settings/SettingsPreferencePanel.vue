@@ -21,21 +21,14 @@ defineProps<{
 
 type ToggleKey = "sound" | "haptic" | "reminder";
 
-const TOGGLE_STORAGE_KEY = "xirang-toggle-states";
 const themeOptions: Theme[] = ["light", "dark", "system"];
-const defaultToggleStates: Record<ToggleKey, boolean> = {
-  sound: true,
-  haptic: true,
-  reminder: false,
-};
 
 const { t, locale } = useI18n();
 const { theme, setTheme } = useTheme();
-const { applyLanguage, updateSettingState } = useScholarData();
+const { applyLanguage, dailyReminderEnabled, hapticEnabled, soundEnabled, updateSettingState } = useScholarData();
 
 const showLangDropdown = ref(false);
 const languageSelectRef = ref<HTMLElement | null>(null);
-const toggleStates = ref<Record<ToggleKey, boolean>>({ ...defaultToggleStates });
 
 const currentLangLabel = computed(() => {
   const key = `settings.localeNames.${locale.value}`;
@@ -51,42 +44,28 @@ const resolveToggleKey = (row: PreferenceRow): ToggleKey => {
 };
 
 const getToggleEnabled = (row: PreferenceRow) => {
-  return toggleStates.value[resolveToggleKey(row)] ?? Boolean(row.enabled);
-};
-
-const loadToggleStates = () => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const saved = window.localStorage.getItem(TOGGLE_STORAGE_KEY);
-  if (!saved) {
-    return;
-  }
-
-  try {
-    const parsed = JSON.parse(saved) as Partial<Record<ToggleKey, boolean>>;
-    toggleStates.value = {
-      ...defaultToggleStates,
-      ...parsed,
-    };
-  } catch {
-    toggleStates.value = { ...defaultToggleStates };
-  }
-};
-
-const saveToggleStates = () => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(TOGGLE_STORAGE_KEY, JSON.stringify(toggleStates.value));
-};
-
-const handleToggle = (row: PreferenceRow) => {
   const key = resolveToggleKey(row);
-  toggleStates.value[key] = !toggleStates.value[key];
-  saveToggleStates();
+  if (key === "sound") {
+    return soundEnabled.value;
+  }
+  if (key === "haptic") {
+    return hapticEnabled.value;
+  }
+  return dailyReminderEnabled.value;
+};
+
+const handleToggle = async (row: PreferenceRow) => {
+  const key = resolveToggleKey(row);
+  const enabled = !getToggleEnabled(row);
+  if (key === "sound") {
+    await updateSettingState({ sound_enabled: enabled });
+    return;
+  }
+  if (key === "haptic") {
+    await updateSettingState({ haptic_enabled: enabled });
+    return;
+  }
+  await updateSettingState({ daily_reminder_enabled: enabled });
 };
 
 const handleThemeClick = (nextTheme: Theme) => {
@@ -131,7 +110,6 @@ const handleDocumentKeydown = (event: KeyboardEvent) => {
 };
 
 onMounted(() => {
-  loadToggleStates();
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("keydown", handleDocumentKeydown);
 });

@@ -9,6 +9,7 @@ import { createRun, submitAnswer, type RunQuestion } from "../api/runs";
 import { submitFeedback } from "../api/feedback";
 import { getShopBalance } from "../api/shop";
 import { getDailyGoal } from "../api/user";
+import { useSoundEffects } from "../composables/useSoundEffects";
 
 const { t, locale } = useI18n();
 
@@ -25,6 +26,7 @@ type RunStatus = "normal" | "fast-answer" | "reduced-reward";
 
 const route = useRoute();
 const router = useRouter();
+const { playCorrect, playWrong, playSettlement } = useSoundEffects();
 
 const timeRemaining = ref<number | null>(null);
 const combo = ref<number | null>(null);
@@ -313,10 +315,12 @@ const chooseAnswer = async (answerChoice: "false" | "true") => {
     feedbackExplanation.value = result.feedback?.explanation ?? null;
 
     if (result.is_correct) {
+      playCorrect();
       showFeedback.value = false;
       combo.value = (combo.value ?? 0) + 1;
       runStatus.value = elapsedMs <= 1500 ? "fast-answer" : "normal";
       } else {
+      playWrong();
       combo.value = 0;
       runStatus.value = "normal";
       showFeedback.value = true;
@@ -346,6 +350,7 @@ const chooseAnswer = async (answerChoice: "false" | "true") => {
       }
 
       showSettlement.value = true;
+      playSettlement();
       stopTicker();
       await refreshBalance();
     } else {

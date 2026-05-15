@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppSidebar from "../components/layout/AppSidebar.vue";
 import SettingsDangerPanel from "../components/settings/SettingsDangerPanel.vue";
@@ -7,9 +7,11 @@ import SettingsForgePanel from "../components/settings/SettingsForgePanel.vue";
 import SettingsPreferencePanel from "../components/settings/SettingsPreferencePanel.vue";
 import SettingsProfileHero from "../components/settings/SettingsProfileHero.vue";
 import SettingsSupportPanel from "../components/settings/SettingsSupportPanel.vue";
+import SubscriptionManageModal from "../components/settings/SubscriptionManageModal.vue";
 import { ROUTES } from "../constants/routes";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
+import { cancelSubscription, getRegion, getSubscription, updateRegion, type PricingRegion } from "../api/payments";
 
 const { t, locale } = useI18n();
 
@@ -24,11 +26,30 @@ type PreferenceRow = {
 };
 
 const { profileName, profileLevel, hydrate } = useScholarData();
+const subscriptionStatus = ref("free");
+const selectedRegion = ref<PricingRegion>("standard");
+const regionPrices = ref<Record<string, number>>({});
+const showSubscriptionModal = ref(false);
 
 onMounted(async () => {
   document.title = t("settings.title");
   await hydrate();
+  const [subscription, region] = await Promise.all([getSubscription(), getRegion()]);
+  subscriptionStatus.value = subscription.status;
+  selectedRegion.value = region.region;
+  regionPrices.value = region.prices;
 });
+
+const handleCancelSubscription = async () => {
+  const result = await cancelSubscription();
+  subscriptionStatus.value = result.status;
+};
+
+const handleRegionChange = async (region: PricingRegion) => {
+  const result = await updateRegion(region);
+  selectedRegion.value = result.region;
+  regionPrices.value = result.prices;
+};
 
 // Update document title reactively when locale changes
 watch(locale, () => {
@@ -103,10 +124,20 @@ const preferenceRows = computed<PreferenceRow[]>(() => [
         />
         <SettingsPreferencePanel :rows="preferenceRows" />
         <SettingsForgePanel />
-        <SettingsSupportPanel />
+        <SettingsSupportPanel @open-subscription="showSubscriptionModal = true" />
         <SettingsDangerPanel />
       </div>
     </main>
+
+    <SubscriptionManageModal
+      :visible="showSubscriptionModal"
+      :subscription-status="subscriptionStatus"
+      :selected-region="selectedRegion"
+      :region-prices="regionPrices"
+      @close="showSubscriptionModal = false"
+      @cancel-subscription="handleCancelSubscription"
+      @update-region="handleRegionChange"
+    />
   </div>
 </template>
 

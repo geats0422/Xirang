@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   createRun: vi.fn(),
   submitAnswer: vi.fn(),
   getShopBalance: vi.fn(),
+  playCorrect: vi.fn(),
+  playWrong: vi.fn(),
+  playSettlement: vi.fn(),
 }));
 
 vi.mock("../api/runs", () => ({
@@ -18,6 +21,14 @@ vi.mock("../api/runs", () => ({
 
 vi.mock("../api/shop", () => ({
   getShopBalance: mocks.getShopBalance,
+}));
+
+vi.mock("../composables/useSoundEffects", () => ({
+  useSoundEffects: () => ({
+    playCorrect: mocks.playCorrect,
+    playWrong: mocks.playWrong,
+    playSettlement: mocks.playSettlement,
+  }),
 }));
 
 function createTestRouter() {
@@ -128,6 +139,68 @@ describe("DungeonScholarSpeedSurvivalPage", () => {
     await flushPromises();
 
     expect(mocks.submitAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays correct answer sound after successful answer", async () => {
+    const { wrapper } = await mountSpeedSurvivalPage();
+
+    await wrapper.find(".answer-pill--false").trigger("click");
+    await flushPromises();
+
+    expect(mocks.playCorrect).toHaveBeenCalledTimes(1);
+    expect(mocks.playWrong).not.toHaveBeenCalled();
+  });
+
+  it("plays wrong answer sound after incorrect answer", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: false,
+      feedback: {
+        correct_answer: "True",
+        correct_option_ids: ["o-2"],
+        explanation: "Because it is true.",
+      },
+      run: {
+        id: "run-speed-1",
+        status: "running",
+        score: 0,
+        state: { hp: 3, max_hp: 3, floor: 1, floor_total: 8, time_left_sec: 118, pending_coins: 0 },
+      },
+      settlement: null,
+    });
+    const { wrapper } = await mountSpeedSurvivalPage();
+
+    await wrapper.find(".answer-pill--false").trigger("click");
+    await flushPromises();
+
+    expect(mocks.playWrong).toHaveBeenCalledTimes(1);
+    expect(mocks.playCorrect).not.toHaveBeenCalled();
+  });
+
+  it("plays settlement sound when run completes", async () => {
+    mocks.submitAnswer.mockResolvedValueOnce({
+      is_correct: true,
+      run: {
+        id: "run-speed-1",
+        status: "completed",
+        score: 10,
+        state: { hp: 3, max_hp: 3, floor: 8, floor_total: 8, time_left_sec: 118, pending_coins: 10 },
+      },
+      settlement: {
+        xp_earned: 100,
+        coins_earned: 10,
+        combo_max: 1,
+        accuracy: 1,
+        goal_current: 1,
+        goal_total: 8,
+      },
+    });
+    const { wrapper } = await mountSpeedSurvivalPage();
+
+    await wrapper.find(".answer-pill--false").trigger("click");
+    await flushPromises();
+
+    expect(mocks.playCorrect).toHaveBeenCalledTimes(1);
+    expect(mocks.playSettlement).toHaveBeenCalledTimes(1);
   });
 
   it("prevents double-submit and shows selected submitting feedback", async () => {

@@ -15,7 +15,7 @@ from app.api.dependencies.auth import parse_bearer_token
 from app.core.config import get_settings
 from app.db.models.auth import AuthProvider
 from app.db.session import get_db_session
-from app.integrations.resend.client import ResendVerificationMailClient
+from app.integrations.resend.client import ResendMailClient
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import (
     LoginRequest,
@@ -369,7 +369,7 @@ async def get_auth_service(session: AsyncSession = Depends(get_db_session)) -> A
         password_service=PasswordService(),
         token_service=token_service,
         verification_secret=settings.verification_code_secret or settings.secret_key,
-        mail_client=ResendVerificationMailClient(
+        mail_client=ResendMailClient(
             api_key=settings.resend_api_key,
             from_email=settings.resend_from_email,
             timeout_seconds=settings.resend_timeout_seconds,

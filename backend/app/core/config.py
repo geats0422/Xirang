@@ -135,7 +135,7 @@ class Settings(BaseSettings):
     microsoft_callback_url: str = "http://localhost:8000/api/v1/auth/oauth/microsoft/callback"
 
     resend_api_key: str | None = None
-    resend_from_email: str = "Xirang <noreply@example.com>"
+    resend_from_email: str = "Xirang <noreply@xiranglearn.quest>"
     resend_timeout_seconds: float = 10.0
     verification_code_secret: str | None = None
     verification_code_ttl_seconds: int = 600

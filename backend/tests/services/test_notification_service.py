@@ -88,6 +88,41 @@ class FakeNotificationRepository:
         self.committed = True
 
 
+class FakeNotificationMailClient:
+    def __init__(self) -> None:
+        self.sent_notifications: list[dict[str, str | None]] = []
+
+    async def send_notification(
+        self,
+        *,
+        email: str,
+        title: str,
+        body: str | None = None,
+        action_url: str | None = None,
+    ) -> None:
+        self.sent_notifications.append(
+            {
+                "email": email,
+                "title": title,
+                "body": body,
+                "action_url": action_url,
+            }
+        )
+
+
+class FailingNotificationMailClient:
+    async def send_notification(
+        self,
+        *,
+        email: str,
+        title: str,
+        body: str | None = None,
+        action_url: str | None = None,
+    ) -> None:
+        _ = email, title, body, action_url
+        raise RuntimeError("email failed")
+
+
 class TestNotificationService:
     async def test_get_user_notifications_empty(self) -> None:
         repo = FakeNotificationRepository()
@@ -193,3 +228,46 @@ class TestNotificationService:
         assert result.related_quest_id == quest_id
         assert result.action_url == "/quests"
         assert result.is_read is False
+
+    async def test_create_notification_can_send_email_copy(self) -> None:
+        repo = FakeNotificationRepository()
+        mail_client = FakeNotificationMailClient()
+        service = NotificationService(repo, mail_client=mail_client)
+        user_id = uuid4()
+
+        result = await service.create_notification(
+            user_id=user_id,
+            type="quest_reward",
+            title="New quest available",
+            body="Check out your new daily quests!",
+            action_url="/quests",
+            recipient_email="student@example.com",
+        )
+
+        assert result.title == "New quest available"
+        assert mail_client.sent_notifications == [
+            {
+                "email": "student@example.com",
+                "title": "New quest available",
+                "body": "Check out your new daily quests!",
+                "action_url": "/quests",
+            }
+        ]
+
+    async def test_email_copy_failure_does_not_block_in_app_notification(self) -> None:
+        repo = FakeNotificationRepository()
+        service = NotificationService(repo, mail_client=FailingNotificationMailClient())
+        user_id = uuid4()
+
+        result = await service.create_notification(
+            user_id=user_id,
+            type="quest_reward",
+            title="New quest available",
+            body="Check out your new daily quests!",
+            action_url="/quests",
+            recipient_email="student@example.com",
+        )
+
+        assert result.title == "New quest available"
+        assert repo.committed is True
+        assert await repo.get_unread_count(user_id) == 1

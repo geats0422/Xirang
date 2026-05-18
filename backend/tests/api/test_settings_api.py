@@ -54,3 +54,14 @@ def test_ai_config_endpoint_accepts_legacy_nividia_env_keys(monkeypatch) -> None
     assert body["provider"] == "openai-compatible"
     assert body["base_url"] == "https://integrate.api.nvidia.com/v1"
     assert body["configured"] is True
+
+
+def test_ai_models_endpoint_returns_available_models(monkeypatch) -> None:
+    monkeypatch.setenv("NVIDIA_MODEL", "nvidia/test-model")
+    get_settings.cache_clear()
+    client = create_test_client()
+
+    response = client.get("/api/v1/settings/ai-models")
+
+    assert response.status_code == 200
+    assert response.json() == {"available_models": ["nvidia/test-model"]}

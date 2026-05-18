@@ -67,7 +67,7 @@ If `PAGEINDEX_LAUNCH_COMMAND` is empty and `PAGEINDEX_MOCK_FALLBACK=true`, backe
 
 7. Start development server:
 ```bash
-uv run uvicorn app.main:app --reload --port 8000
+uv run python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ## Project Structure
@@ -98,10 +98,10 @@ backend/
 
 ```bash
 # Run tests
-uv run pytest
+uv run python -m pytest
 
 # Run tests with coverage
-uv run pytest --cov=app --cov-report=html
+uv run python -m pytest --cov=app --cov-report=html
 
 # Lint
 uv run ruff check app tests

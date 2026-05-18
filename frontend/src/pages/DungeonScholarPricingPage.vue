@@ -17,10 +17,14 @@ const isRouting = ref(false);
 const activeAction = ref<"login" | "sign-up" | "get-started" | null>(null);
 const showLangDropdown = ref(false);
 const billingCycle = ref<"monthly" | "quarterly" | "yearly">("monthly");
+const isSubscriptionPausedForValidation = true;
 
 const handleSubscribe = async (plan: "free" | "pro") => {
   if (plan === "free") {
     alert(t("pricing.alreadyFree", "You are already on the free plan!"));
+    return;
+  }
+  if (isSubscriptionPausedForValidation) {
     return;
   }
   const checkout = await createCheckout({ productType: "subscription", plan: billingCycle.value });
@@ -33,6 +37,7 @@ const handleBuyCoins = async (coins: number) => {
 };
 
 const themeCycle: Theme[] = ["light", "dark", "system"];
+const discordInviteUrl = "https://discord.gg/tN8CZGAcdM";
 
 const languages = computed(() => {
   const _ = locale.value;
@@ -88,7 +93,6 @@ const navItems = computed(() => {
     { label: t("landing.home"), href: ROUTES.landing },
     { label: t("landing.features"), href: ROUTES.features },
     { label: t("landing.pricing"), href: ROUTES.pricing },
-    { label: t("landing.community"), href: ROUTES.community },
   ];
 });
 
@@ -98,8 +102,7 @@ const footerLinks = computed(() => {
     { text: t("landing.privacyPolicy"), href: "/privacy-policy" },
     { text: t("landing.termsOfService"), href: "/terms-of-service" },
     { text: t("landing.contactUs"), href: "/help-center" },
-    { text: t("landing.twitter"), href: "#" },
-    { text: t("landing.discord"), href: "#" },
+    { text: "Discord", href: discordInviteUrl },
   ];
 });
 
@@ -510,9 +513,20 @@ const coinPackages = COIN_PACKAGES;
                 </ul>
 
                 <div class="card-cta">
-                  <BaseButton size="md" full-width @click="handleSubscribe('pro')">
+                  <BaseButton data-testid="pro-subscribe-button" size="md" full-width :disabled="isSubscriptionPausedForValidation" @click="handleSubscribe('pro')">
                     {{ pricingPlans.pro.cta }}
                   </BaseButton>
+                </div>
+              </div>
+
+              <div class="validation-overlay" data-testid="pro-validation-overlay">
+                <div class="validation-overlay__panel">
+                  <p class="validation-overlay__eyebrow">{{ t("pricing.validationPausedEyebrow") }}</p>
+                  <h4>{{ t("pricing.validationPausedTitle") }}</h4>
+                  <p>{{ t("pricing.validationPausedBody") }}</p>
+                  <button class="validation-overlay__button" type="button">
+                    {{ t("pricing.validationPausedAction") }}
+                  </button>
                 </div>
               </div>
 
@@ -1035,6 +1049,68 @@ const coinPackages = COIN_PACKAGES;
 
 .pricing-card--pro:hover {
   transform: scale(1.02) translateY(-4px);
+}
+
+.pricing-card--pro .card-inner,
+.pricing-card--pro .popular-badge,
+.pricing-card--pro .card-scroll-top,
+.pricing-card--pro .card-scroll-bottom {
+  filter: blur(1.5px);
+}
+
+.validation-overlay {
+  align-items: center;
+  background: rgba(248, 246, 238, 0.82);
+  backdrop-filter: blur(2px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 28px;
+  position: absolute;
+  z-index: 2;
+}
+
+.validation-overlay__panel {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  max-width: 320px;
+  padding: 24px;
+  text-align: center;
+}
+
+.validation-overlay__eyebrow {
+  color: var(--color-primary-700);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.validation-overlay__panel h4 {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  margin: 0 0 12px;
+}
+
+.validation-overlay__panel p:last-child {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.validation-overlay__button {
+  background: var(--color-primary-600);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  cursor: default;
+  font-weight: 700;
+  margin-top: 16px;
+  padding: 10px 18px;
 }
 
 .popular-badge {

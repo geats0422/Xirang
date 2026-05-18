@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.v1.documents import get_current_user_id, get_document_service
 from app.db.models.documents import DocumentFormat, DocumentStatus
 from app.main import create_app
+from app.services.documents.service import UploadLimitExceededError
 
 
 @dataclass
@@ -210,6 +211,38 @@ def test_upload_endpoint_validates_file_type() -> None:
         data={"title": "Bad File"},
     )
     assert response.status_code == 400
+
+
+def test_upload_endpoint_maps_upload_limit_to_bad_request() -> None:
+    class LimitedDocumentService(FakeApiDocumentService):
+        async def upload(
+            self,
+            *,
+            owner_user_id: UUID,
+            title: str,
+            file_name: str,
+            file_content: bytes,
+            format: DocumentFormat,
+            mime_type: str,
+        ) -> UploadResult:
+            raise UploadLimitExceededError(
+                "You can upload up to 10 files during the validation period. "
+                "Delete completed files before uploading more."
+            )
+
+    app = create_app()
+    app.dependency_overrides[get_document_service] = lambda: LimitedDocumentService()
+    app.dependency_overrides[get_current_user_id] = lambda: uuid4()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("test.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"title": "Test Document"},
+    )
+
+    assert response.status_code == 400
+    assert "10 files" in response.json()["detail"]
 
 
 def test_upload_endpoint_requires_authorization_header() -> None:

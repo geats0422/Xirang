@@ -21,6 +21,7 @@ import {
 } from "../api/settings";
 import { getShopBalance } from "../api/shop";
 import { i18n, SUPPORTED_LOCALES, type SupportedLocale } from "../i18n";
+import { clearAuthSessionStorage } from "../utils/auth";
 
 type ProviderConfig = {
   provider: string;
@@ -42,19 +43,6 @@ const getStoredEmail = (): string | null => {
   }
   const value = window.localStorage.getItem("xirang:email")?.trim();
   return value && value.length > 0 ? value : null;
-};
-
-const clearAuthSessionStorage = () => {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.removeItem("xirang:accessToken");
-  window.localStorage.removeItem("xirang:token");
-  window.localStorage.removeItem("xirang:refreshToken");
-  window.localStorage.removeItem("xirang:userId");
-  window.localStorage.removeItem("xirang:username");
-  window.localStorage.removeItem("xirang:email");
-  window.localStorage.removeItem("xirang:isAuthenticated");
 };
 
 const resolveProfileName = (displayName: string | null | undefined): string | null => {
@@ -263,7 +251,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null;
 };
 
-const hydrate = async () => {
+type HydrateOptions = {
+  includeLeaderboard?: boolean;
+};
+
+const hydrate = async (options: HydrateOptions = {}) => {
+  const includeLeaderboard = options.includeLeaderboard ?? true;
   restoreLanguage();
   refreshModelOptions();
 
@@ -300,7 +293,7 @@ const hydrate = async () => {
       invoke(() => listRuns()),
       invoke(() => getSettings()),
       invoke(() => getAiConfig()),
-      invoke(() => getLeaderboard(20)),
+      includeLeaderboard ? invoke(() => getLeaderboard(20)) : Promise.resolve([]),
     ]);
 
   // Capture username before potential auth storage clear on 401

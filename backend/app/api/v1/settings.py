@@ -1,5 +1,6 @@
 """API routes for settings."""
 
+import os
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -77,6 +78,28 @@ async def update_settings(
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/ai-config")
+async def get_ai_config() -> dict[str, Any]:
+    settings = get_settings()
+    legacy_api_key = os.getenv("NIVIDIA_BUILD_API_KEY")
+    legacy_base_url = os.getenv("NIVIDIA_BASE_URL")
+    model = settings.llm_model
+    base_url = settings.llm_base_url or legacy_base_url or settings.nvidia_base_url
+    configured = bool(settings.llm_api_key or legacy_api_key)
+    return {
+        "provider": "openai-compatible",
+        "base_url": base_url,
+        "model": model,
+        "configured": configured,
+    }
+
+
+@router.get("/ai-models")
+async def get_ai_models() -> dict[str, list[str]]:
+    settings = get_settings()
+    return {"available_models": [settings.llm_model]}
 
 
 @router.post("/clear-game-data", status_code=status.HTTP_204_NO_CONTENT)

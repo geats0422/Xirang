@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -17,7 +18,11 @@ from app.schemas.payments import (
     RegionUpdateRequest,
     SubscriptionResponse,
 )
-from app.services.payments.service import PaymentConfigurationError, PaymentService
+from app.services.payments.service import (
+    CreemCheckoutError,
+    PaymentConfigurationError,
+    PaymentService,
+)
 from app.services.payments.webhook_handler import CreemWebhookHandler, WebhookSignatureError
 
 if TYPE_CHECKING:
@@ -35,6 +40,16 @@ def get_payment_service(session: AsyncSession = Depends(get_db_session)) -> Paym
     return PaymentService(session=session, client=client, settings=settings)
 
 
+def _subscription_product_plans() -> dict[str, str]:
+    settings = get_settings()
+    pairs = {
+        settings.creem_product_sub_monthly or read_env_file_value("CREEM_PRODUCT_SUB_MONTHLY"): "monthly",
+        settings.creem_product_sub_quarterly or read_env_file_value("CREEM_PRODUCT_SUB_QUARTERLY"): "quarterly",
+        settings.creem_product_sub_yearly or read_env_file_value("CREEM_PRODUCT_SUB_YEARLY"): "yearly",
+    }
+    return {product_id: plan for product_id, plan in pairs.items() if product_id}
+
+
 @router.post("/checkout", response_model=CheckoutResponse)
 async def create_checkout(
     payload: CheckoutRequest,
@@ -47,6 +62,8 @@ async def create_checkout(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Creem timeout") from exc
     except PaymentConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except CreemCheckoutError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Creem checkout response is invalid") from exc
     return CheckoutResponse(**result)
 
 
@@ -86,14 +103,28 @@ async def update_region(
 @router.post("/webhook/creem")
 async def creem_webhook(
     request: Request,
+    creem_signature: str | None = Header(default=None),
     x_creem_signature: str | None = Header(default=None),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     settings = get_settings()
-    handler = CreemWebhookHandler(session=session, webhook_secret=settings.creem_webhook_secret or "")
+    webhook_secret = settings.creem_webhook_secret or ""
+    if not webhook_secret:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Creem webhook is not configured")
+    handler = CreemWebhookHandler(
+        session=session,
+        webhook_secret=webhook_secret,
+        subscription_product_plans=_subscription_product_plans(),
+    )
     body = await request.body()
     try:
-        handler.verify_signature(payload=body, signature=x_creem_signature)
+        handler.verify_signature(payload=body, signature=creem_signature or x_creem_signature)
     except WebhookSignatureError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature") from exc
-    return await handler.handle(json.loads(body.decode() or "{}"))
+    try:
+        event = json.loads(body.decode() or "{}")
+    except (JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook payload") from exc
+    if not isinstance(event, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook payload")
+    return await handler.handle(event)

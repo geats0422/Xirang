@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/http";
+import { AUTH_SESSION_CLEARED_EVENT } from "../utils/auth";
 
 const mocks = vi.hoisted(() => ({
   getCurrentAuthUser: vi.fn(),
@@ -123,6 +124,22 @@ describe("useScholarData profile name priority", () => {
     expect(state.isAuthenticated.value).toBe(false);
   });
 
+  it("notifies the app when hydrate clears an unauthorized session", async () => {
+    window.localStorage.setItem("xirang:isAuthenticated", "true");
+    window.localStorage.setItem("xirang:accessToken", "expired-token");
+    mocks.getMyProfile.mockRejectedValue(new ApiError("Unauthorized", 401, null));
+    mocks.getCurrentAuthUser.mockRejectedValue(new ApiError("Unauthorized", 401, null));
+    const listener = vi.fn();
+    window.addEventListener(AUTH_SESSION_CLEARED_EVENT, listener);
+
+    const state = useScholarData();
+    await state.hydrate();
+
+    expect(window.localStorage.getItem("xirang:accessToken")).toBeNull();
+    expect(listener).toHaveBeenCalled();
+    window.removeEventListener(AUTH_SESSION_CLEARED_EVENT, listener);
+  });
+
   it("hydrates linked email from auth me", async () => {
     window.localStorage.setItem("xirang:isAuthenticated", "true");
     window.localStorage.setItem("xirang:email", "cached@example.com");
@@ -154,5 +171,15 @@ describe("useScholarData profile name priority", () => {
     expect(state.profileName.value).toBe("testuser2");
     expect(window.localStorage.getItem("xirang:isAuthenticated")).toBe("true");
     expect(window.localStorage.getItem("xirang:accessToken")).toBe("valid-token");
+  });
+
+  it("can hydrate without requesting leaderboard data", async () => {
+    mocks.getMyProfile.mockResolvedValue(buildProfile("Scholar Display"));
+
+    const state = useScholarData();
+    await state.hydrate({ includeLeaderboard: false });
+
+    expect(mocks.getLeaderboard).not.toHaveBeenCalled();
+    expect(state.profileName.value).toBe("Scholar Display");
   });
 });

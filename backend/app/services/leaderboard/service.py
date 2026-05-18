@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import datetime, timedelta, timezone, tzinfo
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -37,6 +37,27 @@ class LeaderboardRepositoryProtocol(Protocol):
     async def count_global_leaderboard_users(self) -> int: ...
     async def get_user_total_xp(self, user_id: UUID) -> Any | None: ...
     async def get_user_rank(self, user_id: UUID, total_xp: int) -> int: ...
+    async def get_weekly_leaderboard(
+        self,
+        limit: int,
+        offset: int = 0,
+        *,
+        start_at: datetime,
+        end_at: datetime,
+    ) -> list[LeaderboardRowProtocol]: ...
+
+    async def count_weekly_leaderboard_users(
+        self, *, start_at: datetime, end_at: datetime
+    ) -> int: ...
+
+    async def get_user_weekly_xp(
+        self, user_id: UUID, *, start_at: datetime, end_at: datetime
+    ) -> Any | None: ...
+
+    async def get_user_weekly_rank(
+        self, user_id: UUID, weekly_xp: int, *, start_at: datetime, end_at: datetime
+    ) -> int: ...
+
     async def get_daily_focus_documents(
         self,
         *,
@@ -70,6 +91,13 @@ class LeaderboardServiceError(Exception):
 
 class LeaderboardService:
     """Service for retrieving leaderboard data."""
+
+    PROMOTION_CUTOFF_RANK = 5
+    DEMOTION_COUNT = 4
+    MAX_WEEKLY_PARTICIPANTS = 20
+    DEFAULT_TIER_KEY = "apprentice"
+    DEFAULT_TIER_NAME = "见习学徒"
+    NEXT_TIER_NAME = "初阶学者"
 
     def __init__(self, *, repository: Any, llm_client: LLMClientProtocol | None = None) -> None:
         self.repository: LeaderboardRepositoryProtocol = cast(
@@ -119,11 +147,43 @@ class LeaderboardService:
         try:
             return ZoneInfo("Asia/Shanghai")
         except ZoneInfoNotFoundError:
-            logger.warning("ZoneInfo Asia/Shanghai unavailable, falling back to local timezone")
-            local_tz = datetime.now().astimezone().tzinfo
-            if local_tz is not None:
-                return local_tz
-            return UTC
+            logger.warning("ZoneInfo Asia/Shanghai unavailable, falling back to UTC+8")
+            return timezone(timedelta(hours=8), name="Asia/Shanghai")
+
+    @classmethod
+    def _resolve_week_window(cls, now: datetime | None = None) -> tuple[datetime, datetime]:
+        tz = cls._resolve_day_timezone()
+        local_now = (now or datetime.now(tz)).astimezone(tz)
+        week_start = (local_now - timedelta(days=local_now.weekday())).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        return week_start, week_start + timedelta(days=7)
+
+    @classmethod
+    def _is_promotion_zone(cls, rank: int) -> bool:
+        return 1 <= rank <= cls.PROMOTION_CUTOFF_RANK
+
+    @classmethod
+    def _is_demotion_zone(cls, rank: int, participants_count: int) -> bool:
+        return participants_count >= 10 and rank > participants_count - cls.DEMOTION_COUNT
+
+    @classmethod
+    def _projected_tier_name(cls, rank: int, participants_count: int) -> str:
+        if cls._is_promotion_zone(rank):
+            return cls.NEXT_TIER_NAME
+        if cls._is_demotion_zone(rank, participants_count):
+            return cls.DEFAULT_TIER_NAME
+        return cls.DEFAULT_TIER_NAME
+
+    @staticmethod
+    def _resolve_row_xp(row: LeaderboardRowProtocol) -> int:
+        raw_xp = getattr(row, "weekly_xp", None)
+        if raw_xp is None:
+            raw_xp = row.total_xp
+        return int(raw_xp)
 
     @staticmethod
     def _parse_semantic_title_response(response: dict[str, Any]) -> str | None:
@@ -194,33 +254,78 @@ class LeaderboardService:
         offset: int = 0,
         scope: str = "global",
     ) -> LeaderboardListResponse:
-        safe_limit = max(1, min(limit, 100))
+        safe_limit = max(1, min(limit, self.MAX_WEEKLY_PARTICIPANTS))
         safe_offset = max(0, offset)
 
-        rows = await self.repository.get_global_leaderboard(safe_limit, safe_offset)
-        total_users = await self.repository.count_global_leaderboard_users()
+        week_starts_at, week_ends_at = self._resolve_week_window()
+        rows = await self.repository.get_weekly_leaderboard(
+            safe_limit,
+            safe_offset,
+            start_at=week_starts_at,
+            end_at=week_ends_at,
+        )
+        total_users = await self.repository.count_weekly_leaderboard_users(
+            start_at=week_starts_at,
+            end_at=week_ends_at,
+        )
 
-        entries = [
-            LeaderboardEntryResponse(
-                user_id=row.user_id,
-                display_name=row.display_name,
-                total_xp=int(row.total_xp),
-                rank=safe_offset + idx + 1,
-                level=self._resolve_level(int(row.total_xp)),
-                energy_points=0,
-                is_current_user=row.user_id == user_id,
-            )
-            for idx, row in enumerate(rows)
-        ]
-
-        viewer_row = await self.repository.get_user_total_xp(user_id)
-        viewer_total_xp = int(viewer_row.total_xp) if viewer_row is not None else 0
+        viewer_row = await self.repository.get_user_weekly_xp(
+            user_id,
+            start_at=week_starts_at,
+            end_at=week_ends_at,
+        )
+        viewer_weekly_xp = int(getattr(viewer_row, "weekly_xp", 0)) if viewer_row is not None else 0
         viewer_name = (
             str(viewer_row.display_name)
             if viewer_row is not None and viewer_row.display_name is not None
             else "Default user"
         )
-        viewer_rank = await self.repository.get_user_rank(user_id, viewer_total_xp)
+        viewer_rank = await self.repository.get_user_weekly_rank(
+            user_id,
+            viewer_weekly_xp,
+            start_at=week_starts_at,
+            end_at=week_ends_at,
+        )
+
+        entries = [
+            LeaderboardEntryResponse(
+                user_id=row.user_id,
+                display_name=row.display_name,
+                total_xp=self._resolve_row_xp(row),
+                weekly_xp=self._resolve_row_xp(row),
+                rank=safe_offset + idx + 1,
+                level=self._resolve_level(self._resolve_row_xp(row)),
+                tier_key=self.DEFAULT_TIER_KEY,
+                tier_name=self.DEFAULT_TIER_NAME,
+                projected_tier_name=self._projected_tier_name(
+                    safe_offset + idx + 1,
+                    total_users,
+                ),
+                energy_points=0,
+                is_current_user=row.user_id == user_id,
+                is_promotion_zone=self._is_promotion_zone(safe_offset + idx + 1),
+                is_demotion_zone=self._is_demotion_zone(safe_offset + idx + 1, total_users),
+            )
+            for idx, row in enumerate(rows)
+        ]
+        if safe_offset == 0 and all(entry.user_id != user_id for entry in entries):
+            entries.append(
+                LeaderboardEntryResponse(
+                    user_id=user_id,
+                    display_name=viewer_name,
+                    total_xp=viewer_weekly_xp,
+                    weekly_xp=viewer_weekly_xp,
+                    rank=viewer_rank,
+                    level=self._resolve_level(viewer_weekly_xp),
+                    tier_key=self.DEFAULT_TIER_KEY,
+                    tier_name=self.DEFAULT_TIER_NAME,
+                    projected_tier_name=self._projected_tier_name(viewer_rank, total_users),
+                    energy_points=0,
+                    is_current_user=True,
+                    is_promotion_zone=self._is_promotion_zone(viewer_rank),
+                    is_demotion_zone=self._is_demotion_zone(viewer_rank, total_users),
+                )
+            )
 
         tz = self._resolve_day_timezone()
         now_local = datetime.now(tz)
@@ -258,10 +363,16 @@ class LeaderboardService:
         viewer = LeaderboardViewerSummaryResponse(
             user_id=user_id,
             display_name=viewer_name,
-            total_xp=viewer_total_xp,
+            total_xp=viewer_weekly_xp,
+            weekly_xp=viewer_weekly_xp,
             rank=viewer_rank,
-            level=self._resolve_level(viewer_total_xp),
+            level=self._resolve_level(viewer_weekly_xp),
+            tier_key=self.DEFAULT_TIER_KEY,
+            tier_name=self.DEFAULT_TIER_NAME,
+            projected_tier_name=self._projected_tier_name(viewer_rank, total_users),
             energy_points=self._resolve_energy_points(today_completed_runs),
+            is_promotion_zone=self._is_promotion_zone(viewer_rank),
+            is_demotion_zone=self._is_demotion_zone(viewer_rank, total_users),
             daily_focus=daily_focus,
         )
 
@@ -269,6 +380,11 @@ class LeaderboardService:
             scope=scope,
             limit=safe_limit,
             offset=safe_offset,
+            week_starts_at=week_starts_at,
+            week_ends_at=week_ends_at,
+            promotion_cutoff_rank=self.PROMOTION_CUTOFF_RANK,
+            demotion_count=self.DEMOTION_COUNT,
+            participants_count=total_users,
             has_more=safe_offset + len(entries) < total_users,
             entries=entries,
             viewer=viewer,

@@ -95,29 +95,29 @@ Run all backend commands from `D:\project\Xirang\backend`.
 uv venv .venv                      # Create virtual environment
 uv sync --extra dev                # Install dependencies
 uv run alembic upgrade head        # Apply migrations
-uv run uvicorn app.main:app --reload --port 8000  # Start dev server
+uv run python -m uvicorn app.main:app --reload --port 8000  # Start dev server
 
 # Quality checks
 uv run ruff check app tests        # Lint
 uv run ruff format app tests       # Format
 uv run mypy app                    # Type check
-uv run pytest tests -q --tb=short  # Run tests
-uv run pytest --cov=app --cov-report=html  # Tests with coverage
+uv run python -m pytest tests -q --tb=short  # Run tests
+uv run python -m pytest --cov=app --cov-report=html  # Tests with coverage
 ```
 
 ### Single-Test Commands
 ```bash
 # One test file
-uv run pytest tests/api/test_auth_api.py -v
+uv run python -m pytest tests/api/test_auth_api.py -v
 
 # Specific test function
-uv run pytest tests/api/test_auth_api.py::test_register_endpoint_returns_created_auth_payload -v
+uv run python -m pytest tests/api/test_auth_api.py::test_register_endpoint_returns_created_auth_payload -v
 
 # By pattern
-uv run pytest tests/ -k "auth" -v
+uv run python -m pytest tests/ -k "auth" -v
 
 # Multiple files
-uv run pytest tests/api/test_auth_api.py tests/api/test_system.py -q
+uv run python -m pytest tests/api/test_auth_api.py tests/api/test_system.py -q
 ```
 
 ### Project Structure
@@ -195,3 +195,13 @@ Key variables (see `backend/.env.example`):
 - Do not add dependencies unless materially justified.
 - Frontend and backend communicate via `/api/v1/*` endpoints (Vite proxy in dev).
 - Update this file if you add new commands, workflows, or conventions.
+
+---
+
+## Deployment / Configuration Workflow
+- When changing deployment, environment variables, Render, Vercel, OAuth, CORS, external services, health checks, or production domains, read `docs/deployment-checklist.md` before making changes.
+- Before adding or modifying environment variables, read `docs/env-matrix.md` and update it when variables change.
+- Do not commit real Render runtime config. `render.yaml`, `render.yml`, and `render.ymal` are ignored; use `docs/render-blueprint-template.md` as the reviewable Render API/Worker configuration template.
+- For new or changed external services such as R2, Resend, Creem, PageIndex, MinerU, OAuth providers, or LLM providers, use `docs/templates/external-service-integration-template.md`.
+- After deployment-related changes, run through `docs/smoke-checklist.md`; record every smoke result summary, and record failures in `docs/friction-log.md`.
+- Never commit real secrets, `.env`, `.env.local`, API keys, webhook secrets, database URLs, or platform-specific runtime configuration.

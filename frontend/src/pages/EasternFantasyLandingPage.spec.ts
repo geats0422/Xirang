@@ -5,6 +5,8 @@ import { ROUTES } from "../constants/routes";
 import { i18n } from "../i18n";
 import EasternFantasyLandingPage from "./EasternFantasyLandingPage.vue";
 
+const discordInviteUrl = "https://discord.gg/tN8CZGAcdM";
+
 const createTestRouter = () =>
   createRouter({
     history: createMemoryHistory(),
@@ -15,7 +17,6 @@ const createTestRouter = () =>
       { path: ROUTES.home, component: { template: "<div>Home</div>" } },
       { path: ROUTES.features, component: { template: "<div>Features</div>" } },
       { path: ROUTES.pricing, component: { template: "<div>Pricing</div>" } },
-      { path: ROUTES.community, component: { template: "<div>Community</div>" } },
     ],
   });
 
@@ -53,7 +54,7 @@ describe("EasternFantasyLandingPage", () => {
     expect(router.currentRoute.value.path).toBe(ROUTES.signUp);
   });
 
-  it("shows top navigation entries", async () => {
+  it("shows only working public navigation entries", async () => {
     const router = createTestRouter();
     await router.push(ROUTES.landing);
     await router.isReady();
@@ -63,6 +64,20 @@ describe("EasternFantasyLandingPage", () => {
     });
 
     const navLinks = wrapper.findAll(".site-nav a");
-    expect(navLinks.length).toBe(4);
+    expect(navLinks.map((link) => link.attributes("href"))).toEqual(["/", "/features", "/pricing"]);
+    expect(wrapper.text()).not.toContain("Community");
+  });
+  it("does not render placeholder social links or unverifiable user counts", async () => {
+    const router = createTestRouter();
+    await router.push(ROUTES.landing);
+    await router.isReady();
+
+    const wrapper = mount(EasternFantasyLandingPage, {
+      global: { plugins: [router, i18n] },
+    });
+
+    expect(wrapper.findAll('a[href="#"]')).toHaveLength(0);
+    expect(wrapper.find(`.site-footer__links a[href="${discordInviteUrl}"]`).exists()).toBe(true);
+    expect(wrapper.text()).not.toMatch(/10,000|10\.000|thousands/i);
   });
 });

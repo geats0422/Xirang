@@ -16,6 +16,7 @@ type StandingRow = {
 defineProps<{
   statusClass: (row: StandingRow) => string;
   standings: StandingRow[];
+  subtitle: string;
   hasMore: boolean;
   isLoading: boolean;
 }>();
@@ -30,7 +31,7 @@ const emit = defineEmits<{
     <header class="board-header">
       <div>
         <h2>{{ t("leaderboard.table.title") }}</h2>
-        <p>{{ t("leaderboard.table.subtitle") }}</p>
+        <p>{{ subtitle }}</p>
       </div>
     </header>
 
@@ -82,7 +83,6 @@ const emit = defineEmits<{
       </div>
 
       <div class="ellipsis-row">•••</div>
-      <div class="demotion-row">{{ t("leaderboard.table.demotionZone") }}</div>
       <button class="load-more" type="button" :disabled="isLoading || !hasMore" @click="emit('loadMore')">
         {{ hasMore ? t("leaderboard.table.loadMore") : t("leaderboard.table.noMore") }}
       </button>

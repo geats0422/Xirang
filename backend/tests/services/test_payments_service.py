@@ -3,16 +3,17 @@ from uuid import uuid4
 import pytest
 
 from app.core.config import Settings
-from app.services.payments.service import PaymentService
+from app.services.payments.service import CreemCheckoutError, PaymentService
 
 
 class FakeClient:
-    def __init__(self) -> None:
+    def __init__(self, checkout_url: str = "https://checkout.local") -> None:
         self.payload = None
+        self.checkout_url = checkout_url
 
     async def create_checkout(self, payload):  # type: ignore[no-untyped-def]
         self.payload = payload
-        return {"checkout_url": "https://checkout.local"}
+        return {"checkout_url": self.checkout_url}
 
     async def cancel_subscription(self, subscription_id: str):  # type: ignore[no-untyped-def]
         return {"ok": True}
@@ -61,6 +62,7 @@ async def test_create_checkout_returns_url() -> None:
     result = await service.create_checkout(user_id=session.user.id, product_type="subscription", plan="monthly")
     assert result["checkout_url"] == "https://checkout.local"
     assert client.payload["product_id"] == "prod_monthly"
+    assert client.payload["cancel_url"] == "http://localhost:5173/pricing"
 
 
 @pytest.mark.asyncio(loop_scope="module")
@@ -75,6 +77,20 @@ async def test_create_coin_checkout_uses_coin_product_id() -> None:
     result = await service.create_checkout(user_id=session.user.id, product_type="coin", plan="1500")
     assert result["checkout_url"] == "https://checkout.local"
     assert client.payload["product_id"] == "prod_coin_1500"
+    assert client.payload["metadata"]["coin_amount"] == 1500
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_create_checkout_rejects_empty_checkout_url() -> None:
+    session = FakeSession()
+    service = PaymentService(
+        session=session,
+        client=FakeClient(checkout_url=""),
+        settings=Settings(creem_product_sub_monthly="prod_monthly"),
+    )  # type: ignore[arg-type]
+
+    with pytest.raises(CreemCheckoutError):
+        await service.create_checkout(user_id=session.user.id, product_type="subscription", plan="monthly")
 
 
 @pytest.mark.asyncio(loop_scope="module")

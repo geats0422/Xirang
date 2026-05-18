@@ -1,5 +1,6 @@
 import { getAuthHeaders } from "./authHeaders";
 import { ApiError, NetworkError, apiRequest } from "./http";
+import { clearAuthSessionStorage as clearStoredAuthSession } from "../utils/auth";
 
 export type AuthUser = {
   id: string;
@@ -223,16 +224,7 @@ export const exchangeOauthCode = async (): Promise<AuthTokens> => {
 };
 
 export const clearAuthSessionStorage = (): void => {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.removeItem("xirang:accessToken");
-  window.localStorage.removeItem("xirang:token");
-  window.localStorage.removeItem("xirang:refreshToken");
-  window.localStorage.removeItem("xirang:userId");
-  window.localStorage.removeItem("xirang:username");
-  window.localStorage.removeItem("xirang:email");
-  window.localStorage.removeItem("xirang:isAuthenticated");
+  clearStoredAuthSession();
 };
 
 export const logoutApi = async (): Promise<void> => {

@@ -17,6 +17,7 @@ const activeAction = ref<"login" | "sign-up" | "get-started" | null>(null);
 const showLangDropdown = ref(false);
 
 const themeCycle: Theme[] = ["light", "dark", "system"];
+const discordInviteUrl = "https://discord.gg/tN8CZGAcdM";
 
 const languages = computed(() => {
   const _ = locale.value;
@@ -72,7 +73,6 @@ const navItems = computed(() => {
     { label: t("landing.home"), href: ROUTES.landing },
     { label: t("landing.features"), href: ROUTES.features },
     { label: t("landing.pricing"), href: ROUTES.pricing },
-    { label: t("landing.community"), href: ROUTES.community },
   ];
 });
 
@@ -124,8 +124,7 @@ const footerLinks = computed(() => {
     { text: t("landing.privacyPolicy"), href: "/privacy-policy" },
     { text: t("landing.termsOfService"), href: "/terms-of-service" },
     { text: t("landing.contactUs"), href: "/help-center" },
-    { text: t("landing.twitter"), href: "#" },
-    { text: t("landing.discord"), href: "#" },
+    { text: "Discord", href: discordInviteUrl },
   ];
 });
 

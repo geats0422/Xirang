@@ -12,6 +12,8 @@ const props = withDefaults(
     userName?: string | null;
     energyPoints?: number;
     userRank?: number;
+    tierName?: string;
+    promotionCutoffRank?: number;
     dailyFocus?: Array<{
       title: string;
       progressText: string;
@@ -23,6 +25,8 @@ const props = withDefaults(
     userName: "",
     energyPoints: 0,
     userRank: 0,
+    tierName: "",
+    promotionCutoffRank: 5,
     dailyFocus: () => [],
   },
 );
@@ -32,24 +36,19 @@ const formattedXp = computed(() => {
   return new Intl.NumberFormat(locale.value).format(props.userXp);
 });
 
-// Level title with i18n
-const levelTitle = computed(() => {
-  const level = props.userLevel;
-  // Determine rank title based on level
-  let rankKey = "leaderboard.summary.rankTitle.novice";
-  if (level >= 40) rankKey = "leaderboard.summary.rankTitle.wanderingSage";
-  else if (level >= 30) rankKey = "leaderboard.summary.rankTitle.ancientScholar";
-  else if (level >= 20) rankKey = "leaderboard.summary.rankTitle.journeymanScholar";
-  else if (level >= 10) rankKey = "leaderboard.summary.rankTitle.apprenticeScholar";
-  return t("leaderboard.summary.levelTitle", { level, rank: t(rankKey) });
-});
-
 const displayUserName = computed(() => props.userName?.trim() || "");
 const displayRank = computed(() => {
   if (!props.userRank || props.userRank <= 0) {
     return "--";
   }
   return `#${props.userRank}`;
+});
+const displayTierName = computed(() => props.tierName?.trim() || t("leaderboard.tiers.apprentice"));
+const rankWithTier = computed(() => {
+  return t("leaderboard.summary.currentRankWithTier", {
+    rank: displayRank.value,
+    tier: displayTierName.value,
+  });
 });
 
 const formatFocusTitle = (title: string) => {
@@ -73,30 +72,22 @@ const formatFocusTitle = (title: string) => {
         <span class="energy-pill">✪ {{ energyPoints }}</span>
       </div>
       <h1>{{ displayUserName }}</h1>
-      <p class="level">{{ levelTitle }}</p>
+      <p class="level">{{ rankWithTier }}</p>
 
       <div class="stat-card">
-        <span>{{ t("leaderboard.summary.totalXp") }}</span>
+        <span>{{ t("leaderboard.summary.weeklyXp") }}</span>
         <strong>{{ formattedXp }}</strong>
       </div>
 
       <div class="league-card">
         <div class="league-head">
           <span>♠</span>
-          <span>{{ t("leaderboard.summary.currentRank", { rank: displayRank }) }}</span>
+          <span>{{ rankWithTier }}</span>
         </div>
         <div class="progress-track" role="presentation">
           <span class="progress-fill" :style="{ width: `${progress}%` }" />
         </div>
-        <p>{{ t("leaderboard.summary.progressToNextLevel", { xp: Math.max(0, 500 - (userXp % 500)) }) }}</p>
-      </div>
-
-      <div class="badge-card">
-        <span class="badge-icon">◉</span>
-        <div>
-          <p>{{ t("leaderboard.summary.ghostScore") }}</p>
-          <p>{{ t("leaderboard.summary.badgeAcquired") }}</p>
-        </div>
+        <p>{{ t("leaderboard.summary.promotionRule", { count: promotionCutoffRank }) }}</p>
       </div>
     </article>
 

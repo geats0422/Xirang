@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.models.documents import (
     Document,
@@ -126,6 +126,14 @@ class DocumentRepository:
         )
         result = await self._session.execute(stmt)
         return [title for title in result.scalars().all() if isinstance(title, str)]
+
+    async def count_active_documents_by_owner(self, owner_user_id: UUID) -> int:
+        stmt = select(func.count()).select_from(Document).where(
+            Document.owner_user_id == owner_user_id,
+            Document.deleted_at.is_(None),
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
 
     async def create_job(
         self,

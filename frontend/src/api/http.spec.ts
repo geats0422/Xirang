@@ -96,6 +96,45 @@ describe("business errors", () => {
     });
   });
 
+  it("retries 401 requests with refreshed token even when stale auth headers were passed", async () => {
+    window.localStorage.setItem("xirang:refreshToken", "refresh-token");
+    const staleHeaders = { Authorization: "Bearer stale-token" };
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => JSON.stringify({ detail: "invalid_token" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          tokens: {
+            access_token: "new-token",
+            refresh_token: "new-refresh-token",
+            token_type: "bearer",
+            expires_in: 900,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true }),
+      });
+
+    await apiRequest("/api/v1/auth/me", { headers: staleHeaders });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/auth/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer new-token" }),
+      }),
+    );
+  });
+
   it("throws ApiError with status and detail on 5xx", async () => {
     const detail = { message: "Upstream service unavailable" };
 

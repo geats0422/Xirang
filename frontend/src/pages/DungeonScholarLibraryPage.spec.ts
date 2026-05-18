@@ -73,6 +73,58 @@ describe("DungeonScholarLibraryPage", () => {
     expect(wrapper.find(".scroll-card__add-icon").text()).toContain("＋");
   });
 
+  it("shows upload limit dialog when the library already has 10 files", async () => {
+    mocks.listDocuments.mockResolvedValueOnce(
+      Array.from({ length: 10 }, (_, index) => ({
+        id: `doc-${index}`,
+        title: `scroll-${index}.pdf`,
+        status: "ready",
+        created_at: `2026-05-${String(index + 1).padStart(2, "0")}T00:00:00Z`,
+      })),
+    );
+    const router = createTestRouter();
+    await router.push(ROUTES.library);
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLibraryPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".scroll-card--add").trigger("click");
+
+    expect(wrapper.find('[data-testid="upload-limit-dialog"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("You can upload up to 10 files");
+    expect(wrapper.text()).toContain("delete files you have finished studying");
+    expect(wrapper.find(".upload-modal-overlay").exists()).toBe(false);
+  });
+
+  it("shows upload limit dialog when the user already has 10 documents", async () => {
+    mocks.listDocuments.mockResolvedValueOnce(
+      Array.from({ length: 10 }, (_, index) => ({
+        id: `doc-${index}`,
+        title: `scroll-${index}.pdf`,
+        status: "ready",
+        created_at: `2026-05-${String(index + 1).padStart(2, "0")}T00:00:00Z`,
+      })),
+    );
+    const router = createTestRouter();
+    await router.push(ROUTES.library);
+    await router.isReady();
+
+    const wrapper = mount(DungeonScholarLibraryPage, {
+      global: { plugins: [router, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find(".scroll-card--add").trigger("click");
+
+    expect(wrapper.find('[data-testid="upload-limit-dialog"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("You can upload up to 10 files");
+    expect(wrapper.text()).toContain("delete files you have finished studying");
+    expect(mocks.uploadAndRefresh).not.toHaveBeenCalled();
+  });
+
   it("opens confirm modal from edit menu", async () => {
     const router = createTestRouter();
     await router.push(ROUTES.library);

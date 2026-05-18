@@ -142,7 +142,7 @@ cp .env.example .env
 uv run alembic upgrade head
 
 # 启动服务
-uv run uvicorn app.main:app --reload --port 8000
+uv run python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### 启动前端
@@ -238,7 +238,7 @@ vercel --prod
 cd backend
 uv run ruff check app tests
 uv run mypy app
-uv run pytest -q --tb=short
+uv run python -m pytest -q --tb=short
 ```
 
 ### 前端

@@ -27,25 +27,57 @@ const createSnapshot = (overrides?: Partial<Awaited<ReturnType<typeof mocks.getL
   scope: "global",
   limit: 25,
   offset: 0,
+  week_starts_at: "2026-05-18T00:00:00+08:00",
+  week_ends_at: "2026-05-25T00:00:00+08:00",
+  promotion_cutoff_rank: 5,
+  demotion_count: 4,
+  participants_count: 12,
   has_more: false,
   entries: [
     {
       user_id: "00000000-0000-0000-0000-000000000001",
       display_name: "Alpha",
       total_xp: 2500,
+      weekly_xp: 2500,
       rank: 1,
       level: 6,
+      tier_key: "apprentice",
+      tier_name: "Apprentice",
+      projected_tier_name: "Junior Scholar",
       energy_points: 0,
       is_current_user: false,
+      is_promotion_zone: true,
+      is_demotion_zone: false,
+    },
+    {
+      user_id: "00000000-0000-0000-0000-000000000012",
+      display_name: "Omega",
+      total_xp: 10,
+      weekly_xp: 10,
+      rank: 12,
+      level: 1,
+      tier_key: "apprentice",
+      tier_name: "Apprentice",
+      projected_tier_name: "Apprentice",
+      energy_points: 0,
+      is_current_user: false,
+      is_promotion_zone: false,
+      is_demotion_zone: true,
     },
   ],
   viewer: {
     user_id: "00000000-0000-0000-0000-000000000099",
     display_name: "Viewer",
     total_xp: 3450,
+    weekly_xp: 1889,
     rank: 2,
     level: 7,
+    tier_key: "apprentice",
+    tier_name: "Apprentice",
+    projected_tier_name: "Junior Scholar",
     energy_points: 4,
+    is_promotion_zone: true,
+    is_demotion_zone: false,
     daily_focus: [
       {
         document_id: "00000000-0000-0000-0000-000000000777",
@@ -89,8 +121,16 @@ describe("DungeonScholarLeaderboardPage", () => {
     expect(wrapper.text()).toContain("Current Standings");
     expect(wrapper.text()).toContain("DAILY FOCUS");
     expect(wrapper.text()).toContain("Viewer");
-    expect(wrapper.text()).toContain("3,450");
-    expect(wrapper.text()).toContain("Current Rank #2");
+    expect(wrapper.text()).toContain("1,889");
+    expect(wrapper.text()).toContain("Current Rank #2 · Apprentice");
+    expect(wrapper.text()).toContain("Weekly XP");
+    expect(wrapper.text()).toContain("Top 5 advance to the next tier");
+    expect(wrapper.text()).toContain("12 participants this week");
+    expect(wrapper.text()).toContain("Congrats, entering Junior Scholar");
+    expect(wrapper.text()).toContain("Entering Apprentice after this week");
+    expect(wrapper.text()).toContain("Demotion Zone");
+    expect(wrapper.text()).not.toContain("Level 7");
+    expect(wrapper.text()).not.toContain("Ghost Score");
     expect(wrapper.text()).toContain('Practice "Art of War"');
     expect(wrapper.text()).toContain("Art of War");
     expect(wrapper.text()).toContain("Progress: 3/5");
@@ -107,10 +147,16 @@ describe("DungeonScholarLeaderboardPage", () => {
               user_id: "00000000-0000-0000-0000-000000000001",
               display_name: "Alpha",
               total_xp: 2500,
+              weekly_xp: 2500,
               rank: 1,
               level: 6,
+              tier_key: "apprentice",
+              tier_name: "Apprentice",
+              projected_tier_name: "Junior Scholar",
               energy_points: 0,
               is_current_user: false,
+              is_promotion_zone: true,
+              is_demotion_zone: false,
             },
           ],
         }),
@@ -124,10 +170,16 @@ describe("DungeonScholarLeaderboardPage", () => {
               user_id: "00000000-0000-0000-0000-000000000002",
               display_name: "Beta",
               total_xp: 1800,
+              weekly_xp: 1800,
               rank: 2,
               level: 4,
+              tier_key: "apprentice",
+              tier_name: "Apprentice",
+              projected_tier_name: "Junior Scholar",
               energy_points: 0,
               is_current_user: false,
+              is_promotion_zone: true,
+              is_demotion_zone: false,
             },
           ],
         }),
@@ -160,10 +212,16 @@ describe("DungeonScholarLeaderboardPage", () => {
             user_id: "00000000-0000-0000-0000-000000000001",
             display_name: null,
             total_xp: 2500,
+            weekly_xp: 2500,
             rank: 1,
             level: 6,
+            tier_key: "apprentice",
+            tier_name: "Apprentice",
+            projected_tier_name: "Junior Scholar",
             energy_points: 0,
             is_current_user: false,
+            is_promotion_zone: true,
+            is_demotion_zone: false,
           },
         ],
       }),

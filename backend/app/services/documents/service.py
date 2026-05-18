@@ -27,6 +27,10 @@ class StorageError(DocumentServiceError):
     status_code = 500
 
 
+class UploadLimitExceededError(DocumentServiceError):
+    status_code = 400
+
+
 @dataclass(slots=True)
 class UploadResult:
     document: Any
@@ -87,6 +91,8 @@ class DocumentRepositoryProtocol(Protocol):
 
     async def list_document_titles_by_owner(self, owner_user_id: UUID) -> list[str]: ...
 
+    async def count_active_documents_by_owner(self, owner_user_id: UUID) -> int: ...
+
     async def create_job(
         self,
         *,
@@ -134,6 +140,7 @@ class StorageProtocol(Protocol):
 class DocumentService:
     repository: DocumentRepositoryProtocol
     storage: StorageProtocol
+    max_documents_per_user: int = 10
 
     async def _resolve_unique_title(self, *, owner_user_id: UUID, desired_title: str) -> str:
         normalized_title = desired_title.strip() or "Untitled"
@@ -164,6 +171,13 @@ class DocumentService:
         mime_type: str,
     ) -> UploadResult:
         from app.db.models.documents import DocumentFormat
+
+        active_document_count = await self.repository.count_active_documents_by_owner(owner_user_id)
+        if active_document_count >= self.max_documents_per_user:
+            raise UploadLimitExceededError(
+                "You can upload up to 10 files during the validation period. "
+                "Delete completed files before uploading more."
+            )
 
         checksum = hashlib.sha256(file_content).hexdigest()
 

@@ -11,6 +11,7 @@ from app.services.documents.service import (
     DocumentNotFoundError,
     DocumentService,
     StorageError,
+    UploadLimitExceededError,
 )
 from app.services.documents.storage import StoredFile
 
@@ -149,6 +150,13 @@ class FakeDocumentRepository:
             for d in self.documents.values()
             if d.owner_user_id == owner_user_id and d.deleted_at is None
         ]
+
+    async def count_active_documents_by_owner(self, owner_user_id: UUID) -> int:
+        return sum(
+            1
+            for document in self.documents.values()
+            if document.owner_user_id == owner_user_id and document.deleted_at is None
+        )
 
     async def delete_document_for_owner(
         self,
@@ -346,6 +354,36 @@ async def test_upload_creates_ingestion_job_linked_to_document() -> None:
     ingestion_job = await repository.get_ingestion_job_by_document(result.document.id)
     assert ingestion_job is not None
     assert ingestion_job.job_id == result.job.id
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_when_user_reaches_beta_file_limit() -> None:
+    service, repository, storage = build_document_service()
+    user_id = uuid4()
+
+    for index in range(10):
+        await service.upload(
+            owner_user_id=user_id,
+            title=f"Document {index}",
+            file_name=f"doc-{index}.txt",
+            file_content=b"content",
+            format=DocumentFormat.TXT,
+            mime_type="text/plain",
+        )
+
+    with pytest.raises(UploadLimitExceededError) as exc_info:
+        await service.upload(
+            owner_user_id=user_id,
+            title="Eleventh",
+            file_name="eleventh.txt",
+            file_content=b"content",
+            format=DocumentFormat.TXT,
+            mime_type="text/plain",
+        )
+
+    assert "10 files" in exc_info.value.message
+    assert len(repository.documents) == 10
+    assert len(storage.files) == 10
 
 
 @pytest.mark.asyncio

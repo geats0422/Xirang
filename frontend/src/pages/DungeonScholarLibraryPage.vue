@@ -52,9 +52,11 @@ const isFilterDropdownOpen = ref(false);
 const { profileName, profileLevel, uploadAndRefresh, hydrate } = useScholarData();
 
 const uploadModalVisible = ref(false);
+const uploadLimitDialogVisible = ref(false);
 const uploadState = ref<UploadState>("idle");
 const isDragging = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
+const maxBetaUploadFiles = 10;
 
 onMounted(async () => {
   await Promise.all([hydrate(), loadDocuments(), loadMistakeCount()]);
@@ -388,8 +390,16 @@ const openMistakeReview = async () => {
 };
 
 const openUploadModal = () => {
+  if (documents.value.length >= maxBetaUploadFiles) {
+    uploadLimitDialogVisible.value = true;
+    return;
+  }
   uploadModalVisible.value = true;
   uploadState.value = "idle";
+};
+
+const closeUploadLimitDialog = () => {
+  uploadLimitDialogVisible.value = false;
 };
 
 const closeUploadModal = () => {
@@ -827,6 +837,18 @@ defineExpose({
       @cancel="closeDeleteModal"
       @confirm="confirmDelete"
     />
+
+    <div v-if="uploadLimitDialogVisible" class="upload-limit-dialog-overlay" data-testid="upload-limit-dialog" @click.self="closeUploadLimitDialog">
+      <section class="upload-limit-dialog" role="alertdialog" aria-modal="true" :aria-label="t('library.uploadLimitTitle')">
+        <button class="upload-limit-dialog__close" type="button" :aria-label="t('common.closeAria')" @click="closeUploadLimitDialog">✕</button>
+        <p class="upload-limit-dialog__eyebrow">BETA</p>
+        <h2>{{ t("library.uploadLimitTitle") }}</h2>
+        <p>{{ t("library.uploadLimitBody") }}</p>
+        <button class="upload-limit-dialog__action" type="button" @click="closeUploadLimitDialog">
+          {{ t("library.uploadLimitAction") }}
+        </button>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -840,6 +862,70 @@ defineExpose({
   overflow-x: hidden;
   overflow-y: auto;
   padding: 24px;
+}
+
+.upload-limit-dialog-overlay {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 80;
+}
+
+.upload-limit-dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-elevated);
+  max-width: 420px;
+  padding: 28px;
+  position: relative;
+  text-align: center;
+  width: 100%;
+}
+
+.upload-limit-dialog__close {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  position: absolute;
+  right: 18px;
+  top: 16px;
+}
+
+.upload-limit-dialog__eyebrow {
+  color: var(--color-primary-700);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0 0 10px;
+}
+
+.upload-limit-dialog h2 {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  margin: 0 0 12px;
+}
+
+.upload-limit-dialog p {
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+}
+
+.upload-limit-dialog__action {
+  background: var(--color-primary-600);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  cursor: pointer;
+  font-weight: 700;
+  margin-top: 12px;
+  padding: 12px 22px;
 }
 
 .library-main {

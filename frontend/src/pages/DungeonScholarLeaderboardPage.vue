@@ -8,6 +8,7 @@ import AppSidebar from "../components/layout/AppSidebar.vue";
 import NotificationPopover from "../components/NotificationPopover.vue";
 import { useRouteNavigation } from "../composables/useRouteNavigation";
 import { useScholarData } from "../composables/useScholarData";
+import { getCompetitionDaysRemaining } from "../utils/leaderboardWeek";
 
 const { t, locale } = useI18n();
 const { profileName, profileLevel, hydrate } = useScholarData();
@@ -39,7 +40,12 @@ const viewerXp = ref(0);
 const viewerLevel = ref(1);
 const viewerRank = ref(0);
 const viewerEnergyPoints = ref(0);
+const viewerTierName = ref("");
 const viewerDailyFocus = ref<DailyFocusItem[]>([]);
+const weekEndsAt = ref<string | null>(null);
+const promotionCutoffRank = ref(5);
+const demotionCount = ref(4);
+const participantsCount = ref(0);
 const refreshIntervalMs = 30 * 60 * 1000;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -54,16 +60,23 @@ const toStandingRow = (entry: LeaderboardEntry): StandingRow => {
     tone = "silver";
   } else if (entry.rank === 3) {
     tone = "bronze";
-  } else if (entry.rank >= 41) {
-    tone = "danger";
-    status = t("leaderboard.status.danger");
+  }
+  const isPromotionZone = entry.is_promotion_zone ?? entry.rank <= promotionCutoffRank.value;
+  if (isPromotionZone) {
+    status = t("leaderboard.status.promotionEntry", {
+      tier: entry.projected_tier_name || t("leaderboard.tiers.juniorScholar"),
+    });
+  } else if (entry.is_demotion_zone) {
+    status = t("leaderboard.status.demotionZoneEntry", {
+      tier: entry.projected_tier_name || t("leaderboard.tiers.apprentice"),
+    });
   }
 
   return {
     rank: String(entry.rank),
     scholar: entry.display_name?.trim() || "",
     guild: "",
-    xp: new Intl.NumberFormat(locale.value).format(entry.total_xp),
+    xp: new Intl.NumberFormat(locale.value).format(entry.weekly_xp ?? entry.total_xp),
     status,
     tone,
   };
@@ -84,11 +97,16 @@ const fetchLeaderboard = async (reset = false) => {
     const snapshot = await getLeaderboardSnapshot(pageSize, offset);
 
     viewerName.value = snapshot.viewer.display_name;
-    viewerXp.value = snapshot.viewer.total_xp;
+    viewerXp.value = snapshot.viewer.weekly_xp ?? snapshot.viewer.total_xp;
     viewerLevel.value = snapshot.viewer.level;
     viewerRank.value = snapshot.viewer.rank;
     viewerEnergyPoints.value = snapshot.viewer.energy_points;
+    viewerTierName.value = snapshot.viewer.tier_name || t("leaderboard.tiers.apprentice");
     viewerDailyFocus.value = snapshot.viewer.daily_focus;
+    weekEndsAt.value = snapshot.week_ends_at || null;
+    promotionCutoffRank.value = snapshot.promotion_cutoff_rank || 5;
+    demotionCount.value = snapshot.demotion_count || 4;
+    participantsCount.value = snapshot.participants_count || snapshot.entries.length;
 
     leaderboardData.value = reset
       ? snapshot.entries
@@ -123,7 +141,7 @@ const handleWindowFocusRefresh = async () => {
 };
 
 onMounted(async () => {
-  await Promise.all([hydrate(), fetchLeaderboard(true)]);
+  await Promise.all([hydrate({ includeLeaderboard: false }), fetchLeaderboard(true)]);
   refreshTimer = setInterval(() => {
     void fetchLeaderboard(true);
   }, refreshIntervalMs);
@@ -184,6 +202,15 @@ const dailyFocusItems = computed(() => {
   }));
 });
 
+const leaderboardSubtitle = computed(() => {
+  const days = getCompetitionDaysRemaining({ weekEndsAt: weekEndsAt.value });
+  const participantsText = t("leaderboard.table.participants", { count: participantsCount.value });
+  if (days <= 0) {
+    return `${t("leaderboard.table.endsToday")} · ${participantsText}`;
+  }
+  return `${t("leaderboard.table.endsInDays", { days })} · ${participantsText}`;
+});
+
 const statusClass = (row: StandingRow) => {
   if (row.tone === "gold") {
     return "status-chip status-chip--gold";
@@ -195,6 +222,9 @@ const statusClass = (row: StandingRow) => {
     return "status-chip status-chip--bronze";
   }
   if (row.tone === "danger") {
+    return "status-chip status-chip--danger";
+  }
+  if (row.status?.includes(t("leaderboard.status.demotionKeyword"))) {
     return "status-chip status-chip--danger";
   }
   return "status-chip";
@@ -241,12 +271,15 @@ const statusClass = (row: StandingRow) => {
           :user-level="userLevel"
           :user-name="userName"
           :user-rank="viewerRank"
+          :tier-name="viewerTierName"
+          :promotion-cutoff-rank="promotionCutoffRank"
           :energy-points="energyPoints"
           :daily-focus="dailyFocusItems"
         />
         <LeaderboardStandingsTable
           :standings="standings"
           :status-class="statusClass"
+          :subtitle="leaderboardSubtitle"
           :has-more="hasMore"
           :is-loading="isLoading"
           @load-more="handleLoadMore"

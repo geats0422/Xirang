@@ -42,6 +42,108 @@ class LeaderboardRepository:
         result = await self._session.execute(stmt)
         return int(result.scalar_one() or 0)
 
+    async def get_weekly_leaderboard(
+        self,
+        limit: int,
+        offset: int = 0,
+        *,
+        start_at: datetime,
+        end_at: datetime,
+    ) -> list[Any]:
+        stmt = (
+            select(
+                Settlement.user_id,
+                func.coalesce(Profile.display_name, User.username).label("display_name"),
+                func.coalesce(func.sum(Settlement.xp_gained), 0).label("weekly_xp"),
+            )
+            .join(User, User.id == Settlement.user_id)
+            .outerjoin(Profile, Profile.user_id == Settlement.user_id)
+            .where(Settlement.settled_at >= start_at, Settlement.settled_at < end_at)
+            .group_by(Settlement.user_id, Profile.display_name, User.username)
+            .order_by(func.sum(Settlement.xp_gained).desc(), Settlement.user_id.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.all())
+
+    async def count_weekly_leaderboard_users(
+        self, *, start_at: datetime, end_at: datetime
+    ) -> int:
+        stmt = select(func.count(func.distinct(Settlement.user_id))).where(
+            Settlement.settled_at >= start_at,
+            Settlement.settled_at < end_at,
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+    async def get_user_weekly_xp(
+        self, user_id: UUID, *, start_at: datetime, end_at: datetime
+    ) -> Any | None:
+        stmt = (
+            select(
+                User.id.label("user_id"),
+                func.coalesce(Profile.display_name, User.username).label("display_name"),
+                func.coalesce(func.sum(Settlement.xp_gained), 0).label("weekly_xp"),
+            )
+            .select_from(User)
+            .outerjoin(Profile, Profile.user_id == User.id)
+            .outerjoin(
+                Settlement,
+                (Settlement.user_id == User.id)
+                & (Settlement.settled_at >= start_at)
+                & (Settlement.settled_at < end_at),
+            )
+            .where(User.id == user_id)
+            .group_by(User.id, Profile.display_name, User.username)
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.first()
+
+    async def get_user_weekly_rank(
+        self, user_id: UUID, weekly_xp: int, *, start_at: datetime, end_at: datetime
+    ) -> int:
+        leaderboard_subquery = (
+            select(
+                Settlement.user_id.label("user_id"),
+                func.coalesce(func.sum(Settlement.xp_gained), 0).label("weekly_xp"),
+            )
+            .where(Settlement.settled_at >= start_at, Settlement.settled_at < end_at)
+            .group_by(Settlement.user_id)
+            .subquery()
+        )
+
+        outrank_stmt = (
+            select(func.count())
+            .select_from(leaderboard_subquery)
+            .where(
+                (leaderboard_subquery.c.weekly_xp > weekly_xp)
+                | (
+                    (leaderboard_subquery.c.weekly_xp == weekly_xp)
+                    & (leaderboard_subquery.c.user_id < user_id)
+                )
+            )
+        )
+        outrank_result = await self._session.execute(outrank_stmt)
+        outrank_count = int(outrank_result.scalar_one() or 0)
+
+        has_user_stmt = (
+            select(func.count())
+            .select_from(leaderboard_subquery)
+            .where(leaderboard_subquery.c.user_id == user_id)
+        )
+        has_user_result = await self._session.execute(has_user_stmt)
+        has_user = int(has_user_result.scalar_one() or 0) > 0
+        if not has_user:
+            total_users = await self.count_weekly_leaderboard_users(
+                start_at=start_at,
+                end_at=end_at,
+            )
+            return total_users + 1
+
+        return outrank_count + 1
+
     async def get_user_total_xp(self, user_id: UUID) -> Any | None:
         stmt = (
             select(

@@ -56,14 +56,17 @@ async def upload_document(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported file type")
 
     content = await file.read()
-    result = await service.upload(
-        owner_user_id=user_id,
-        title=title,
-        file_name=file_name,
-        file_content=content,
-        format=format_map[fmt_raw],
-        mime_type=content_type,
-    )
+    try:
+        result = await service.upload(
+            owner_user_id=user_id,
+            title=title,
+            file_name=file_name,
+            file_content=content,
+            format=format_map[fmt_raw],
+            mime_type=content_type,
+        )
+    except DocumentServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
     return {
         "document": {
             "id": str(result.document.id),

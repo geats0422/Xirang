@@ -143,7 +143,7 @@ onBeforeUnmount(() => {
         <ul>
           <li>
             <strong>{{ t("privacyPolicy.section1EmailLabel") }}</strong>
-            huanyugezhishe@hotmail.com
+            support@xiranglearn.quest
           </li>
         </ul>
       </section>
@@ -513,7 +513,7 @@ onBeforeUnmount(() => {
         <ul>
           <li>
             <strong>{{ t("privacyPolicy.section16EmailLabel") }}</strong>
-            huanyugezhishe@hotmail.com
+            support@xiranglearn.quest
           </li>
           <li>
             <strong>{{ t("privacyPolicy.section16CompanyLabel") }}</strong>

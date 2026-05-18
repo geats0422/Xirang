@@ -2,6 +2,18 @@
 
 本指南针对当前 monorepo 结构（`frontend/` + `backend/`），将前端部署到 Vercel、后端部署到 Render、数据库使用 Supabase。
 
+## 部署入口
+
+部署前后优先使用以下文档作为检查入口：
+
+- `docs/deployment-checklist.md`：Vercel、Render、OAuth、Worker、缓存和外部服务的部署链路核对。
+- `docs/env-matrix.md`：Vercel、Render API、Render Worker 环境变量归属和一致性规则。
+- `docs/render-blueprint-template.md`：`render.yaml` 不跟踪后的 Render API/Worker 可重建配置模板。
+- `docs/smoke-checklist.md`：发布后的静态资源、API、认证、外部服务和 Worker smoke 验证。
+- `docs/templates/external-service-integration-template.md`：新增或修改外部服务集成时使用的检查模板。
+
+真实 `render.yaml`、`render.yml`、`render.ymal` 不作为常规跟踪文件提交。Render Dashboard 是运行时事实来源，Dashboard 中的服务命令、环境变量和 secret 变更后，需要同步更新上面的文档清单。
+
 ---
 
 ## 架构总览
@@ -107,12 +119,18 @@ engine = create_async_engine(url, poolclass=NullPool)
 
 **建议的用法：**
 - 本地开发时确保 `backend/.env.local` 存在，`DATABASE_URL` 指向本地 PostgreSQL
-- 部署前复制 `.env.production` 模板并填入生产 secret（Supabase 连接串、OAuth credentials 等）
-- Render 的环境变量均来自 `.env.production` 中的值
+- 可在本地用未跟踪的 `.env.production` 整理生产变量名和占位值，但不要提交真实 secret
+- Render 的运行时环境变量以 Dashboard 为准，`.env.production` 只作为本地整理模板
 
-### 2.2 创建 `render.yaml`（Blueprint）
+### 2.2 配置 Render 服务
 
-在仓库**根目录**创建 `render.yaml`：
+当前仓库不再跟踪真实 `render.yaml`。推荐在 Render Dashboard 中创建和维护 API/Worker 服务，并使用 `docs/render-blueprint-template.md` 作为可审阅、可重建的配置模板。
+
+如果临时使用 Blueprint 导入，可以在本地创建 `render.yaml`，但不要提交到仓库。变量名、是否 secret、API/Worker 归属以 `docs/env-matrix.md` 为准。
+
+以下 YAML 仅作历史参考和 Dashboard 配置对照，不是当前 source of truth。不要把真实 `render.yaml` 提交到仓库。
+
+旧 Blueprint 示例，不要直接复制用于生产；生产配置以 Render Dashboard、`docs/render-blueprint-template.md` 和 `docs/env-matrix.md` 为准：
 
 ```yaml
 services:
@@ -193,8 +211,10 @@ services:
       - key: NVIDIA_API_KEY
         sync: false
       - key: PAGEINDEX_URL
-        value: "http://localhost:8080"
+        value: "https://你的-pageindex-service.example.com/pageindex"
 ```
+
+> Worker 运行在 Render 容器内，不能使用本机 `localhost` 作为 `PAGEINDEX_URL`。该地址必须是 Worker 容器可达的真实 PageIndex HTTP 服务。
 
 **关键变化**：
 - 不再使用 `fromDatabase`，`DATABASE_URL` 改为 `sync: false`（在 Dashboard 手动填写 Supabase 连接串）
@@ -236,14 +256,14 @@ postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.co
 
 ### 2.6 Render 部署步骤
 
-1. 将 `render.yaml` 提交到仓库根目录
-2. 在 Render Dashboard → **Blueprints** → **New Blueprint Instance**
-3. 连接 GitHub 仓库
-4. Render 会读取 `render.yaml`，自动创建 API + Worker 两个服务
-5. 在 Dashboard 中填写环境变量：
-   - `DATABASE_URL`：粘贴 Supabase 连接串
-   - `NVIDIA_API_KEY`、OAuth credentials 等 secret 变量
-6. 首次部署成功后，Alembic 迁移会在启动时自动执行
+1. 对照 `docs/render-blueprint-template.md` 在 Render Dashboard 创建 API Web Service。
+2. 如需文档后台处理，对照同一模板创建 Background Worker。
+3. 在 Dashboard 中填写环境变量：
+    - `DATABASE_URL`：粘贴 Supabase 连接串
+    - `NVIDIA_API_KEY`、OAuth credentials 等 secret 变量
+4. 对照 `docs/env-matrix.md` 核对 API 与 Worker 必须一致的变量。
+5. 首次部署成功后，Alembic 迁移会在启动时自动执行。
+6. 部署完成后执行 `docs/smoke-checklist.md`。
 
 ---
 
@@ -424,7 +444,10 @@ jobs:
 
 ### 部署前
 
-- [ ] `render.yaml` 已提交到仓库根目录
+- [ ] 已对照 `docs/deployment-checklist.md` 完成部署前核对
+- [ ] 已对照 `docs/env-matrix.md` 核对 Vercel、Render API、Render Worker 环境变量
+- [ ] 已对照 `docs/render-blueprint-template.md` 核对 Render Dashboard 配置
+- [ ] `render.yaml`、`render.yml`、`render.ymal` 未作为常规配置提交到仓库
 - [ ] `frontend/vercel.json` 已提交（rewrite 目标指向 Render URL）
 - [ ] 准备好 OAuth 应用凭据（GitHub/Google/Microsoft Client ID + Secret）
 - [ ] 准备好 NVIDIA API Key（或 OpenAI Key）
@@ -438,7 +461,7 @@ jobs:
 
 ### Render 部署
 
-- [ ] 通过 Blueprint 创建了 API (Free) + Worker (Starter) 两个服务
+- [ ] 通过 Render Dashboard 或本地临时 Blueprint 创建了 API (Free) + Worker (Starter) 服务
 - [ ] 在 Dashboard 填写了 `DATABASE_URL`（Supabase 连接串）
 - [ ] 填写了所有 `sync: false` 的 secret 环境变量
 - [ ] 首次部署成功（Alembic 迁移在启动时自动执行）
@@ -464,6 +487,7 @@ jobs:
 - [ ] 注册/登录接口正常（Supabase 数据库可写入）
 - [ ] OAuth 登录流程正常（GitHub/Google/Microsoft）
 - [ ] `CORS_ORIGINS` 已包含 Vercel 域名
+- [ ] 已执行 `docs/smoke-checklist.md`，失败项已写入 `docs/friction-log.md`
 
 ---
 
@@ -559,6 +583,7 @@ Worker 的 `document_ingestion` 任务需要把用户上传的 PDF、DOCX、PPTX
 | `MINERU_LANG_LIST` | `ch` | 中文文档解析 |
 
 > 不需要配置 `MINERU_API_KEY`，当前 `MinerUClient` 使用无鉴权的 `/file_parse` 和 `/health` 端点。
+> 如果 MinerU 暴露在公网，应通过平台访问控制、临时实例、网关鉴权、IP 限制或限流降低滥用和成本风险。
 
 ### 8.4 验证 MinerU 可用性
 

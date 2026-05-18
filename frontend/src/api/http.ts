@@ -131,7 +131,7 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
         try {
           const newToken = await getNewAccessToken();
           const newAuthHeaders: Record<string, string> = { Authorization: `Bearer ${newToken}` };
-          const newRequestHeaders = { ...newAuthHeaders, ...headers };
+          const newRequestHeaders = { ...headers, ...newAuthHeaders };
           if (!isFormData) {
             newRequestHeaders["Content-Type"] = newRequestHeaders["Content-Type"] ?? "application/json";
           }

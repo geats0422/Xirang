@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { isAuthenticated, setAuthenticatedFlag } from "./auth";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AUTH_SESSION_CLEARED_EVENT, clearAuthSessionStorage, isAuthenticated, setAuthenticatedFlag } from "./auth";
 
 const makeJwt = (payload: Record<string, unknown>) => {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -25,5 +25,17 @@ describe("auth helpers", () => {
     );
 
     expect(isAuthenticated()).toBe(true);
+  });
+
+  it("notifies listeners when auth session storage is cleared", () => {
+    localStorage.setItem("xirang:accessToken", "token");
+    const listener = vi.fn();
+    window.addEventListener(AUTH_SESSION_CLEARED_EVENT, listener);
+
+    clearAuthSessionStorage();
+
+    expect(localStorage.getItem("xirang:accessToken")).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener(AUTH_SESSION_CLEARED_EVENT, listener);
   });
 });

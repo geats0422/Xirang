@@ -25,6 +25,10 @@ class PaymentConfigurationError(ValueError):
     pass
 
 
+class CreemCheckoutError(RuntimeError):
+    pass
+
+
 @dataclass
 class PaymentService:
     session: AsyncSession
@@ -55,10 +59,25 @@ class PaymentService:
         payload = {
             "product_id": product_id,
             "success_url": self.settings.creem_checkout_success_url,
-            "metadata": {"user_id": str(user.id), "pricing_region": user.pricing_region, "product_type": product_type, "plan": plan},
+            "cancel_url": self.settings.creem_checkout_cancel_url,
+            "metadata": self._build_checkout_metadata(user=user, product_type=product_type, plan=plan),
         }
         data = await self.client.create_checkout(payload)
-        return {"checkout_url": data.get("checkout_url", ""), "status": "created"}
+        checkout_url = str(data.get("checkout_url") or "").strip()
+        if not checkout_url:
+            raise CreemCheckoutError("Creem checkout response did not include checkout_url")
+        return {"checkout_url": checkout_url, "status": "created"}
+
+    def _build_checkout_metadata(self, *, user: User, product_type: str, plan: str) -> dict[str, Any]:
+        metadata: dict[str, Any] = {
+            "user_id": str(user.id),
+            "pricing_region": user.pricing_region,
+            "product_type": product_type,
+            "plan": plan,
+        }
+        if product_type == "coin":
+            metadata["coin_amount"] = int(plan)
+        return metadata
 
     def _resolve_product_id(self, *, product_type: str, plan: str) -> str:
         product_ids = {

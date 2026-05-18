@@ -1,5 +1,6 @@
 const AUTH_FLAG_KEY = "xirang:isAuthenticated";
 const AUTH_TOKEN_KEYS = ["xirang:token", "xirang:accessToken"] as const;
+export const AUTH_SESSION_CLEARED_EVENT = "xirang:auth-session-cleared";
 
 const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
   const parts = token.split(".");
@@ -55,4 +56,19 @@ export const setAuthenticatedFlag = (authenticated: boolean): void => {
   }
 
   window.localStorage.removeItem(AUTH_FLAG_KEY);
+};
+
+export const clearAuthSessionStorage = (): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem("xirang:accessToken");
+  window.localStorage.removeItem("xirang:token");
+  window.localStorage.removeItem("xirang:refreshToken");
+  window.localStorage.removeItem("xirang:userId");
+  window.localStorage.removeItem("xirang:username");
+  window.localStorage.removeItem("xirang:email");
+  window.localStorage.removeItem(AUTH_FLAG_KEY);
+  window.dispatchEvent(new Event(AUTH_SESSION_CLEARED_EVENT));
 };

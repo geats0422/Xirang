@@ -221,7 +221,7 @@ onBeforeUnmount(() => {
         <ul>
           <li>
             <strong>{{ t("helpCenter.section5EmailLabel") }}</strong>
-            huanyugezhishe@hotmail.com
+            support@xiranglearn.quest
           </li>
           <li>
             <strong>{{ t("helpCenter.section5CompanyLabel") }}</strong>

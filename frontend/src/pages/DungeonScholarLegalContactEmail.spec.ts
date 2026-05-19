@@ -77,4 +77,20 @@ describe("legal and help contact email", () => {
     expect(terms.text()).not.toContain("30 个工作日");
     expect(privacy.text()).not.toContain("30 个工作日");
   });
+
+  it("discloses third-party AI provider independence on the privacy page", async () => {
+    i18n.global.locale.value = "en";
+    const router = createTestRouter();
+    await router.push("/privacy-policy");
+    await router.isReady();
+
+    const privacy = mount(DungeonScholarPrivacyPolicyPage, { global: { plugins: [i18n, router] } });
+
+    expect(privacy.text()).toContain(
+      "Xi Rang is an independent product and is not affiliated with, endorsed by, or sponsored by any third-party AI model provider.",
+    );
+    expect(privacy.text()).toContain(
+      "Third-party AI services may be used only to support document processing and learning content generation.",
+    );
+  });
 });

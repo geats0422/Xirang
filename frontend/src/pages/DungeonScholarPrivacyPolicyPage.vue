@@ -239,6 +239,7 @@ onBeforeUnmount(() => {
           <li>{{ t("privacyPolicy.section4_1Provider2") }}</li>
           <li>{{ t("privacyPolicy.section4_1Provider3") }}</li>
         </ul>
+        <p class="privacy-note">{{ t("privacyPolicy.section4_1IndependenceDisclaimer") }}</p>
         <h3>{{ t("privacyPolicy.section4_2Title") }}</h3>
         <ul>
           <li>{{ t("privacyPolicy.section4_2Item1") }}</li>

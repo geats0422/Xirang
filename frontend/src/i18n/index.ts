@@ -746,7 +746,7 @@ const messages = {
       section1Title: "1. Acceptance of Terms",
       section1Body: "By accessing or using Xi Rang (\"Service\"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service.",
       section1Item1Title: "Eligibility: ",
-      section1Item1Body: "You must be at least 13 years old to use the Service. If you are under 18, you must have parental or guardian consent.",
+      section1Item1Body: "You must be at least 14 years old to use the Service. If you are under 18, you must have parental or guardian consent.",
       section1Item2Title: "Account Responsibility: ",
       section1Item2Body: "You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.",
       section1Item3Title: "Modification: ",
@@ -791,7 +791,7 @@ const messages = {
       section8EmailLabel: "Email: ",
       section8CompanyLabel: "Entity: ",
       section8CompanyName: "Hangzhou Huanyu Gezhi Intelligent Technology Co., Ltd.",
-      section8Body2: "We will respond to your inquiry within 30 business days.",
+      section8Body2: "We will respond to your inquiry within 2 business days.",
       footerEffective: "These terms took effect on April 6, 2026.",
     },
     settlement: {

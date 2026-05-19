@@ -45,4 +45,19 @@ describe("legal and help contact email", () => {
     expect(wrapper.text()).not.toContain("termsOfService.section4_1Item3");
     expect(wrapper.text()).not.toContain("termsOfService.section6Item3");
   });
+
+  it("keeps legal age and support response promises consistent", async () => {
+    i18n.global.locale.value = "en";
+    const router = createTestRouter();
+    await router.push("/terms-of-service");
+    await router.isReady();
+
+    const terms = mount(DungeonScholarTermsPage, { global: { plugins: [i18n, router] } });
+    const privacy = mount(DungeonScholarPrivacyPolicyPage, { global: { plugins: [i18n, router] } });
+
+    expect(terms.text()).toContain("You must be at least 14 years old");
+    expect(privacy.text()).toContain("We do not allow minors under 14");
+    expect(terms.text()).toContain("2 business days");
+    expect(terms.text()).not.toContain("30 business days");
+  });
 });

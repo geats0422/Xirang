@@ -75,6 +75,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const isUpgrading = ref(false);
 const upgradeError = ref<string | null>(null);
+const isSubscriptionPausedForValidation = true;
 
 const plans = PRICING_CONFIG.plans;
 const currentPlan = props.subscriptionStatus === "active" ? "pro" : "free";
@@ -99,6 +100,7 @@ const proFeatures = computed(() => [
 ]);
 
 const handleUpgrade = async () => {
+  if (isSubscriptionPausedForValidation) return;
   if (isUpgrading.value) return;
   isUpgrading.value = true;
   upgradeError.value = null;
@@ -167,12 +169,15 @@ const handleCountryChange = (event: Event) => {
               v-if="currentPlan === 'free'"
               class="plan-card__cta plan-card__cta--upgrade"
               type="button"
-              :disabled="isUpgrading"
+              :disabled="isSubscriptionPausedForValidation || isUpgrading"
               data-testid="upgrade-pro"
               @click="handleUpgrade"
             >
-              {{ isUpgrading ? t("common.processing", "处理中...") : t("settings.subscriptionModal.upgradePro", "升级到 Pro") }}
+              {{ isSubscriptionPausedForValidation ? t("pricing.validationPausedTitle") : isUpgrading ? t("common.processing", "处理中...") : t("settings.subscriptionModal.upgradePro", "升级到 Pro") }}
             </button>
+            <p v-if="isSubscriptionPausedForValidation" class="plan-card__paused">
+              {{ t("pricing.validationPausedBody") }}
+            </p>
             <p v-if="upgradeError" class="plan-card__error">{{ upgradeError }}</p>
             <div v-else class="plan-card__active-info">
               <span class="plan-card__status">{{ t("settings.subscriptionModal.statusActive", "已启用") }}</span>
@@ -365,6 +370,14 @@ const handleCountryChange = (event: Event) => {
 .plan-card__error {
   color: #ef4444;
   font-size: 12px;
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+.plan-card__paused {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
   margin: 8px 0 0;
   text-align: center;
 }

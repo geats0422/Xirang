@@ -78,6 +78,8 @@ describe("EasternFantasyLandingPage", () => {
 
     expect(wrapper.findAll('a[href="#"]')).toHaveLength(0);
     expect(wrapper.find(`.site-footer__links a[href="${discordInviteUrl}"]`).exists()).toBe(true);
+    expect(wrapper.text()).toContain("Join the open beta");
+    expect(wrapper.text()).not.toContain("Scholars joined this week");
     expect(wrapper.text()).not.toMatch(/10,000|10\.000|thousands/i);
   });
 });

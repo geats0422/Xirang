@@ -649,7 +649,7 @@ const messages = {
       section16EmailLabel: "Privacy Email: ",
       section16CompanyLabel: "Operating Entity: ",
       section16CompanyName: "Hangzhou Huanyu Gezhi Intelligent Technology Co., Ltd.",
-      section16ResponseTime: "We will respond to your email within 30 business days.",
+      section16ResponseTime: "We will respond to your email within 2 business days.",
       footerEffective: "This privacy policy took effect on April 6, 2026.",
     },
     helpCenter: {
@@ -1242,7 +1242,7 @@ const messages = {
       heroTitle2: "Knowledge",
       heroTitle3: "Dungeon",
       heroSubtitle: "Turn boring documents into dopamine-driven games. Supports PPT, PDF, Word, Markdown, and TXT. Forge your wisdom in the fires of an eastern fantasy RPG world powered by AI.",
-      scholarsJoined: "Scholars joined this week",
+      scholarsJoined: "Join the open beta",
       forgeTitle: "Forge Your Knowledge",
       forgeSubtitle: "Unlock ancient wisdom with modern tools. Our platform transforms study material into an adventure.",
       gameModesTitle: "3 Game Modes",
@@ -1983,7 +1983,7 @@ const messages = {
       section16EmailLabel: "隐私专用邮箱：",
       section16CompanyLabel: "运营主体：",
       section16CompanyName: "杭州焕羽格致智能科技有限公司",
-      section16ResponseTime: "我们将在收到您的邮件后 30 个工作日内予以回复。",
+      section16ResponseTime: "我们将在收到您的邮件后 2 个工作日内予以回复。",
       footerEffective: "本隐私政策自 2026 年 4 月 6 日起生效。",
     },
     helpCenter: {
@@ -2125,7 +2125,7 @@ const messages = {
       section8EmailLabel: "邮箱：",
       section8CompanyLabel: "运营主体：",
       section8CompanyName: "杭州焕羽格致智能科技有限公司",
-      section8Body2: "我们将在 30 个工作日内回复您的询问。",
+      section8Body2: "我们将在 2 个工作日内回复您的询问。",
       footerEffective: "本服务条款自 2026 年 4 月 6 日起生效。",
     },
     settlement: {

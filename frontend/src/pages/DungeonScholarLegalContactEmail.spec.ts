@@ -58,6 +58,23 @@ describe("legal and help contact email", () => {
     expect(terms.text()).toContain("You must be at least 14 years old");
     expect(privacy.text()).toContain("We do not allow minors under 14");
     expect(terms.text()).toContain("2 business days");
+    expect(privacy.text()).toContain("2 business days");
     expect(terms.text()).not.toContain("30 business days");
+    expect(privacy.text()).not.toContain("30 business days");
+  });
+
+  it("keeps Chinese legal response promises under 3 business days", async () => {
+    i18n.global.locale.value = "zh-CN";
+    const router = createTestRouter();
+    await router.push("/terms-of-service");
+    await router.isReady();
+
+    const terms = mount(DungeonScholarTermsPage, { global: { plugins: [i18n, router] } });
+    const privacy = mount(DungeonScholarPrivacyPolicyPage, { global: { plugins: [i18n, router] } });
+
+    expect(terms.text()).toContain("2 个工作日");
+    expect(privacy.text()).toContain("2 个工作日");
+    expect(terms.text()).not.toContain("30 个工作日");
+    expect(privacy.text()).not.toContain("30 个工作日");
   });
 });

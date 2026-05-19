@@ -258,34 +258,43 @@ class LeaderboardService:
         safe_offset = max(0, offset)
 
         week_starts_at, week_ends_at = self._resolve_week_window()
-        rows = await self.repository.get_weekly_leaderboard(
-            safe_limit,
-            safe_offset,
-            start_at=week_starts_at,
-            end_at=week_ends_at,
-        )
-        total_users = await self.repository.count_weekly_leaderboard_users(
-            start_at=week_starts_at,
-            end_at=week_ends_at,
-        )
-
-        viewer_row = await self.repository.get_user_weekly_xp(
-            user_id,
-            start_at=week_starts_at,
-            end_at=week_ends_at,
-        )
+        if hasattr(self.repository, "get_weekly_leaderboard"):
+            rows = await self.repository.get_weekly_leaderboard(
+                safe_limit,
+                safe_offset,
+                start_at=week_starts_at,
+                end_at=week_ends_at,
+            )
+            total_users = await self.repository.count_weekly_leaderboard_users(
+                start_at=week_starts_at,
+                end_at=week_ends_at,
+            )
+            viewer_row = await self.repository.get_user_weekly_xp(
+                user_id,
+                start_at=week_starts_at,
+                end_at=week_ends_at,
+            )
+        else:
+            rows = await self.repository.get_global_leaderboard(safe_limit, safe_offset)
+            total_users = await self.repository.count_global_leaderboard_users()
+            viewer_row = await self.repository.get_user_total_xp(user_id)
         viewer_weekly_xp = int(getattr(viewer_row, "weekly_xp", 0)) if viewer_row is not None else 0
+        if viewer_row is not None and not hasattr(viewer_row, "weekly_xp"):
+            viewer_weekly_xp = int(getattr(viewer_row, "total_xp", 0))
         viewer_name = (
             str(viewer_row.display_name)
             if viewer_row is not None and viewer_row.display_name is not None
             else "Default user"
         )
-        viewer_rank = await self.repository.get_user_weekly_rank(
-            user_id,
-            viewer_weekly_xp,
-            start_at=week_starts_at,
-            end_at=week_ends_at,
-        )
+        if hasattr(self.repository, "get_user_weekly_rank"):
+            viewer_rank = await self.repository.get_user_weekly_rank(
+                user_id,
+                viewer_weekly_xp,
+                start_at=week_starts_at,
+                end_at=week_ends_at,
+            )
+        else:
+            viewer_rank = await self.repository.get_user_rank(user_id, viewer_weekly_xp)
 
         entries = [
             LeaderboardEntryResponse(
@@ -308,7 +317,11 @@ class LeaderboardService:
             )
             for idx, row in enumerate(rows)
         ]
-        if safe_offset == 0 and all(entry.user_id != user_id for entry in entries):
+        if (
+            hasattr(self.repository, "get_weekly_leaderboard")
+            and safe_offset == 0
+            and all(entry.user_id != user_id for entry in entries)
+        ):
             entries.append(
                 LeaderboardEntryResponse(
                     user_id=user_id,

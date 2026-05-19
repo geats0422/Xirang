@@ -38,24 +38,29 @@ describe("GameSettlementModal", () => {
     expect(wrapper.emitted("continueToPath")).toHaveLength(1);
   });
 
-  it("clicking secondary action emits review", async () => {
+  it("clicking secondary action emits reviewMistakes", async () => {
     const wrapper = mount(GameSettlementModal, {
       props: baseProps,
+      global: {
+        plugins: [i18n],
+      },
     });
 
     await wrapper.get(".settlement-secondary").trigger("click");
 
-    expect(wrapper.emitted("review")).toHaveLength(1);
+    expect(wrapper.emitted("reviewMistakes")).toHaveLength(1);
   });
 
-  it("disables review action when reviewEnabled is false", async () => {
+  it("clicking tertiary action emits close", async () => {
     const wrapper = mount(GameSettlementModal, {
-      props: {
-        ...baseProps,
-        reviewEnabled: false,
+      props: baseProps,
+      global: {
+        plugins: [i18n],
       },
     });
 
-    expect(wrapper.get(".settlement-secondary").attributes("disabled")).toBeDefined();
+    await wrapper.get(".settlement-tertiary").trigger("click");
+
+    expect(wrapper.emitted("close")).toHaveLength(1);
   });
 });

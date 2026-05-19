@@ -1,9 +1,9 @@
 """Runs API routes."""
 
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies.auth import get_current_user_id
@@ -15,6 +15,11 @@ from app.repositories.effect_repository import EffectRepository
 from app.repositories.run_repository import RunRepository
 from app.repositories.shop_repository import ShopRepository
 from app.repositories.wallet_repository import WalletRepository
+from app.services.learning_paths.service import (
+    PathGenerationFailedError,
+    PathGenerationInProgressError,
+    RegenerationLimitExceededError,
+)
 from app.services.runs.exceptions import (
     DuplicateAnswerError,
     InvalidRunStateError,
@@ -35,6 +40,12 @@ async def get_run_service(session: AsyncSession = Depends(get_db_session)) -> Ru
         effect_repo=EffectRepository(session),
         shop_repo=ShopRepository(session),
     )
+
+
+async def get_learning_path_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> RunService:
+    return await get_run_service(session)
 
 
 async def get_document_repository(
@@ -128,9 +139,11 @@ async def create_run(
 @router.get("/path-options")
 async def list_path_options(
     mode: str,
+    response: Response,
     document_id: str | None = None,
     user_id: UUID = Depends(get_current_user_id),
-    service: Any = Depends(get_run_service),
+    service: Any = Depends(get_learning_path_service),
+    run_service: Any = Depends(get_run_service),
     document_repo: DocumentRepository = Depends(get_document_repository),
 ) -> dict[str, Any]:
     run_mode = RunMode(mode)
@@ -157,15 +170,58 @@ async def list_path_options(
         if document.ingest_status != DocumentStatus.READY:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="document_not_ready")
 
-    options = await service.list_path_options(
-        mode=run_mode,
-        document_id=parsed_document_id,
-        user_id=user_id,
-    )
+    try:
+        if hasattr(service, "get_path_options"):
+            if parsed_document_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="document_id",
+                )
+            path_payload = await service.get_path_options(
+                document_id=parsed_document_id,
+                mode=run_mode.value,
+            )
+            if path_payload.get("generation_status") == "generating":
+                response.status_code = status.HTTP_202_ACCEPTED
+            return cast("dict[str, Any]", path_payload)
+        options = await run_service.list_path_options(
+            mode=run_mode,
+            document_id=parsed_document_id,
+            user_id=user_id,
+        )
+    except PathGenerationFailedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return {
         "mode": run_mode.value,
         "options": options,
     }
+
+
+@router.post("/path-regenerations")
+async def regenerate_path(
+    request: dict[str, Any],
+    user_id: UUID = Depends(get_current_user_id),
+    service: Any = Depends(get_learning_path_service),
+) -> dict[str, Any]:
+    document_id_raw = request.get("document_id", request.get("documentId"))
+    mode_raw = request.get("mode")
+    if not isinstance(document_id_raw, str) or not isinstance(mode_raw, str):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="document_id")
+    try:
+        document_id = UUID(document_id_raw)
+        run_mode = RunMode(mode_raw)
+        regeneration_payload = await service.regenerate_path(
+            mode=run_mode,
+            document_id=document_id,
+            user_id=user_id,
+        )
+        return cast("dict[str, Any]", regeneration_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    except PathGenerationInProgressError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RegenerationLimitExceededError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
 
 
 @router.get("")

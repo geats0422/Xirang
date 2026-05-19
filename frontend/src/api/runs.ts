@@ -11,6 +11,8 @@ export type RunQuestion = {
   text: string;
   question_type?: string;
   blank_count?: number | null;
+  source_locator?: string | null;
+  supporting_excerpt?: string | null;
   options: RunQuestionOption[];
 };
 
@@ -54,7 +56,10 @@ export type RunPathOptionsResponse = {
 export type QuestionFeedback = {
   correct_answer: string | null;
   correct_option_ids: string[];
+  correct_options?: RunQuestionOption[];
   explanation: string | null;
+  source_locator?: string | null;
+  supporting_excerpt?: string | null;
 };
 
 export type SubmitAnswerResponse = {

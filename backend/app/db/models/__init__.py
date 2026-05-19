@@ -29,12 +29,14 @@ from app.db.models.review import (
     ReviewRuleCandidate,
 )
 from app.db.models.runs import Run, RunAnswer, RunQuestion, Season, Settlement
+from app.db.models.subscriptions import DailyRewardCapUsage, Subscription
 
 __all__ = [
     "AuditLog",
     "AuthCredential",
     "AuthIdentity",
     "AuthSession",
+    "DailyRewardCapUsage",
     "Document",
     "DocumentIngestionJob",
     "DocumentPageIndexTree",
@@ -62,6 +64,7 @@ __all__ = [
     "Season",
     "Settlement",
     "ShopOffer",
+    "Subscription",
     "User",
     "UserSetting",
     "Wallet",

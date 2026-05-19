@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -63,7 +62,7 @@ def test_create_app_lifespan_starts_and_stops_managed_pageindex(
     assert fake_process.killed is False
 
 
-def test_create_app_lifespan_raises_when_pageindex_never_becomes_ready(
+def test_create_app_lifespan_uses_fallback_when_pageindex_never_becomes_ready(
     monkeypatch,
 ) -> None:
     async def fake_ensure_pageindex_ready_with_launch(settings: object) -> tuple[bool, None]:
@@ -75,8 +74,8 @@ def test_create_app_lifespan_raises_when_pageindex_never_becomes_ready(
         fake_ensure_pageindex_ready_with_launch,
     )
 
-    with (
-        pytest.raises(RuntimeError, match="PageIndex did not become ready"),
-        TestClient(create_app()),
-    ):
-        pass
+    with TestClient(create_app()) as client:
+        response = client.get("/health")
+        assert response.status_code == 200
+        app = cast("FastAPI", client.app)
+        assert app.state.pageindex_process is None

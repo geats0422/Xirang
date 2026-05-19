@@ -41,7 +41,7 @@ def test_env_example_exists():
     env_example_path = Path(__file__).parent.parent / ".env.example"
     assert env_example_path.exists()
 
-    content = env_example_path.read_text()
+    content = env_example_path.read_text(encoding="utf-8")
     assert "DATABASE_URL" in content
     assert "SECRET_KEY" in content
     assert "OPENAI_API_KEY" in content

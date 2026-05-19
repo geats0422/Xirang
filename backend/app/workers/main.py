@@ -33,6 +33,7 @@ from app.integrations.agents.client import AgentsClient, OpenAIClient
 from app.integrations.markitdown.client import MarkItDownClient, MarkItDownClientError
 from app.integrations.mineru.client import MinerUClient
 from app.integrations.pageindex.client import PageIndexClient
+from app.integrations.pageindex.runtime import ensure_pageindex_ready_with_launch
 from app.repositories.document_repository import DocumentRepository
 from app.services.documents.normalizer import normalize_markdown
 from app.services.documents.storage import DocumentStorage, StorageMode
@@ -876,27 +877,40 @@ def _estimate_word_count(content: str) -> int:
 
 
 async def run_worker(*, queue_name: str = "default", poll_interval: float = 1.0) -> None:
-    registry = build_job_registry()
-    session_factory = get_session_factory()
+    settings = get_settings()
+    pageindex_ready, managed_process = await ensure_pageindex_ready_with_launch(settings)
+    if not pageindex_ready:
+        raise RuntimeError("PageIndex is not ready")
 
-    async with session_factory() as session:
-        document_repo = DocumentRepository(session)
-        repository = WorkerJobRepository(document_repo)
-        runner = JobRunner(repository=repository, registry=registry)
+    try:
+        registry = build_job_registry()
+        session_factory = get_session_factory()
 
-        shutdown = False
+        async with session_factory() as session:
+            document_repo = DocumentRepository(session)
+            repository = WorkerJobRepository(document_repo)
+            runner = JobRunner(repository=repository, registry=registry)
 
-        def handle_signal(signum: int, frame: object) -> None:
-            nonlocal shutdown
-            shutdown = True
+            shutdown = False
 
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
+            def handle_signal(signum: int, frame: object) -> None:
+                nonlocal shutdown
+                shutdown = True
 
-        while not shutdown:
-            processed = await runner.run_one(queue_name=queue_name)
-            if not processed:
-                await asyncio.sleep(poll_interval)
+            signal.signal(signal.SIGINT, handle_signal)
+            signal.signal(signal.SIGTERM, handle_signal)
+
+            while not shutdown:
+                processed = await runner.run_one(queue_name=queue_name)
+                if not processed:
+                    await asyncio.sleep(poll_interval)
+    finally:
+        if managed_process is not None and managed_process.poll() is None:
+            managed_process.terminate()
+            try:
+                managed_process.wait(timeout=5)
+            except Exception:
+                managed_process.kill()
 
 
 def _worker_lock_path(queue_name: str) -> Path:

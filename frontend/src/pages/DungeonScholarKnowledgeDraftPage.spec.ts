@@ -145,7 +145,7 @@ describe("DungeonScholarKnowledgeDraftPage", () => {
     await wrapper.find(".draft-title__back").trigger("click");
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe(ROUTES.levelPath);
+    expect(router.currentRoute.value.path).toBe(ROUTES.gameModes);
   });
 
   it("submits selected draft option through runs api", async () => {

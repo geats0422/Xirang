@@ -134,15 +134,15 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     });
     await flushPromises();
 
-    expect(wrapper.find(".question-card h1").text()).toContain("核心转变是什么?");
-    expect(wrapper.find(".question-card h1").text()).not.toContain("**");
+    expect(wrapper.find(".question-card__title").text()).toContain("核心转变是什么?");
+    expect(wrapper.find(".question-card__title").text()).not.toContain("**");
 
     const answerInput = wrapper.find('input[placeholder="Type the answer keyword"]');
     await answerInput.setValue("water");
     await answerInput.trigger("keydown.enter");
     await flushPromises();
 
-    expect(mocks.submitAnswer).toHaveBeenCalledWith("run-1", "q-1", ["o-1"], expect.any(Number));
+    expect(mocks.submitAnswer).toHaveBeenCalledWith("run-1", "q-1", ["o-1"], expect.any(Number), undefined);
   });
 
   it("renders feedback action for reporting errors", async () => {
@@ -161,8 +161,8 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     });
     await flushPromises();
 
-    expect(wrapper.text()).toContain("来源：一、Python简介");
-    expect(wrapper.text()).toContain("摘录：Python语法和动态类型，以及解释型语言的本质");
+    expect(wrapper.text()).toContain("Source: 一、Python简介");
+    expect(wrapper.text()).toContain("Excerpt: Python语法和动态类型，以及解释型语言的本质");
   });
 
   it("renders run status notice for reduced reward", async () => {
@@ -207,9 +207,9 @@ describe("DungeonScholarEndlessAbyssPage", () => {
     await answerInput.trigger("keydown.enter");
     await flushPromises();
 
-    expect(wrapper.text()).toContain("正确答案：Water");
-    expect(wrapper.text()).toContain("解析：Water is identified as the correct answer in the material.");
-    expect(wrapper.text()).toContain("来源：一、Python简介");
+    expect(wrapper.text()).toContain("Correct answer:Water");
+    expect(wrapper.text()).toContain("Explanation:Water is identified as the correct answer in the material.");
+    expect(wrapper.text()).toContain("Source: 一、Python简介");
   });
 
   it("navigates back when clicking return", async () => {
@@ -437,7 +437,7 @@ describe("DungeonScholarEndlessAbyssPage", () => {
 
     expect(wrapper.text()).toContain("Review Mistakes");
     expect(wrapper.text()).toContain("Question");
-    expect(wrapper.text()).toContain("正确答案：Water");
+    expect(wrapper.text()).toContain("Correct answer:Water");
   });
 });
 

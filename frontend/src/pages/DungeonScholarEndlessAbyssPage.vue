@@ -56,6 +56,8 @@ const showFeedback = ref(false);
 const lastAnswerCorrect = ref(false);
 const feedbackCorrectAnswer = ref<string | null>(null);
 const feedbackExplanation = ref<string | null>(null);
+const feedbackSourceLocator = ref<string | null>(null);
+const feedbackSupportingExcerpt = ref<string | null>(null);
 const awaitingCorrection = ref(false);
 const expectedCorrectOptionIds = ref<string[]>([]);
 const correctionRetryNotice = ref(false);
@@ -97,6 +99,9 @@ const questionTitle = computed(() => {
   }
   return t("endlessAbyss.loadingQuestion");
 });
+
+const questionSourceLocator = computed(() => currentQuestion.value?.source_locator?.trim() || null);
+const questionSupportingExcerpt = computed(() => currentQuestion.value?.supporting_excerpt?.trim() || null);
 
 const hasTypedAnswer = computed(() => answer.value.trim().length > 0);
 
@@ -165,6 +170,7 @@ const normalizeComparableText = (value: string): string => {
   return value
     .trim()
     .toLowerCase()
+    .replace(/[*_`~[\]()#>]/g, "")
     .replace(/\u3000/g, " ")
     .replace(/\s+/g, "");
 };
@@ -320,10 +326,10 @@ const castSpell = async () => {
 
   const elapsedMs = Math.max(0, Date.now() - questionStartAt.value);
   const normalizedInput = answer.value.trim();
-  const normalizedAnswer = normalizedInput.toLowerCase();
+  const normalizedAnswer = normalizeComparableText(normalizedInput);
   const isFillInBlankQuestion = currentQuestion.value.question_type === "fill_in_blank";
   const matchedOption = currentQuestion.value.options.find(
-    (option) => option.text.trim().toLowerCase() === normalizedAnswer,
+    (option) => normalizeComparableText(option.text) === normalizedAnswer,
   );
   const selectedOptionIds = matchedOption ? [matchedOption.id] : [];
 
@@ -368,11 +374,13 @@ const castSpell = async () => {
 
     lastAnswerCorrect.value = result.is_correct;
     feedbackCorrectAnswer.value = resolveDisplayCorrectAnswer({
-      correctAnswerText: result.feedback?.correct_answer ?? null,
+      correctAnswerText: result.feedback?.correct_answer ?? result.feedback?.correct_options?.map((option) => option.text).join(", ") ?? null,
       correctOptionIds: result.feedback?.correct_option_ids ?? [],
       options: currentQuestion.value.options,
     });
     feedbackExplanation.value = result.feedback?.explanation ?? null;
+    feedbackSourceLocator.value = result.feedback?.source_locator?.trim() || null;
+    feedbackSupportingExcerpt.value = result.feedback?.supporting_excerpt?.trim() || null;
 
     if (!result.is_correct) {
       showNotice.value = true;
@@ -542,6 +550,8 @@ watch(
     lastAnswerCorrect.value = false;
     feedbackCorrectAnswer.value = null;
     feedbackExplanation.value = null;
+    feedbackSourceLocator.value = null;
+    feedbackSupportingExcerpt.value = null;
     awaitingCorrection.value = false;
     expectedCorrectOptionIds.value = [];
     correctionRetryNotice.value = false;
@@ -595,6 +605,10 @@ onUnmounted(() => {
             <span>{{ chapterTitle }}</span>
             <span class="question-card__hint">{{ questionHint }}</span>
           </footer>
+          <div v-if="questionSourceLocator || questionSupportingExcerpt" class="question-card__provenance">
+            <p v-if="questionSourceLocator">{{ t("endlessAbyss.sourceLabel") }}{{ questionSourceLocator }}</p>
+            <p v-if="questionSupportingExcerpt">{{ t("endlessAbyss.excerptLabel") }}{{ questionSupportingExcerpt }}</p>
+          </div>
         </article>
       </section>
 
@@ -631,6 +645,10 @@ onUnmounted(() => {
           <div v-if="feedbackExplanation" class="answer-feedback__explanation">
             <strong>{{ t("speedSurvival.explanation") }}</strong>
             <MarkdownRichText :content="feedbackExplanation" class-name="answer-feedback__markdown" />
+          </div>
+          <div v-if="feedbackSourceLocator || feedbackSupportingExcerpt" class="answer-feedback__provenance">
+            <p v-if="feedbackSourceLocator">{{ t("endlessAbyss.sourceLabel") }}{{ feedbackSourceLocator }}</p>
+            <p v-if="feedbackSupportingExcerpt">{{ t("endlessAbyss.excerptLabel") }}{{ feedbackSupportingExcerpt }}</p>
           </div>
         </div>
 

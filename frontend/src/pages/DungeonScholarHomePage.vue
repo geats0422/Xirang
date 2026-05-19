@@ -18,6 +18,8 @@ type HomeDocumentCard = {
   createdAt: string;
   progress: number;
   icon: string;
+  status?: string;
+  actionLabel?: string;
 };
 
 type NotificationItem = {
@@ -60,6 +62,8 @@ const fetchDocuments = async () => {
       createdAt: doc.created_at ?? "",
       progress: 0,
       icon: getDocIcon(),
+      status: doc.status,
+      actionLabel: getCardActionLabel(doc.status),
     }));
   } catch (error) {
     console.error("Failed to fetch documents:", error);
@@ -81,13 +85,14 @@ watch(locale, () => {
 
 const shopRoute = ROUTES.shop;
 
-const { currentPath, navigateTo, routingTarget } = useRouteNavigation();
+const { currentPath, navigateTo, router, routingTarget } = useRouteNavigation();
 
 const uploadState = ref<UploadState>("idle");
 const isDragging = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 const notificationVisible = ref(false);
 const notifications = ref<NotificationItem[]>([]);
+const recentSectionNotice = ref("");
 const activeCardMenuId = ref<string | null>(null);
 const pendingDeleteCard = ref<HomeDocumentCard | null>(null);
 const pendingBatchDeleteIds = ref<string[]>([]);
@@ -96,6 +101,35 @@ const isBatchDeleteMode = ref(false);
 const selectedDocumentIds = ref<string[]>([]);
 
 const selectedCount = computed(() => selectedDocumentIds.value.length);
+
+const getCardActionLabel = (status?: string): string => {
+  if (status === "ready") {
+    return t("home.beginStudy");
+  }
+  if (status === "failed") {
+    return t("home.goToLibrary");
+  }
+  return t("home.processing");
+};
+
+const handleDocumentAction = async (card: HomeDocumentCard) => {
+  recentSectionNotice.value = "";
+  if (card.status === "ready") {
+    await router.push({
+      path: ROUTES.gameModes,
+      query: {
+        documentId: card.id,
+        title: card.title,
+      },
+    });
+    return;
+  }
+  if (card.status === "failed") {
+    await navigateTo(ROUTES.library);
+    return;
+  }
+  recentSectionNotice.value = t("home.processingNotice");
+};
 
 const handleBrowseClick = () => {
   fileInput.value?.click();
@@ -379,8 +413,12 @@ defineExpose({
               </div>
               <strong>{{ card.progress }}%</strong>
             </div>
+            <button class="dungeon-card__action" type="button" @click="handleDocumentAction(card)">
+              {{ card.actionLabel ?? getCardActionLabel(card.status) }}
+            </button>
           </article>
         </div>
+        <p v-if="recentSectionNotice" class="recent-section__notice">{{ recentSectionNotice }}</p>
       </section>
 
       <DocumentDeleteConfirmModal

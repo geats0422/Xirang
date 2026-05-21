@@ -129,7 +129,9 @@ See [docs/backend-phase1-scope.md](../docs/backend-phase1-scope.md) for the comp
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | Required |
 | `SECRET_KEY` | JWT signing key | Required |
-| `OPENAI_API_KEY` | OpenAI API key | Required |
+| `API_KEY` | NVIDIA OpenAI-compatible API key | Required |
+| `BASE_URL` | NVIDIA OpenAI-compatible API base URL | `https://integrate.api.nvidia.com/v1` |
+| `MODEL_NAME` | Default LLM model name | `nvidia/nemotron-3-nano-30b-a3b` |
 | `PAGEINDEX_URL` | Self-hosted PageIndex URL | `http://localhost:8080` |
 | `PAGEINDEX_LAUNCH_COMMAND` | Local child-process command used to auto-start real PageIndex | None |
 | `PAGEINDEX_MOCK_FALLBACK` | Fall back to in-repo mock PageIndex when no real launch command is configured | `true` |

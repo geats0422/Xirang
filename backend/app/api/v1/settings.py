@@ -1,6 +1,5 @@
 """API routes for settings."""
 
-import os
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -83,11 +82,9 @@ async def health_check() -> dict[str, str]:
 @router.get("/ai-config")
 async def get_ai_config() -> dict[str, Any]:
     settings = get_settings()
-    legacy_api_key = os.getenv("NIVIDIA_BUILD_API_KEY")
-    legacy_base_url = os.getenv("NIVIDIA_BASE_URL")
     model = settings.llm_model
-    base_url = settings.llm_base_url or legacy_base_url or settings.nvidia_base_url
-    configured = bool(settings.llm_api_key or legacy_api_key)
+    base_url = settings.llm_base_url or settings.base_url
+    configured = bool(settings.llm_api_key)
     return {
         "provider": "openai-compatible",
         "base_url": base_url,
@@ -148,13 +145,13 @@ async def get_available_models() -> list[dict[str, Any]]:
     settings = get_settings()
     models: list[dict[str, Any]] = []
 
-    if settings.nvidia_api_key:
+    if settings.api_key:
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(
-                    f"{settings.nvidia_base_url}/models",
+                    f"{settings.base_url}/models",
                     headers={
-                        "Authorization": f"Bearer {settings.nvidia_api_key}",
+                        "Authorization": f"Bearer {settings.api_key}",
                         "Accept": "application/json",
                     },
                 )
@@ -172,32 +169,12 @@ async def get_available_models() -> list[dict[str, Any]]:
         except Exception:
             pass
 
-    if settings.openai_api_key and not models:
-        models.extend(
-            [
-                {
-                    "id": "gpt-4o-mini",
-                    "name": "GPT-4o Mini",
-                    "description": "Fast and efficient for most tasks.",
-                    "tags": ["OpenAI", "Fast"],
-                    "provider": "openai",
-                },
-                {
-                    "id": "gpt-4o",
-                    "name": "GPT-4o",
-                    "description": "Most capable OpenAI model.",
-                    "tags": ["OpenAI", "PRO", "Versatile"],
-                    "provider": "openai",
-                },
-            ]
-        )
-
     if not models:
         models.append(
             {
                 "id": "placeholder",
                 "name": "No API Configured",
-                "description": "Configure NVIDIA_API_KEY or OPENAI_API_KEY in environment.",
+                "description": "Configure API_KEY in environment.",
                 "tags": ["Setup Required"],
                 "provider": "none",
             }

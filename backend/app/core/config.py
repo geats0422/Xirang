@@ -67,15 +67,10 @@ class Settings(BaseSettings):
     mineru_backend: str = "hybrid-auto-engine"
     mineru_lang_list: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["ch"])
 
-    # LLM provider configuration (OpenAI-compatible)
-    # IMPORTANT: API credentials MUST NOT be modified - these are provided by the project
-    openai_api_key: str | None = None
-    openai_base_url: str | None = None
-    openai_model: str = "gpt-4o-mini"
-    # NVIDIA Build API (primary LLM provider - DO NOT MODIFY)
-    nvidia_api_key: str | None = None
-    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
+    # LLM provider configuration (NVIDIA OpenAI-compatible API)
+    api_key: str | None = None
+    base_url: str = "https://integrate.api.nvidia.com/v1"
+    model_name: str = "nvidia/nemotron-3-nano-30b-a3b"
     storage_mode: str = "local"
     upload_dir: str = ".data/uploads"
     r2_bucket_name: str | None = None
@@ -172,27 +167,15 @@ class Settings(BaseSettings):
 
     @property
     def llm_api_key(self) -> str | None:
-        if self.openai_api_key:
-            return self.openai_api_key
-        if self.nvidia_api_key:
-            return self.nvidia_api_key
-        return None
+        return self.api_key
 
     @property
     def llm_base_url(self) -> str | None:
-        if self.openai_api_key:
-            return self.openai_base_url
-        if self.nvidia_api_key:
-            return self.nvidia_base_url
-        return None
+        return self.base_url
 
     @property
     def llm_model(self) -> str:
-        if self.openai_api_key:
-            return self.openai_model
-        if self.nvidia_api_key:
-            return self.nvidia_model
-        return self.openai_model
+        return self.model_name
 
     @property
     def r2_endpoint_url(self) -> str | None:

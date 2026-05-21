@@ -13,13 +13,10 @@ def create_test_client() -> TestClient:
     return TestClient(app)
 
 
-def test_ai_config_endpoint_returns_openai_compatible_config_from_nvidia_env(monkeypatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
-    monkeypatch.delenv("OPENAI_MODEL", raising=False)
-    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test-key")
-    monkeypatch.setenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    monkeypatch.setenv("NVIDIA_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
+def test_ai_config_endpoint_returns_openai_compatible_config(monkeypatch) -> None:
+    monkeypatch.setenv("API_KEY", "nvapi-test-key")
+    monkeypatch.setenv("BASE_URL", "https://integrate.api.nvidia.com/v1")
+    monkeypatch.setenv("MODEL_NAME", "nvidia/nemotron-3-nano-30b-a3b")
 
     get_settings.cache_clear()
     client = create_test_client()
@@ -35,14 +32,9 @@ def test_ai_config_endpoint_returns_openai_compatible_config_from_nvidia_env(mon
     }
 
 
-def test_ai_config_endpoint_accepts_legacy_nividia_env_keys(monkeypatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
-    monkeypatch.delenv("OPENAI_MODEL", raising=False)
-    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
-    monkeypatch.delenv("NVIDIA_BASE_URL", raising=False)
-    monkeypatch.setenv("NIVIDIA_BUILD_API_KEY", "legacy-nvapi-key")
-    monkeypatch.setenv("NIVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+def test_ai_config_endpoint_marks_unconfigured_when_api_key_missing(monkeypatch) -> None:
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("BASE_URL", "https://integrate.api.nvidia.com/v1")
 
     get_settings.cache_clear()
     client = create_test_client()
@@ -53,11 +45,11 @@ def test_ai_config_endpoint_accepts_legacy_nividia_env_keys(monkeypatch) -> None
     body = response.json()
     assert body["provider"] == "openai-compatible"
     assert body["base_url"] == "https://integrate.api.nvidia.com/v1"
-    assert body["configured"] is True
+    assert body["configured"] is False
 
 
 def test_ai_models_endpoint_returns_available_models(monkeypatch) -> None:
-    monkeypatch.setenv("NVIDIA_MODEL", "nvidia/test-model")
+    monkeypatch.setenv("MODEL_NAME", "nvidia/test-model")
     get_settings.cache_clear()
     client = create_test_client()
 

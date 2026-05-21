@@ -162,8 +162,12 @@ services:
         value: /tmp/xirang-uploads
       - key: PAGEINDEX_MOCK_FALLBACK
         value: "true"
-      - key: NVIDIA_API_KEY
+      - key: API_KEY
         sync: false
+      - key: BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: MODEL_NAME
+        value: nvidia/nemotron-3-nano-30b-a3b
       - key: GITHUB_CLIENT_ID
         sync: false
       - key: GITHUB_CLIENT_SECRET
@@ -208,8 +212,12 @@ services:
         value: /tmp/xirang-uploads
       - key: PAGEINDEX_MOCK_FALLBACK
         value: "true"
-      - key: NVIDIA_API_KEY
+      - key: API_KEY
         sync: false
+      - key: BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: MODEL_NAME
+        value: nvidia/nemotron-3-nano-30b-a3b
       - key: PAGEINDEX_URL
         value: "https://你的-pageindex-service.example.com/pageindex"
 ```
@@ -260,7 +268,7 @@ postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.co
 2. 如需文档后台处理，对照同一模板创建 Background Worker。
 3. 在 Dashboard 中填写环境变量：
     - `DATABASE_URL`：粘贴 Supabase 连接串
-    - `NVIDIA_API_KEY`、OAuth credentials 等 secret 变量
+    - `API_KEY`、OAuth credentials 等 secret 变量
 4. 对照 `docs/env-matrix.md` 核对 API 与 Worker 必须一致的变量。
 5. 首次部署成功后，Alembic 迁移会在启动时自动执行。
 6. 部署完成后执行 `docs/smoke-checklist.md`。

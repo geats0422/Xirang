@@ -57,12 +57,9 @@
 
 | 变量 | 是否 secret | API | Worker | 用途 |
 |---|---|---:|---:|---|
-| `NVIDIA_API_KEY` | 是 | 是 | 是 | NVIDIA LLM 调用 |
-| `NVIDIA_BASE_URL` | 否 | 是 | 是 | NVIDIA API base |
-| `NVIDIA_MODEL` | 否 | 是 | 是 | 默认模型 |
-| `OPENAI_API_KEY` | 是 | 是 | 是 | OpenAI 调用 |
-| `OPENAI_BASE_URL` | 否 | 是 | 是 | OpenAI API base |
-| `OPENAI_MODEL` | 否 | 是 | 是 | 默认模型 |
+| `API_KEY` | 是 | 是 | 是 | NVIDIA OpenAI-compatible LLM 调用 |
+| `BASE_URL` | 否 | 是 | 是 | NVIDIA OpenAI-compatible API base |
+| `MODEL_NAME` | 否 | 是 | 是 | 默认模型 |
 | `PAGEINDEX_URL` | 否 | 可选 | 是 | PageIndex 服务地址 |
 | `PAGEINDEX_MOCK_FALLBACK` | 否 | 可选 | 可选 | PageIndex 不可用时是否 mock fallback |
 | `MINERU_URL` | 否 | 是 | 是 | MinerU 服务地址 |

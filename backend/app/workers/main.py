@@ -553,7 +553,7 @@ async def _process_document_ingestion(
         logger.warning(
             "LLM not available for document %s (user=%s). "
             "Falling back to heuristic question generator (low quality). "
-            "Configure NVIDIA_API_KEY to enable LLM-powered generation.",
+            "Configure API_KEY to enable LLM-powered generation.",
             document_id,
             document.owner_user_id,
         )

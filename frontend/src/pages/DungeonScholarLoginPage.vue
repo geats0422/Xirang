@@ -155,19 +155,12 @@ const queryStringValue = (value: unknown): string | null => {
   return null;
 };
 
-const isWakingServer = ref(false);
-
 const startSocialLogin = async (provider: string) => {
   if (isSubmitting.value || oauthProcessing.value) {
     return;
   }
 
-  isWakingServer.value = true;
-  try {
-    await wakeupServer();
-  } finally {
-    isWakingServer.value = false;
-  }
+  void wakeupServer();
 
   const oauthStartUrl = `/api/v1/auth/oauth/${provider}/start`;
   window.location.assign(oauthStartUrl);
@@ -401,7 +394,7 @@ watch(
             :key="provider.key"
             type="button"
             class="social-buttons__item"
-            :disabled="isSubmitting || oauthProcessing || isWakingServer"
+            :disabled="isSubmitting || oauthProcessing"
             @click="startSocialLogin(provider.key)"
           >
             <span class="social-buttons__icon" aria-hidden="true">

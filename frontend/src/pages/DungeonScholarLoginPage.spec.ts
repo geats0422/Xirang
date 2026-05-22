@@ -5,9 +5,10 @@ import { ROUTES } from "../constants/routes";
 import { i18n } from "../i18n";
 import DungeonScholarLoginPage from "./DungeonScholarLoginPage.vue";
 
-const { registerWithPasswordMock, sendRegistrationVerificationCodeMock } = vi.hoisted(() => ({
+const { registerWithPasswordMock, sendRegistrationVerificationCodeMock, wakeupServerMock } = vi.hoisted(() => ({
   registerWithPasswordMock: vi.fn(),
   sendRegistrationVerificationCodeMock: vi.fn(),
+  wakeupServerMock: vi.fn(),
 }));
 
 vi.mock("../api/auth", async () => {
@@ -20,7 +21,7 @@ vi.mock("../api/auth", async () => {
 });
 
 vi.mock("../api/wakeup", () => ({
-  wakeupServer: vi.fn().mockResolvedValue(undefined),
+  wakeupServer: wakeupServerMock,
 }));
 
 const createTestRouter = () =>
@@ -49,6 +50,7 @@ describe("DungeonScholarLoginPage", () => {
         expires_in: 900,
       },
     });
+    wakeupServerMock.mockResolvedValue(undefined);
   });
 
   it("renders login form with social icons and core inputs", async () => {
@@ -140,5 +142,20 @@ describe("DungeonScholarLoginPage", () => {
 
     expect(wrapper.find(".language-dock__menu").exists()).toBe(true);
     expect(wrapper.findAll(".language-dock__option").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("starts Google OAuth immediately even when server wakeup is still pending", async () => {
+    const router = createTestRouter();
+    await router.push(ROUTES.signUp);
+    await router.isReady();
+    wakeupServerMock.mockReturnValue(new Promise(() => undefined));
+
+    const wrapper = mount(DungeonScholarLoginPage, {
+      global: { plugins: [router, i18n] },
+    });
+
+    await wrapper.findAll(".social-buttons__item")[0].trigger("click");
+
+    expect(wrapper.findAll(".social-buttons__item")[0].attributes("disabled")).toBeUndefined();
   });
 });

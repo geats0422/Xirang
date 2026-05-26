@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from app.api.dependencies.auth import get_current_user_id
 from app.core.config import get_settings, read_env_file_value
 from app.db.session import get_db_session
-from app.integrations.creem.client import CreemApiClient, CreemApiTimeoutError
+from app.integrations.creem.client import CreemApiClient, CreemApiError, CreemApiTimeoutError
 from app.schemas.payments import (
     CheckoutRequest,
     CheckoutResponse,
@@ -60,6 +60,8 @@ async def create_checkout(
         result = await service.create_checkout(user_id=user_id, product_type=payload.product_type, plan=payload.plan)
     except CreemApiTimeoutError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Creem timeout") from exc
+    except CreemApiError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Creem checkout request failed") from exc
     except PaymentConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except CreemCheckoutError as exc:

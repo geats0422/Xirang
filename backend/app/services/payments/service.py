@@ -59,7 +59,6 @@ class PaymentService:
         payload = {
             "product_id": product_id,
             "success_url": self.settings.creem_checkout_success_url,
-            "cancel_url": self.settings.creem_checkout_cancel_url,
             "metadata": self._build_checkout_metadata(user=user, product_type=product_type, plan=plan),
         }
         data = await self.client.create_checkout(payload)

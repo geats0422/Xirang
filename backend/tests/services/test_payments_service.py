@@ -62,7 +62,7 @@ async def test_create_checkout_returns_url() -> None:
     result = await service.create_checkout(user_id=session.user.id, product_type="subscription", plan="monthly")
     assert result["checkout_url"] == "https://checkout.local"
     assert client.payload["product_id"] == "prod_monthly"
-    assert client.payload["cancel_url"] == "http://localhost:5173/pricing"
+    assert "cancel_url" not in client.payload
 
 
 @pytest.mark.asyncio(loop_scope="module")

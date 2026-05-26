@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_user_id
 from app.api.v1.payments import get_payment_service
 from app.core.config import get_settings
+from app.integrations.creem.client import CreemApiError
 from app.main import create_app
 
 
@@ -26,6 +27,11 @@ class FakePaymentService:
 
     async def update_region(self, user_id, region):  # type: ignore[no-untyped-def]
         return {"region": region, "prices": {"monthly": 8.0, "quarterly": 20.0, "yearly": 70.0}}
+
+
+class FailingPaymentService(FakePaymentService):
+    async def create_checkout(self, *, user_id, product_type, plan):  # type: ignore[no-untyped-def]
+        raise CreemApiError("Creem request failed with status 400: bad product")
 
 
 class FakeWebhookSession:
@@ -72,6 +78,18 @@ def test_checkout_endpoint_returns_url() -> None:
     response = client.post("/api/v1/payments/checkout", json={"product_type": "subscription", "plan": "monthly"})
     assert response.status_code == 200
     assert response.json()["checkout_url"] == "https://checkout.local"
+
+
+def test_checkout_endpoint_maps_creem_api_error_to_502() -> None:
+    app = create_app()
+    app.dependency_overrides[get_current_user_id] = lambda: uuid4()
+    app.dependency_overrides[get_payment_service] = lambda: FailingPaymentService()
+    client = TestClient(app)
+
+    response = client.post("/api/v1/payments/checkout", json={"product_type": "coin", "plan": "60"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Creem checkout request failed"
 
 
 def test_webhook_invalid_signature_returns_401(monkeypatch) -> None:  # type: ignore[no-untyped-def]
